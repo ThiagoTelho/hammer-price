@@ -1,12 +1,14 @@
-# Serviço de Carteira / Inventário (wallet) — Go
+# Serviço de Carteira / Inventário (wallet) — Java (Maven + gRPC)
 
 Guardião da **consistência forte**. **Particionado por jogador** (shard por `playerId`).
 
 ## Responsabilidades
 - Saldo, reservas, inventário, afinidade e coleções.
-- `Reserve` / `Release` / `Settle` de saldo; `AddItem` / `SellItem` / `BurnItem`.
-- Toda operação de dinheiro serializada por **Redlock(playerId) + transação Postgres**.
-- Registrar tudo no **ledger** (base da reconciliação).
+- `Reserve` / `Release` / `GetPlayer` (fatia vertical); `Settle`, `AddItem`, `SellItem`,
+  `BurnItem` em etapas posteriores.
+- Toda operação de dinheiro serializada — hoje por método `synchronized`; depois por
+  **Redlock(playerId) + transação Postgres**.
+- Registrar tudo no **ledger** (etapa posterior).
 
 ## Invariantes
 - `balance - reserved >= 0` sempre (nunca saldo negativo, mesmo com lances concorrentes
@@ -14,19 +16,19 @@ Guardião da **consistência forte**. **Particionado por jogador** (shard por `p
 - Um item em **exatamente um** estado: `FREE` | `LOCKED_COLLECTION` | `CONSUMED`.
 - `afinidade(player, type) <= teto`.
 
-## Estrutura sugerida
+## Estrutura
 ```
 wallet/
-  cmd/server/main.go
-  internal/wallet/     # reserve/release/settle sob lock
-  internal/inventory/  # estados de item, sell/burn
-  internal/ledger/     # append-only
-  internal/grpc/
-  proto/               # wallet.proto (ver docs/07)
+  pom.xml                 # build Maven + protobuf-maven-plugin (gera stubs gRPC)
+  src/main/java/br/ufg/hammerprice/wallet/
+    WalletServer.java     # servidor gRPC
+    WalletStore.java      # saldo/reservas em memória (acesso serializado)
 ```
 
 ## Comandos
 ```bash
-go test ./...        # testes de concorrência da reserva
-go run ./cmd/server
+mvn -q -DskipTests package                          # gera o fat jar
+java -jar target/wallet-0.1.0.jar
+# ou, em desenvolvimento:
+mvn -q compile exec:java -Dexec.mainClass=br.ufg.hammerprice.wallet.WalletServer
 ```

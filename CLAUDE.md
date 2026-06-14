@@ -23,7 +23,7 @@ O sistema **precisa** demonstrar (ver `docs/05-requisitos-distribuidos.md`):
 5. Interação remota **síncrona (bloqueante)** E **assíncrona**.
 6. **Replicação** E **particionamento** de dados/funcionalidades.
 7. Tratamento de **consistência** e **disponibilidade**.
-8. **Mais de uma linguagem** (TypeScript, Go, Python) e **mais de um paradigma**
+8. **Mais de uma linguagem** (TypeScript, Java, Python) e **mais de um paradigma**
    (cliente-servidor, pub-sub, messaging).
 9. Deploy demonstrável em **AWS EC2**.
 
@@ -36,9 +36,9 @@ de prosseguir.
   gateway por WebSocket (estado em tempo real) e REST (ações pontuais).
 - `services/gateway` — **Node.js + TypeScript**. Mantém as conexões WebSocket, faz
   fan-out assíncrono (Redis Pub/Sub) e encaminha ações como **gRPC síncrono** para o core.
-- `services/auction` — **Go**. Núcleo concorrente: lances atômicos, timers por caixa
-  (anti-sniping), sorteio (RNG) da abertura. Estado quente em Redis; eventos para RabbitMQ.
-- `services/wallet` — **Go**. Carteira e inventário com **consistência forte**
+- `services/auction` — **Java (Maven + gRPC)**. Núcleo concorrente: lances atômicos, timers
+  por caixa (anti-sniping), sorteio (RNG) da abertura. Estado quente em Redis; eventos para RabbitMQ.
+- `services/wallet` — **Java (Maven + gRPC)**. Carteira e inventário com **consistência forte**
   (transações Postgres + lock distribuído Redlock). Particionado por jogador.
 - `services/worker` — **Python**. Background: engine de preços de mercado, avaliação de
   coleções, reconciliação de saldos, eventos de manutenção. Consome filas RabbitMQ.
@@ -50,8 +50,9 @@ de prosseguir.
   de código em **inglês** (`placeBid`, `openBox`, `walletBalance`).
 - **Contratos primeiro:** ao mexer em comunicação entre serviços, atualize os `.proto`
   e os esquemas de eventos em `docs/07-contratos-api.md` ANTES da implementação.
-- **Concorrência explícita:** prefira primitivas claras (`sync.Mutex`, channels,
-  transações SQL, Redlock) a magia de framework. Comente a invariante que cada lock protege.
+- **Concorrência explícita:** prefira primitivas claras (`synchronized`/`ReentrantLock`,
+  `java.util.concurrent`, transações SQL, Redlock) a magia de framework. Comente a invariante
+  que cada lock protege.
 - **Determinismo de testes:** o RNG da abertura de caixas deve aceitar *seed* injetável
   para testes reproduzíveis.
 - **Nada de segredos no repo:** use `.env` (ver `.env.example`); nunca commite chaves AWS.
@@ -80,6 +81,6 @@ de prosseguir.
 
 ```bash
 cd infra && docker compose up --build      # sobe tudo localmente
-cd services/auction && go test ./...        # testes do core
+cd services/auction && mvn test             # testes do core (Java)
 cd services/frontend && npm run dev         # frontend em modo dev
 ```

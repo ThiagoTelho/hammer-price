@@ -9,12 +9,11 @@ build/
 out/
 *.tsbuildinfo
 
-# Go
-bin/
-*.exe
-*.test
-*.out
-vendor/
+# Java / Maven
+target/
+*.class
+.mvn/
+dependency-reduced-pom.xml
 
 # Python
 __pycache__/

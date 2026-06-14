@@ -41,8 +41,8 @@
 
 | Frente | Responsável | Escopo |
 |---|---|---|
-| **Core/Leilão (Go)** | _a definir_ | Serviço de Leilão, lances atômicos, timers, RNG, particionamento por vault |
-| **Carteira/Worker (Go/Python)** | _a definir_ | Carteira, Redlock+tx, ledger, worker de mercado/sets/reconciliação |
+| **Core/Leilão (Java)** | _a definir_ | Serviço de Leilão, lances atômicos, timers, RNG, particionamento por vault |
+| **Carteira/Worker (Java/Python)** | _a definir_ | Carteira, Redlock+tx, ledger, worker de mercado/sets/reconciliação |
 | **Gateway/Frontend (Node/React)** | _a definir_ | Gateway WS, tradução gRPC, SPA React, UX do leilão |
 | **Infra/AWS/Docs** | _a definir_ | Docker, RabbitMQ/Redis/Postgres, deploy EC2, documentação, dados de teste |
 

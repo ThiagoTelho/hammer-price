@@ -43,8 +43,8 @@ Instruções para desenvolvimento assistido por IA: [`CLAUDE.md`](CLAUDE.md).
 |---|---|---|
 | Cliente web | React + HTML5 Canvas | TypeScript |
 | Gateway tempo-real | Node.js + WebSocket | TypeScript |
-| Serviço de Leilão (core) | Go (goroutines, mutex, RNG) | Go |
-| Serviço de Carteira/Inventário | Go (consistência forte) | Go |
+| Serviço de Leilão (core) | Java (threads, locks, RNG) | Java |
+| Serviço de Carteira/Inventário | Java (consistência forte) | Java |
 | Worker de background | Mercado, coleções, reconciliação | Python |
 | Mensageria | RabbitMQ (eventos) + Redis Pub/Sub (broadcast) | — |
 | Estado quente / locks | Redis (Redlock) | — |
@@ -52,7 +52,7 @@ Instruções para desenvolvimento assistido por IA: [`CLAUDE.md`](CLAUDE.md).
 | RPC entre serviços | gRPC | — |
 | Deploy | Docker Compose em AWS EC2 (2–3 instâncias) | — |
 
-> **3 linguagens** (TypeScript, Go, Python) e **3 paradigmas** (cliente-servidor,
+> **3 linguagens** (TypeScript, Java, Python) e **3 paradigmas** (cliente-servidor,
 > pub-sub, messaging), conforme exigido pela disciplina.
 
 ---
@@ -85,8 +85,8 @@ para o frontend (S3 + CloudFront) e a API (EC2).
 
 | Integrante | Responsabilidade principal |
 |---|---|
-| _a definir_ | Serviço de Leilão (Go) |
-| _a definir_ | Carteira + Worker (Go/Python) |
+| _a definir_ | Serviço de Leilão (Java) |
+| _a definir_ | Carteira + Worker (Java/Python) |
 | _a definir_ | Gateway + Frontend (Node/React) |
 | _a definir_ | Infra AWS + Documentação |
 

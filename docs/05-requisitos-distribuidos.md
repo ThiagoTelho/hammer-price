@@ -15,7 +15,7 @@
 | 5 | Interação remota síncrona **e** assíncrona | Síncr.: gRPC do lance (aceito/rejeitado). Assíncr.: broadcast Pub/Sub + filas | Mostrar a confirmação bloqueante vs. o broadcast a todos |
 | 6 | Replicação **e** particionamento | Replic.: Postgres primary+réplica, Redis. Partic.: vaults (Leilão) e jogador (Carteira) | Derrubar uma instância de vault; partida segue |
 | 7 | Consistência **e** disponibilidade | Forte (Redlock+tx) no dinheiro; eventual no mercado/ranking; failover | Teste de corrida sem saldo negativo; queda de réplica |
-| 8 | Múltiplas linguagens e paradigmas | TS + Go + Python; cliente-servidor + pub-sub + messaging | Apontar cada serviço e seu paradigma |
+| 8 | Múltiplas linguagens e paradigmas | TS + Java + Python; cliente-servidor + pub-sub + messaging | Apontar cada serviço e seu paradigma |
 | 9 | Demonstração em AWS EC2 | Deploy via Docker Compose em 2–3 EC2 | Vídeo gravado contra os endpoints da AWS |
 
 ## Detalhamento por requisito
@@ -37,7 +37,7 @@ Recursos disputados:
   tempo (o caso mais interessante: contenção distribuída).
 - **Inventário** — vender vs. usar em coleção vs. queimar.
 - **Mercado** — leituras/atualizações concorrentes.
-Mecanismos: `sync.Mutex`/ator por caixa; **Redlock + transação** por jogador.
+Mecanismos: `ReentrantLock` por caixa; **Redlock + transação** por jogador.
 
 ### 4. Processamento server-side concorrente
 Enquanto os clientes interagem, o servidor executa **em paralelo**:
@@ -69,7 +69,7 @@ Demonstra-se com logs/painel mostrando essas tarefas ativas durante os lances.
   um vault isola-se àquele grupo de caixas; estado autoritativo sobrevive em Redis/Postgres.
 
 ### 8. Linguagens e paradigmas
-- **Linguagens:** TypeScript (frontend + gateway), Go (Leilão + Carteira), Python (worker).
+- **Linguagens:** TypeScript (frontend + gateway), Java (Leilão + Carteira), Python (worker).
 - **Paradigmas:** cliente-servidor (REST/gRPC), publish-subscribe (Redis Pub/Sub),
   messaging (RabbitMQ).
 

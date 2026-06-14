@@ -7,8 +7,8 @@ Cada subpasta é um componente distribuído do Hammer Price. Veja a
 |---|---|---|---|
 | `frontend/` | TypeScript (React) | Cliente web | cliente-servidor (WS/REST) |
 | `gateway/` | TypeScript (Node) | Conexões WS + fan-out + tradução gRPC | pub-sub + cliente-servidor |
-| `auction/` | Go | Leilão: lances, timers, RNG (particionado por vault) | cliente-servidor (gRPC) |
-| `wallet/` | Go | Carteira/inventário, consistência forte (particionado por jogador) | cliente-servidor (gRPC) |
+| `auction/` | Java (Maven) | Leilão: lances, timers, RNG (particionado por vault) | cliente-servidor (gRPC) |
+| `wallet/` | Java (Maven) | Carteira/inventário, consistência forte (particionado por jogador) | cliente-servidor (gRPC) |
 | `worker/` | Python | Background: mercado, coleções, reconciliação | messaging (RabbitMQ) |
 
 Cada serviço deve trazer seu próprio `README.md`, `Dockerfile` e testes. Os contratos

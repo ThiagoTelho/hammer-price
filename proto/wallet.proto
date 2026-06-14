@@ -1,7 +1,9 @@
 syntax = "proto3";
 package hammerprice.wallet;
 
-option go_package = "github.com/ThiagoTelho/hammer-price/proto/gen/go/walletpb;walletpb";
+option java_multiple_files = true;
+option java_package = "br.ufg.hammerprice.wallet.grpc";
+option java_outer_classname = "WalletProto";
 
 // Carteira / Inventário — guardião da consistência forte.
 // Fatia vertical: por enquanto apenas Reserve + GetPlayer (estado em memória).

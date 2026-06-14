@@ -1,7 +1,7 @@
 # 07 — Contratos de API
 
 > **Defina/atualize estes contratos ANTES de implementar.** São a fronteira entre as
-> linguagens (TS ↔ Go ↔ Python) e entre os paradigmas. Os exemplos abaixo são um ponto
+> linguagens (TS ↔ Java ↔ Python) e entre os paradigmas. Os exemplos abaixo são um ponto
 > de partida; versione mudanças.
 
 ## 1. Cliente ↔ Gateway

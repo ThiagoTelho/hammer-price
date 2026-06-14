@@ -21,7 +21,7 @@
                              │               ▼
               ┌──────────────▼─────┐   ┌─────────────────────┐
               │  Serviço de Leilão │   │   Redis (Pub/Sub +   │
-              │       (Go)         │◄─▶│  estado quente +     │
+              │      (Java)        │◄─▶│  estado quente +     │
               │  - lances atômicos │   │  Redlock)            │
               │  - timers/caixas   │   └─────────┬───────────┘
               │  - RNG de abertura │             │
@@ -32,7 +32,7 @@
                    │        ▼ (RabbitMQ)          │
        ┌───────────▼──────┐ │   ┌─────────────────▼────────┐
        │ Serviço Carteira │ │   │   RabbitMQ (messaging)    │
-       │      (Go)        │ │   │  filas de eventos/trabalho│
+       │     (Java)       │ │   │  filas de eventos/trabalho│
        │ - saldo/inventár.│ │   └───────────┬───────────────┘
        │ - consistência   │ │               │ consome
        │   FORTE (Redlock │ │               ▼
@@ -62,11 +62,11 @@ abrir caixa, vender/queimar item via mensagens que o gateway encaminha.
   serviço dono (Leilão ou Carteira) e a confirmação volta ao cliente que pediu.
 - Não guarda estado de jogo autoritativo (é *stateless*; pode ter réplicas atrás de um LB).
 
-### Serviço de Leilão (core) — Go
+### Serviço de Leilão (core) — Java (Maven + gRPC)
 Coração concorrente do jogo:
-- **Lances atômicos:** cada caixa é protegida por `sync.Mutex` (ou ator/channel) que
+- **Lances atômicos:** cada caixa é protegida por um `ReentrantLock` (lock por caixa) que
   serializa lances concorrentes e valida contra o lance atual.
-- **Timers por caixa** com anti-sniping (goroutine por caixa ou roda de timers).
+- **Timers por caixa** com anti-sniping (thread agendada por caixa ou roda de timers).
 - **RNG de abertura** server-side, com seed injetável.
 - **Particionado por vault:** cada instância é dona de um subconjunto de caixas. Isso
   distribui a carga e demonstra particionamento de funcionalidade.
@@ -74,7 +74,7 @@ Coração concorrente do jogo:
 - Publica eventos (`bid.placed`, `box.sold`, `box.opened`) em Redis Pub/Sub (broadcast) e
   RabbitMQ (processamento durável).
 
-### Serviço de Carteira / Inventário — Go
+### Serviço de Carteira / Inventário — Java (Maven + gRPC)
 Guardião da **consistência forte**:
 - Saldo, reservas e inventário de cada jogador.
 - **Reserva atômica** de saldo: garante `saldo ≥ 0` mesmo com lances simultâneos em vaults
@@ -146,7 +146,7 @@ A mesma ação "dar lance" exercita os dois modos:
 ## Sequência: ciclo de vida de um lance
 
 ```
-Cliente        Gateway        Leilão(Go)       Carteira(Go)     Redis/RabbitMQ
+Cliente        Gateway        Leilão(Java)     Carteira(Java)   Redis/RabbitMQ
   │  placeBid     │                │                 │                 │
   ├──WS──────────►│                │                 │                 │
   │               ├──gRPC(síncr)──►│                 │                 │

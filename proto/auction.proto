@@ -1,7 +1,9 @@
 syntax = "proto3";
 package hammerprice.auction;
 
-option go_package = "github.com/ThiagoTelho/hammer-price/proto/gen/go/auctionpb;auctionpb";
+option java_multiple_files = true;
+option java_package = "br.ufg.hammerprice.auction.grpc";
+option java_outer_classname = "AuctionProto";
 
 // Serviço de Leilão — núcleo concorrente.
 // Fatia vertical: PlaceBid (lance atômico) + GetVaultState (snapshot).
