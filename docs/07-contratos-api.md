@@ -1,0 +1,126 @@
+# 07 — Contratos de API
+
+> **Defina/atualize estes contratos ANTES de implementar.** São a fronteira entre as
+> linguagens (TS ↔ Go ↔ Python) e entre os paradigmas. Os exemplos abaixo são um ponto
+> de partida; versione mudanças.
+
+## 1. Cliente ↔ Gateway
+
+### REST (ações pontuais — cliente-servidor síncrono)
+| Método | Rota | Descrição |
+|---|---|---|
+| `POST` | `/api/rooms` | Cria uma sala/partida |
+| `POST` | `/api/rooms/{id}/join` | Entra na sala; retorna `playerId` + token |
+| `GET` | `/api/rooms/{id}/state` | Snapshot inicial do estado (depois vem por WS) |
+| `GET` | `/api/rooms/{id}/leaderboard` | Ranking (lido da **réplica** Postgres) |
+
+### WebSocket (tempo real)
+Conexão: `wss://<gateway>/ws?room={id}&token=...`
+
+**Cliente → Servidor** (ações; o gateway traduz para gRPC síncrono):
+```jsonc
+{ "type": "PLACE_BID", "boxId": "box-12", "amount": 65 }
+{ "type": "OPEN_BOX", "boxId": "box-12" }
+{ "type": "SELL_ITEM", "itemId": "itm-9" }
+{ "type": "BURN_ITEM", "itemId": "itm-9", "affinity": "DIAMOND" }
+{ "type": "BUY_INSURANCE", "boxId": "box-12" }
+```
+
+**Servidor → Cliente** (eventos difundidos via Pub/Sub):
+```jsonc
+{ "type": "BID_PLACED", "boxId": "box-12", "amount": 65, "leader": "player-3", "timerMs": 8000 }
+{ "type": "BOX_SOLD", "boxId": "box-12", "winner": "player-3", "price": 65 }
+{ "type": "BOX_OPENED", "boxId": "box-12", "player": "player-3", "item": "GOLD" }
+{ "type": "MARKET_UPDATED", "prices": { "COPPER": 11, "GOLD": 176, "DIAMOND": 2040 } }
+{ "type": "WALLET_UPDATED", "player": "player-3", "balance": 870, "reserved": 65 }
+{ "type": "COLLECTION_FORMED", "player": "player-3", "collection": "ROYAL_TRIO", "bonus": 3000 }
+{ "type": "MATCH_ENDED", "ranking": [ /* ... */ ] }
+{ "type": "BID_REJECTED", "boxId": "box-12", "reason": "INSUFFICIENT_BALANCE" }
+```
+
+## 2. Gateway ↔ Serviços (gRPC — síncrono/bloqueante)
+
+### `auction.proto`
+```proto
+syntax = "proto3";
+package hammerprice.auction;
+
+service Auction {
+  rpc PlaceBid (PlaceBidRequest) returns (PlaceBidReply);   // bloqueante
+  rpc OpenBox  (OpenBoxRequest)  returns (OpenBoxReply);     // bloqueante (sorteio)
+  rpc GetVaultState (VaultQuery) returns (VaultState);
+}
+
+message PlaceBidRequest {
+  string room_id = 1;
+  string box_id  = 2;
+  string player_id = 3;
+  int64  amount  = 4;
+}
+message PlaceBidReply {
+  bool   accepted = 1;
+  string reason   = 2;   // INSUFFICIENT_BALANCE | OUTBID | OK
+  int64  current_bid = 3;
+  string leader   = 4;
+  int64  timer_ms = 5;
+}
+
+message OpenBoxRequest { string room_id = 1; string box_id = 2; string player_id = 3; }
+message OpenBoxReply   { string item = 1; bool is_mimic = 2; string penalty = 3; }
+```
+
+### `wallet.proto`
+```proto
+syntax = "proto3";
+package hammerprice.wallet;
+
+service Wallet {
+  rpc Reserve  (ReserveRequest)  returns (ReserveReply);   // síncrono, sob Redlock+tx
+  rpc Release  (ReleaseRequest)  returns (Ack);            // devolve reserva
+  rpc Settle   (SettleRequest)   returns (Ack);            // debita de fato (arremate)
+  rpc AddItem  (AddItemRequest)  returns (Ack);
+  rpc SellItem (SellItemRequest) returns (SellReply);
+  rpc BurnItem (BurnItemRequest) returns (BurnReply);
+  rpc GetPlayer(PlayerQuery)     returns (PlayerState);
+}
+
+message ReserveRequest { string player_id = 1; string box_id = 2; int64 amount = 3; }
+message ReserveReply   { bool ok = 1; int64 balance = 2; int64 reserved = 3; string reason = 4; }
+// ... demais mensagens análogas
+```
+
+> **Invariante na Carteira:** `Reserve` só sucede se `balance - reserved >= amount`.
+> Operação serializada por `Redlock(player_id)` + transação Postgres.
+
+## 3. Eventos assíncronos (RabbitMQ — messaging)
+
+**Exchange:** `hammerprice` (tipo `topic`). Eventos publicados pelo Leilão/Carteira e
+consumidos pelo Worker.
+
+| Routing key | Payload | Consumidor |
+|---|---|---|
+| `box.opened` | `{ roomId, boxId, player, item, isMimic }` | Worker: avaliação de coleções, efeito do mímico |
+| `item.sold` | `{ roomId, player, item, price }` | Worker: atualiza oferta → recálculo de mercado |
+| `item.burned` | `{ roomId, player, item, affinity }` | Worker: oferta + afinidade |
+| `ledger.entry` | `{ player, delta, reason, ts }` | Worker: reconciliação |
+| `match.tick` | `{ roomId, remainingMs }` | Worker: manutenção periódica |
+
+**Saída do worker** (volta como Pub/Sub para os clientes): `MARKET_UPDATED`,
+`COLLECTION_FORMED`, etc.
+
+## 4. Canais Redis Pub/Sub (publish-subscribe — broadcast)
+
+| Canal | Quem publica | Quem assina |
+|---|---|---|
+| `room:{id}:events` | Leilão, Carteira, Worker | Gateway (faz fan-out aos clientes WS) |
+| `market:updates` | Worker | Gateway |
+
+## 5. Convenções
+
+- **IDs:** strings com prefixo (`player-`, `box-`, `itm-`, `room-`).
+- **Dinheiro:** inteiros (centavos do jogo), nunca float.
+- **Tempo:** o **servidor** é a fonte da verdade para timestamps de lance (desempate).
+- **Idempotência:** `OpenBox`, `Settle` e efeitos do mímico devem ser idempotentes
+  (chave de idempotência por `boxId`/operação) para sobreviver a *retries*.
+- **Versionamento:** mudanças de contrato incrementam um campo `version`/comentário e são
+  registradas neste arquivo.

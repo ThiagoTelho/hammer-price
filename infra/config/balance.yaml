@@ -1,0 +1,54 @@
+# Hammer Price — parâmetros de balanceamento.
+# Centralizados aqui para ajuste em playtest SEM recompilar serviços.
+# Valores iniciais; ver docs/03-regras-de-negocio.md para a justificativa.
+
+match:
+  initial_budget: 1000
+  duration_seconds: 900        # 15 min
+  min_players: 2
+  max_players: 6
+  simultaneous_boxes: 4        # 2 vaults x 2 caixas
+  min_bid_increment_pct: 5
+  min_bid_increment_abs: 5
+  box_timer_seconds: 20
+  antisnipe_window_seconds: 5
+  antisnipe_reset_seconds: 8
+
+items:                          # valor base (preço de mercado flutua em torno disto)
+  COPPER: 10
+  SILVER: 50
+  GOLD: 200
+  DIAMOND: 2000
+  # MIMIC: penalidade, não valor positivo
+
+box_odds:                       # soma de cada caixa = 100
+  BRONZE:  { COPPER: 60, SILVER: 30, GOLD: 9,  DIAMOND: 1,  MIMIC: 0 }
+  SILVER:  { COPPER: 35, SILVER: 40, GOLD: 20, DIAMOND: 4,  MIMIC: 1 }
+  GOLD:    { COPPER: 15, SILVER: 30, GOLD: 40, DIAMOND: 12, MIMIC: 3 }
+  VAULT:   { COPPER: 5,  SILVER: 15, GOLD: 35, DIAMOND: 40, MIMIC: 5 }
+
+collections:
+  COMMON_ALLOY:    { requires: { COPPER: 5 },                          bonus: 150 }
+  NOBLE_PAIR:      { requires: { GOLD: 3 },                            bonus: 400 }
+  RAINBOW:         { requires: { COPPER: 1, SILVER: 1, GOLD: 1, DIAMOND: 1 }, bonus: 900 }
+  ROYAL_TRIO:      { requires: { DIAMOND: 3 },                         bonus: 3000 }
+  LEGENDARY_VAULT: { requires: { DIAMOND: 5 },                         bonus: 8000 }
+
+affinity:
+  gain_per_burn_pct: 2
+  cost_doubles_every_points: 3
+  cap_pct: 15
+
+market:
+  recalc_interval_seconds: 5
+  sensitivity_k: 0.5
+  floor_multiplier: 0.4
+  ceil_multiplier: 1.8
+
+mimic:
+  steal_money_pct: 10           # uma das penalidades possíveis
+  # outras: roubar item aleatório, anular bônus de coleção
+
+insurance:
+  cost_pct_of_bid: 20
+  penalty_reduction_pct: 70

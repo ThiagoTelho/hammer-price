@@ -1,0 +1,96 @@
+# Hammer Price — orquestração local e base para o deploy AWS.
+#
+# Perfis (profiles) permitem subir só parte dos serviços por máquina no deploy:
+#   docker compose --profile node-a up   # EC2-A
+#   docker compose --profile node-b up   # EC2-B
+# Sem perfil (local), use `docker compose --profile local up` para subir tudo.
+#
+# Este é um ESQUELETO: os Dockerfiles de cada serviço ainda serão implementados.
+# Ver docs/08-deploy-aws.md para a topologia.
+
+services:
+  # ---------- Infraestrutura ----------
+  redis:
+    image: redis:7-alpine
+    profiles: ["local", "node-a"]
+    ports: ["6379:6379"]
+
+  rabbitmq:
+    image: rabbitmq:3-management
+    profiles: ["local", "node-a"]
+    ports: ["5672:5672", "15672:15672"]   # 15672 = console de gestão
+
+  postgres-primary:
+    image: postgres:16-alpine
+    profiles: ["local", "node-a"]
+    environment:
+      POSTGRES_DB: hammerprice
+      POSTGRES_USER: ${PG_USER:-hammer}
+      POSTGRES_PASSWORD: ${PG_PASSWORD:-changeme}
+    ports: ["5432:5432"]
+    volumes: ["pg_primary:/var/lib/postgresql/data"]
+
+  postgres-replica:
+    image: postgres:16-alpine
+    profiles: ["local", "node-b"]
+    # Configurar streaming replication apontando para postgres-primary.
+    # Ver docs/08-deploy-aws.md (passo 4).
+    depends_on: ["postgres-primary"]
+
+  # ---------- Serviços de aplicação ----------
+  gateway:
+    build: ../services/gateway
+    profiles: ["local", "node-a"]
+    environment:
+      REDIS_URL: redis://redis:6379
+      AUCTION_GRPC: auction-vault1:50051
+      WALLET_GRPC: wallet-shard1:50052
+    ports: ["8080:8080"]
+    depends_on: ["redis"]
+
+  auction-vault1:
+    build: ../services/auction
+    profiles: ["local", "node-a"]
+    environment:
+      VAULT_ID: vault-1
+      REDIS_URL: redis://redis:6379
+      RABBITMQ_URL: amqp://rabbitmq:5672
+      WALLET_GRPC: wallet-shard1:50052
+
+  auction-vault2:
+    build: ../services/auction
+    profiles: ["local", "node-b"]
+    environment:
+      VAULT_ID: vault-2
+      WALLET_GRPC: wallet-shard2:50052
+
+  wallet-shard1:
+    build: ../services/wallet
+    profiles: ["local", "node-a"]
+    environment:
+      SHARD_ID: shard-1
+      PG_URL: postgres://hammer@postgres-primary:5432/hammerprice
+      REDIS_URL: redis://redis:6379
+
+  wallet-shard2:
+    build: ../services/wallet
+    profiles: ["local", "node-b"]
+    environment:
+      SHARD_ID: shard-2
+
+  worker:
+    build: ../services/worker
+    profiles: ["local", "node-b"]
+    environment:
+      RABBITMQ_URL: amqp://rabbitmq:5672
+      REDIS_URL: redis://redis:6379
+      PG_URL: postgres://hammer@postgres-replica:5432/hammerprice
+
+  frontend:
+    build: ../services/frontend
+    profiles: ["local"]
+    ports: ["5173:5173"]
+    # Em produção o frontend é build estático em S3+CloudFront (ver docs/08).
+
+volumes:
+  pg_primary:

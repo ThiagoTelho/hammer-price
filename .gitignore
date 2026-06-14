@@ -1,0 +1,49 @@
+# Dependências
+node_modules/
+.pnp
+.pnp.js
+
+# Builds
+dist/
+build/
+out/
+*.tsbuildinfo
+
+# Go
+bin/
+*.exe
+*.test
+*.out
+vendor/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+
+# Ambiente / segredos
+.env
+.env.local
+.env.*.local
+*.pem
+*.key
+aws-credentials*
+
+# Logs
+*.log
+logs/
+
+# Editor / SO
+.DS_Store
+.idea/
+.vscode/
+*.swp
+
+# Docker
+.docker/
+
+# Dados de teste gerados
+*.dump
+tmp/

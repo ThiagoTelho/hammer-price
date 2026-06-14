@@ -1,0 +1,129 @@
+# 09 — Modelo de Dados
+
+> Divisão entre **estado durável** (PostgreSQL) e **estado quente/efêmero** (Redis).
+> A fonte da verdade para dinheiro/inventário é o Postgres (com ledger); o Redis acelera
+> leituras e coordena locks/broadcast.
+
+## PostgreSQL (durável — primary + read replica)
+
+### `players`
+| Coluna | Tipo | Notas |
+|---|---|---|
+| `id` | text PK | `player-...` |
+| `room_id` | text FK → rooms | partição lógica |
+| `display_name` | text | |
+| `balance` | bigint | dinheiro disponível (≥ 0) |
+| `reserved` | bigint | soma das reservas ativas em leilões |
+| `created_at` | timestamptz | |
+
+**Invariante:** `balance >= 0` e `reserved >= 0`. Saldo "gastável" = `balance - reserved`.
+
+### `rooms`
+| Coluna | Tipo | Notas |
+|---|---|---|
+| `id` | text PK | `room-...` |
+| `status` | text | `WAITING` \| `RUNNING` \| `ENDED` |
+| `started_at` / `ends_at` | timestamptz | partida com tempo fixo |
+| `seed` | bigint | seed base do RNG (reprodutibilidade) |
+
+### `inventory_items`
+| Coluna | Tipo | Notas |
+|---|---|---|
+| `id` | text PK | `itm-...` |
+| `player_id` | text FK | |
+| `type` | text | `COPPER` \| `SILVER` \| `GOLD` \| `DIAMOND` |
+| `state` | text | `FREE` \| `LOCKED_COLLECTION` \| `CONSUMED` |
+| `acquired_at` | timestamptz | |
+
+**Invariante:** um item está em **exatamente um** `state`. Vender/queimar só se `FREE`.
+
+### `affinities`
+| Coluna | Tipo | Notas |
+|---|---|---|
+| `player_id` | text | PK composta com `type` |
+| `type` | text | tipo de item |
+| `points` | int | 0..teto (ex.: 15) |
+
+### `collections`
+| Coluna | Tipo | Notas |
+|---|---|---|
+| `id` | text PK | |
+| `player_id` | text FK | |
+| `kind` | text | `COMMON_ALLOY` \| `NOBLE_PAIR` \| `RAINBOW` \| `ROYAL_TRIO` \| `LEGENDARY_VAULT` |
+| `bonus` | bigint | snapshot do bônus aplicado |
+| `formed_at` | timestamptz | |
+
+### `ledger` (auditoria — base da reconciliação)
+| Coluna | Tipo | Notas |
+|---|---|---|
+| `id` | bigserial PK | |
+| `player_id` | text | |
+| `delta` | bigint | + crédito / − débito |
+| `reason` | text | `BID_SETTLE` \| `RESERVE_RELEASE` \| `ITEM_SELL` \| `MIMIC_PENALTY` \| ... |
+| `ref` | text | id da caixa/item relacionado |
+| `ts` | timestamptz | |
+
+**Invariante:** `balance` de um jogador = soma dos `delta` do seu ledger (a reconciliação
+do worker valida isso).
+
+### `boxes` (histórico/resultados; estado vivo fica no Redis)
+| Coluna | Tipo | Notas |
+|---|---|---|
+| `id` | text PK | `box-...` |
+| `room_id` | text FK | |
+| `vault_id` | text | **partição**: qual instância de Leilão é dona |
+| `box_type` | text | `BRONZE` \| `SILVER` \| `GOLD` \| `VAULT` (define as odds) |
+| `winner_id` | text | preenchido ao arrematar |
+| `final_price` | bigint | |
+| `opened_item` | text | resultado do sorteio |
+
+## Redis (estado quente / coordenação)
+
+### Estado vivo da caixa (hash) — `box:{boxId}`
+```
+current_bid      : 65
+leader           : player-3
+timer_expires_at : <epoch ms>   # fonte da verdade do cronômetro
+box_type         : BRONZE
+vault_id         : vault-1
+version          : 7            # optimistic concurrency
+```
+
+### Locks distribuídos (Redlock)
+- `lock:wallet:{playerId}` — serializa Reserve/Release/Settle/Sell/Burn do jogador.
+- `lock:box:{boxId}` — serializa lances/abertura da caixa (alternativa ao mutex em processo
+  quando o vault tem réplicas).
+
+### Cache de mercado — `market:{roomId}` (hash)
+```
+COPPER : 11
+SILVER : 48
+GOLD   : 176
+DIAMOND: 2040
+```
+Leitura **eventual** (replicada); a verdade do recálculo vem do worker e é persistida.
+
+### Pub/Sub (não é armazenamento, é canal)
+- `room:{id}:events`, `market:updates` — ver [07 — Contratos de API](07-contratos-api.md).
+
+## Particionamento (resumo)
+
+| Dado | Chave de partição | Dono |
+|---|---|---|
+| Caixas / leilões | `vault_id` | instância de Leilão correspondente |
+| Jogador / carteira / inventário | `player_id` (shard) | instância de Carteira correspondente |
+| Mercado | por `room_id` | worker |
+
+## Replicação (resumo)
+
+| Dado | Mecanismo | Leitura |
+|---|---|---|
+| `ledger`, `inventory_items`, `boxes`, `collections` | Postgres streaming replication | ranking/histórico na **réplica** |
+| `box:*`, `market:*` | Redis | caches replicados |
+
+## Consistência (resumo)
+
+- **Forte:** `players.balance/reserved`, `inventory_items.state`, `ledger` — sob
+  **Redlock + transação Postgres**. É onde mora a corretude do jogo.
+- **Eventual:** `market:*`, ranking, inventário parcial dos adversários — caches/réplica,
+  corrigidos pela reconciliação do worker.
