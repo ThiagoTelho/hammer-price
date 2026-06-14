@@ -1,0 +1,41 @@
+syntax = "proto3";
+package hammerprice.wallet;
+
+option go_package = "github.com/ThiagoTelho/hammer-price/proto/gen/go/walletpb;walletpb";
+
+// Carteira / Inventário — guardião da consistência forte.
+// Fatia vertical: por enquanto apenas Reserve + GetPlayer (estado em memória).
+// Redlock + transação Postgres entram numa etapa posterior.
+service Wallet {
+  rpc Reserve   (ReserveRequest) returns (ReserveReply);
+  rpc Release   (ReleaseRequest) returns (Ack);
+  rpc GetPlayer (PlayerQuery)    returns (PlayerState);
+}
+
+message ReserveRequest {
+  string player_id = 1;
+  string box_id    = 2;
+  int64  amount    = 3;
+}
+
+message ReserveReply {
+  bool   ok       = 1;
+  int64  balance  = 2;   // saldo total
+  int64  reserved = 3;   // soma das reservas ativas
+  string reason   = 4;   // OK | INSUFFICIENT_BALANCE | UNKNOWN_PLAYER
+}
+
+message ReleaseRequest {
+  string player_id = 1;
+  string box_id    = 2;
+}
+
+message PlayerQuery { string player_id = 1; }
+
+message PlayerState {
+  string player_id = 1;
+  int64  balance   = 2;
+  int64  reserved  = 3;   // saldo "gastável" = balance - reserved
+}
+
+message Ack { bool ok = 1; }

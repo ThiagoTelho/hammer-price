@@ -1,0 +1,42 @@
+syntax = "proto3";
+package hammerprice.auction;
+
+option go_package = "github.com/ThiagoTelho/hammer-price/proto/gen/go/auctionpb;auctionpb";
+
+// Serviço de Leilão — núcleo concorrente.
+// Fatia vertical: PlaceBid (lance atômico) + GetVaultState (snapshot).
+// Estado das caixas em memória; particionamento por vault e RNG de abertura
+// entram em etapas posteriores.
+service Auction {
+  rpc PlaceBid      (PlaceBidRequest) returns (PlaceBidReply);
+  rpc GetVaultState (VaultQuery)      returns (VaultState);
+}
+
+message PlaceBidRequest {
+  string room_id   = 1;
+  string box_id    = 2;
+  string player_id = 3;
+  int64  amount    = 4;
+}
+
+message PlaceBidReply {
+  bool   accepted    = 1;
+  string reason      = 2;   // OK | INSUFFICIENT_BALANCE | OUTBID | TOO_LOW | UNKNOWN_BOX
+  int64  current_bid = 3;
+  string leader      = 4;
+  int64  timer_ms    = 5;
+}
+
+message VaultQuery { string room_id = 1; }
+
+message Box {
+  string box_id      = 1;
+  string box_type    = 2;   // BRONZE | SILVER | GOLD | VAULT
+  int64  current_bid = 3;
+  string leader      = 4;
+  int64  timer_ms    = 5;
+}
+
+message VaultState {
+  repeated Box boxes = 1;
+}
