@@ -26,14 +26,31 @@ function broadcast(msg: unknown): void {
   }
 }
 
+// Última visão conhecida de cada caixa, para detectar arremates (uma caixa some
+// quando é arrematada e reposta por outra com novo id).
+let lastBoxes = new Map<string, { leader: string; currentBid: number }>();
+
 async function broadcastState(): Promise<void> {
   try {
     const state = await getVaultState(ROOM);
+    const current = new Map(state.boxes.map((b) => [b.boxId, { leader: b.leader, currentBid: b.currentBid }]));
+    // Caixa que sumiu e tinha líder => foi arrematada. (Interim: na Fase 4 isso vira
+    // evento box.sold via Redis Pub/Sub, sem polling.)
+    for (const [boxId, prev] of lastBoxes) {
+      if (!current.has(boxId) && prev.leader) {
+        broadcast({ type: "BOX_SOLD", boxId, winner: prev.leader, price: prev.currentBid });
+      }
+    }
+    lastBoxes = current;
     broadcast({ type: "STATE", boxes: state.boxes });
   } catch (err) {
     console.error("gateway: falha ao obter estado do vault:", err);
   }
 }
+
+// Poll periódico: surfacia cronômetros e arremates (fechamento é assíncrono no leilão).
+const STATE_POLL_MS = Number(process.env.STATE_POLL_MS ?? 1000);
+setInterval(broadcastState, STATE_POLL_MS);
 
 const wss = new WebSocketServer({ port: PORT });
 console.log(`gateway: WebSocket ouvindo em ws://localhost:${PORT} (leilão em ${AUCTION_GRPC})`);

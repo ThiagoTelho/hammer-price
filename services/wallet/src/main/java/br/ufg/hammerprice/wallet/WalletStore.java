@@ -21,9 +21,9 @@ public final class WalletStore {
     }
 
     private static final class Player {
-        final long balance;
+        long balance;
         long reserved = 0;
-        /** Reservas ativas por caixa, para permitir Release idempotente. */
+        /** Reservas ativas por caixa, para permitir Release/Settle idempotentes. */
         final Map<String, Long> byBox = new HashMap<>();
 
         Player(long balance) {
@@ -74,6 +74,26 @@ public final class WalletStore {
         if (amt != null) {
             p.reserved -= amt;
         }
+        return true;
+    }
+
+    /**
+     * Converte a reserva da caixa em débito definitivo: o vencedor PAGA ao arrematar.
+     * Debita do saldo e zera a reserva daquela caixa. Idempotente (se não houver reserva,
+     * não faz nada). Usa o valor reservado como verdade (ignora divergências do {@code amount}).
+     * Retorna {@code false} se não havia reserva para a caixa.
+     */
+    public synchronized boolean settle(String playerId, String boxId) {
+        Player p = players.get(playerId);
+        if (p == null) {
+            return false;
+        }
+        Long amt = p.byBox.remove(boxId);
+        if (amt == null) {
+            return false; // nada reservado nesta caixa (já liquidado/devolvido)
+        }
+        p.reserved -= amt;
+        p.balance -= amt; // débito real: o dinheiro sai do saldo
         return true;
     }
 

@@ -10,6 +10,14 @@ interface Box {
   currentBid: number;
   leader: string;
   timerMs: number;
+  deadlineAt?: number; // instante absoluto (ms) em que o cronômetro zera, p/ contagem local
+}
+
+// Converte o timerMs (relativo, do servidor) em um instante absoluto local, para
+// a contagem regressiva andar suavemente entre as atualizações de STATE.
+function withDeadlines(boxes: Box[]): Box[] {
+  const now = Date.now();
+  return boxes.map((b) => ({ ...b, deadlineAt: b.timerMs > 0 ? now + b.timerMs : 0 }));
 }
 
 const BOX_EMOJI: Record<string, string> = {
@@ -50,13 +58,16 @@ export function App() {
       switch (msg.type) {
         case "WELCOME":
           setPlayerId(msg.playerId);
-          setBoxes(msg.boxes ?? []);
+          setBoxes(withDeadlines(msg.boxes ?? []));
           break;
         case "STATE":
-          setBoxes(msg.boxes ?? []);
+          setBoxes(withDeadlines(msg.boxes ?? []));
           break;
         case "BID_PLACED":
           addLog(`🔨 ${msg.leader} deu lance de ${msg.amount} em ${msg.boxId}`);
+          break;
+        case "BOX_SOLD":
+          addLog(`🏆 ${msg.boxId} arrematada por ${msg.winner} (${msg.price})`);
           break;
         case "BID_ACCEPTED":
           addLog(`✅ Seu lance em ${msg.boxId} foi aceito (atual: ${msg.currentBid})`);
@@ -72,6 +83,18 @@ export function App() {
   }, [name, addLog]);
 
   useEffect(() => () => wsRef.current?.close(), []);
+
+  // Pulso de re-render p/ a contagem regressiva andar entre atualizações de STATE.
+  const [, setTick] = useState(0);
+  useEffect(() => {
+    const id = setInterval(() => setTick((t) => t + 1), 250);
+    return () => clearInterval(id);
+  }, []);
+
+  const countdown = (b: Box): string => {
+    if (!b.leader || !b.deadlineAt) return "—";
+    return `${Math.max(0, Math.ceil((b.deadlineAt - Date.now()) / 1000))}s`;
+  };
 
   const sendBid = (boxId: string, currentBid: number) => {
     const amount = currentBid + Math.max(5, Math.floor(currentBid * 0.05));
@@ -111,6 +134,9 @@ export function App() {
             <div style={S.bid}>{b.currentBid > 0 ? `💰 ${b.currentBid}` : "sem lances"}</div>
             <div style={{ fontSize: 12 }}>
               líder: <b>{b.leader || "—"}</b>
+            </div>
+            <div style={{ fontSize: 12, color: countdown(b) !== "—" ? "#c0392b" : "#888" }}>
+              ⏱ {countdown(b)}
             </div>
             <button style={S.btn} disabled={!connected} onClick={() => sendBid(b.boxId, b.currentBid)}>
               Dar lance

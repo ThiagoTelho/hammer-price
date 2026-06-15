@@ -7,8 +7,8 @@
 
 - **Disciplina:** Software Concorrente e Distribuído (SCD) — UFG, 2026.1
 - **Entrega:** 28/06/2026
-- **Última atualização deste arquivo:** 2026-06-14
-- **Marco atual:** Fase 1 concluída (ambiente local completo via Docker Compose)
+- **Última atualização deste arquivo:** 2026-06-15
+- **Marco atual:** Fase 2 em andamento (ciclo de vida da caixa concluído; falta abertura/RNG e particionamento)
 
 ---
 
@@ -113,22 +113,26 @@ Legenda: 🟢 satisfeito · 🟡 parcial · 🔴 ainda não.
 - [x] Healthchecks (redis/rabbitmq/postgres) e ordem de subida via `depends_on: condition`
 - [x] Migrações iniciais do schema Postgres em [`infra/db/init`](../infra/db/init/) (ver [doc 09](../docs/09-modelo-de-dados.md))
 
-## 📍 Fase 2 — Núcleo do Leilão completo (Java · auction)
+## 📍 Fase 2 — Núcleo do Leilão completo (Java · auction) · **EM ANDAMENTO**
 
 > Transforma o cronômetro informativo da fatia em leilão de verdade, com fechamento,
 > sorteio e particionamento. Ver [doc 03](../docs/03-regras-de-negocio.md) e [doc 04](../docs/04-arquitetura.md).
+>
+> **Increment 1 (ciclo de vida da caixa) concluído.** Faltam abertura/RNG+afinidade
+> (increment 2) e particionamento por vault (increment 3). A publicação de eventos em
+> Redis/RabbitMQ é da Fase 4/5; por ora o gateway expõe o fechamento por polling.
 
-- [ ] Timer por caixa com **fechamento automático** ao zerar (thread agendada / roda de timers) *(R4)*
-- [ ] **Anti-sniping:** lance nos últimos 5 s estende o cronômetro (volta a 8 s) *(R4)*
-- [ ] Fechamento da caixa: **debita** a reserva do vencedor e **devolve** aos perdedores *(R3,R7)*
-- [ ] Desempate do vencedor por **timestamp do servidor** (não do cliente) *(R3)*
-- [ ] **Reposição** de oferta: nova caixa entra quando uma é arrematada
-- [ ] Tipos de caixa + **odds públicas** vindas do `balance.yaml` (Bronze/Prateada/Dourada/Cofre)
-- [ ] **RNG de abertura** server-side com **seed injetável** (testes determinísticos) *(R4)*
-- [ ] Afinidade somada às odds + **renormalização** (invariante: Σ P = 1, P ≥ 0)
-- [ ] **Particionamento por vault:** cada instância de auction é dona de um subconjunto de caixas *(R6)*
-- [ ] Publicação de eventos `bid.placed`, `box.sold`, `box.opened` (Redis Pub/Sub + RabbitMQ) *(R5)*
-- [ ] **Teste de concorrência:** corrida de lances na mesma caixa; vencedor correto sob carga *(R3)*
+- [x] Timer por caixa com **fechamento automático** ao zerar (`ScheduledExecutorService` + guarda contra disparo obsoleto) *(R4)*
+- [x] **Anti-sniping:** lance nos últimos 5 s estende o cronômetro (volta a 8 s) *(R4)*
+- [x] Fechamento da caixa: **debita** o vencedor (`Settle`) e **devolve** aos perdedores (release no outbid) *(R3,R7)*
+- [x] Desempate do vencedor por **timestamp do servidor**: lock por caixa serializa; último lance válido vence *(R3)*
+- [x] **Reposição** de oferta: nova caixa (novo id) entra no mesmo slot ao arrematar
+- [ ] Tipos de caixa + **odds públicas** do `balance.yaml` (tipos já rodam; odds entram no open — increment 2)
+- [ ] **RNG de abertura** server-side com **seed injetável** — increment 2 *(R4)*
+- [ ] Afinidade somada às odds + **renormalização** (Σ P = 1, P ≥ 0) — increment 2
+- [ ] **Particionamento por vault:** cada instância dona de um subconjunto — increment 3 *(R6)*
+- [ ] Publicação de eventos `bid.placed`/`box.sold`/`box.opened` (Redis Pub/Sub + RabbitMQ) — **Fase 4/5** *(R5)*
+- [x] **Teste de concorrência:** corrida de lances na mesma caixa (`BoxStoreTest`, 8×200 lances) *(R3)*
 
 ## 📍 Fase 3 — Carteira/Inventário com consistência forte (Java · wallet)
 
@@ -248,3 +252,4 @@ As **fases** são por escopo; os **marcos**, por tempo — ajuste conforme a dat
 - 2026-06-14 — _(este commit)_ — Criação do roadmap/estado de desenvolvimento (`plan/ROADMAP.md`).
 - 2026-06-14 — _(este commit)_ — Especificada a entrada por sala: criar sala + **código**, entrar por código e **mínimo 2 jogadores** para iniciar (docs 02/03/07/09 + roadmap Fases 4 e 6).
 - 2026-06-14 — _(este commit)_ — **Fase 1 concluída.** Dockerfiles dos 5 serviços + `.dockerignore`; compose `--profile local` com healthchecks e ordem de subida; schema Postgres em `infra/db/init`; `balance.yaml` lido em runtime (Java `BalanceConfig` + worker Python); `PG_PORT` configurável. Verificado: `up --build` sobe os 8 containers (Redis/RabbitMQ/Postgres healthy) e o `test-slice.mjs` passa ponta a ponta dentro dos containers.
+- 2026-06-15 — _(este commit)_ — **Fase 2, increment 1 (ciclo de vida da caixa).** Auto-close por cronômetro + anti-sniping; `Settle` na carteira (debita o vencedor) + release dos perdedores; reposição por slot; desempate por lock/timestamp do servidor. Gateway expõe fechamento por polling (`BOX_SOLD`); frontend com contagem regressiva. Teste de concorrência `BoxStoreTest` (4 testes, 8×200 lances). Verificado: `mvn test` verde; no stack, lance → auto-close → `arrematada` → `BOX_SOLD`; regressão do `test-slice` ok.

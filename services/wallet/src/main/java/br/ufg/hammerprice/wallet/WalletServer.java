@@ -6,6 +6,7 @@ import br.ufg.hammerprice.wallet.grpc.PlayerState;
 import br.ufg.hammerprice.wallet.grpc.ReleaseRequest;
 import br.ufg.hammerprice.wallet.grpc.ReserveReply;
 import br.ufg.hammerprice.wallet.grpc.ReserveRequest;
+import br.ufg.hammerprice.wallet.grpc.SettleRequest;
 import br.ufg.hammerprice.wallet.grpc.WalletGrpc;
 import io.grpc.Server;
 import io.grpc.ServerBuilder;
@@ -36,6 +37,13 @@ public final class WalletServer {
         @Override
         public void release(ReleaseRequest req, StreamObserver<Ack> obs) {
             boolean ok = store.release(req.getPlayerId(), req.getBoxId());
+            obs.onNext(Ack.newBuilder().setOk(ok).build());
+            obs.onCompleted();
+        }
+
+        @Override
+        public void settle(SettleRequest req, StreamObserver<Ack> obs) {
+            boolean ok = store.settle(req.getPlayerId(), req.getBoxId());
             obs.onNext(Ack.newBuilder().setOk(ok).build());
             obs.onCompleted();
         }

@@ -8,6 +8,7 @@ import br.ufg.hammerprice.auction.grpc.VaultQuery;
 import br.ufg.hammerprice.auction.grpc.VaultState;
 import br.ufg.hammerprice.wallet.grpc.ReleaseRequest;
 import br.ufg.hammerprice.wallet.grpc.ReserveRequest;
+import br.ufg.hammerprice.wallet.grpc.SettleRequest;
 import br.ufg.hammerprice.wallet.grpc.WalletGrpc;
 import io.grpc.ManagedChannel;
 import io.grpc.ManagedChannelBuilder;
@@ -48,6 +49,17 @@ public final class AuctionServer {
                                 .setPlayerId(playerId).setBoxId(boxId).build());
             } catch (Exception e) {
                 System.err.println("auction: erro ao devolver reserva: " + e.getMessage());
+            }
+        }
+
+        @Override
+        public void settle(String playerId, String boxId, long amount) {
+            try {
+                stub.withDeadlineAfter(2, TimeUnit.SECONDS)
+                        .settle(SettleRequest.newBuilder()
+                                .setPlayerId(playerId).setBoxId(boxId).setAmount(amount).build());
+            } catch (Exception e) {
+                System.err.println("auction: erro ao debitar o vencedor: " + e.getMessage());
             }
         }
     }
@@ -98,13 +110,25 @@ public final class AuctionServer {
                 .build();
         BoxStore.Wallet gw = new WalletGateway(WalletGrpc.newBlockingStub(channel));
 
+        BalanceConfig cfg = BalanceConfig.load();
+        BoxStore.Settings settings = new BoxStore.Settings(
+                cfg.matchLong("box_timer_seconds", 20) * 1000,
+                cfg.matchLong("antisnipe_window_seconds", 5) * 1000,
+                cfg.matchLong("antisnipe_reset_seconds", 8) * 1000,
+                cfg.matchLong("min_bid_increment_pct", 5),
+                cfg.matchLong("min_bid_increment_abs", 5));
+        BoxStore store = new BoxStore(gw, settings);
+        store.setCloseListener((boxId, winner, price) ->
+                System.out.println("auction: caixa " + boxId + " arrematada por " + winner + " (" + price + ")"));
+
         Server server = ServerBuilder.forPort(port)
-                .addService(new AuctionService(new BoxStore(gw, BalanceConfig.load())))
+                .addService(new AuctionService(store))
                 .build()
                 .start();
         System.out.println("auction: ouvindo em :" + port + " (carteira em " + walletAddr + ")");
         Runtime.getRuntime().addShutdownHook(new Thread(() -> {
             server.shutdown();
+            store.shutdown();
             channel.shutdown();
         }));
         server.awaitTermination();

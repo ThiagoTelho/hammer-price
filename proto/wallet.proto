@@ -6,11 +6,12 @@ option java_package = "br.ufg.hammerprice.wallet.grpc";
 option java_outer_classname = "WalletProto";
 
 // Carteira / Inventário — guardião da consistência forte.
-// Fatia vertical: por enquanto apenas Reserve + GetPlayer (estado em memória).
-// Redlock + transação Postgres entram numa etapa posterior.
+// Reserve/Release/Settle sobre estado em memória; Redlock + transação Postgres
+// entram numa etapa posterior (Fase 3).
 service Wallet {
   rpc Reserve   (ReserveRequest) returns (ReserveReply);
   rpc Release   (ReleaseRequest) returns (Ack);
+  rpc Settle    (SettleRequest)  returns (Ack);   // debita de fato (arremate da caixa)
   rpc GetPlayer (PlayerQuery)    returns (PlayerState);
 }
 
@@ -30,6 +31,13 @@ message ReserveReply {
 message ReleaseRequest {
   string player_id = 1;
   string box_id    = 2;
+}
+
+// Converte a reserva da caixa em débito definitivo (o vencedor paga ao arrematar).
+message SettleRequest {
+  string player_id = 1;
+  string box_id    = 2;
+  int64  amount    = 3;   // valor arrematado; a carteira confere contra a reserva
 }
 
 message PlayerQuery { string player_id = 1; }
