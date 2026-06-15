@@ -1,0 +1,17 @@
+# Contexto de build é a RAIZ do repo (os serviços Java e o gateway precisam de proto/).
+# Excluímos tudo que é pesado/gerado para o build ser rápido e reprodutível.
+**/node_modules
+**/target
+**/dist
+**/build
+**/.venv
+**/venv
+**/__pycache__
+**/*.tsbuildinfo
+**/dependency-reduced-pom.xml
+.git
+.github
+**/.DS_Store
+**/*.log
+.env
+.env.*

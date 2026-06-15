@@ -13,6 +13,18 @@ patrimônio = dinheiro + valor de mercado dos itens no inventário + bônus de c
 
 ## Estrutura de uma partida
 
+### Criar ou entrar numa sala
+
+- Qualquer jogador pode **criar uma sala** para uma nova partida. Quem cria é o **host**
+  e recebe um **código de sala** curto (ex.: `4F2K9`) para compartilhar.
+- Os outros jogadores **entram digitando esse código**.
+- A sala fica em **espera (lobby)** até a partida começar; todos veem quem já entrou. É
+  preciso **no mínimo 2 jogadores** (e no máximo 6) — com o mínimo presente, o host
+  **inicia a partida**.
+- Ao iniciar, o cronômetro de tempo fixo começa e as primeiras caixas entram em leilão.
+
+### A partida em si
+
 - Uma partida acontece em uma **sala** com **tempo fixo** (sugestão: 15 minutos).
 - Cada jogador começa com um **orçamento inicial** igual.
 - Durante a partida, o servidor mantém vários **leilões simultâneos** de caixas,

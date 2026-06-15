@@ -1,12 +1,15 @@
 # Hammer Price — orquestração local e base para o deploy AWS.
 #
-# Perfis (profiles) permitem subir só parte dos serviços por máquina no deploy:
-#   docker compose --profile node-a up   # EC2-A
-#   docker compose --profile node-b up   # EC2-B
-# Sem perfil (local), use `docker compose --profile local up` para subir tudo.
+# Uso local (sobe tudo): a partir de infra/
+#   docker compose --profile local up --build
 #
-# Este é um ESQUELETO: os Dockerfiles de cada serviço ainda serão implementados.
-# Ver docs/08-deploy-aws.md para a topologia.
+# Perfis para o deploy AWS (uma fatia por máquina):
+#   docker compose --profile node-a up    # EC2-A: infra + gateway + vault1 + shard1
+#   docker compose --profile node-b up    # EC2-B: vault2 + shard2 + worker + réplica
+#
+# NOTA sobre o contexto de build: é a RAIZ do repositório (context: ..), porque os
+# serviços Java e o gateway precisam de proto/ (fonte única dos contratos). Cada serviço
+# aponta seu próprio dockerfile. Ver .dockerignore para o que fica de fora do contexto.
 
 services:
   # ---------- Infraestrutura ----------
@@ -14,11 +17,22 @@ services:
     image: redis:7-alpine
     profiles: ["local", "node-a"]
     ports: ["6379:6379"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
 
   rabbitmq:
     image: rabbitmq:3-management
     profiles: ["local", "node-a"]
     ports: ["5672:5672", "15672:15672"]   # 15672 = console de gestão
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
 
   postgres-primary:
     image: postgres:16-alpine
@@ -27,69 +41,151 @@ services:
       POSTGRES_DB: hammerprice
       POSTGRES_USER: ${PG_USER:-hammer}
       POSTGRES_PASSWORD: ${PG_PASSWORD:-changeme}
-    ports: ["5432:5432"]
-    volumes: ["pg_primary:/var/lib/postgresql/data"]
+    # Porta publicada no host é configurável (PG_PORT) para evitar conflito com um
+    # Postgres local ou outro container. Os serviços internos usam postgres-primary:5432.
+    ports: ["${PG_PORT:-5432}:5432"]
+    volumes:
+      - "pg_primary:/var/lib/postgresql/data"
+      # Schema inicial aplicado na primeira subida (volume vazio). Ver docs/09.
+      - "./db/init:/docker-entrypoint-initdb.d:ro"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${PG_USER:-hammer} -d hammerprice"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
 
   postgres-replica:
     image: postgres:16-alpine
-    profiles: ["local", "node-b"]
-    # Configurar streaming replication apontando para postgres-primary.
-    # Ver docs/08-deploy-aws.md (passo 4).
+    # Apenas no node-b (deploy). A streaming replication apontando para a primary
+    # é configurada na Fase 7 (ver docs/08-deploy-aws.md, passo 4).
+    profiles: ["node-b"]
+    environment:
+      POSTGRES_DB: hammerprice
+      POSTGRES_USER: ${PG_USER:-hammer}
+      POSTGRES_PASSWORD: ${PG_PASSWORD:-changeme}
     depends_on: ["postgres-primary"]
 
   # ---------- Serviços de aplicação ----------
   gateway:
-    build: ../services/gateway
+    build:
+      context: ..
+      dockerfile: services/gateway/Dockerfile
     profiles: ["local", "node-a"]
+    restart: unless-stopped
     environment:
       REDIS_URL: redis://redis:6379
       AUCTION_GRPC: auction-vault1:50051
       WALLET_GRPC: wallet-shard1:50052
+      GATEWAY_PORT: 8080
     ports: ["8080:8080"]
-    depends_on: ["redis"]
+    depends_on:
+      redis:
+        condition: service_healthy
+      auction-vault1:
+        condition: service_started
 
   auction-vault1:
-    build: ../services/auction
+    build:
+      context: ..
+      dockerfile: services/auction/Dockerfile
     profiles: ["local", "node-a"]
+    restart: unless-stopped
     environment:
+      AUCTION_ADDR: "50051"
       VAULT_ID: vault-1
       REDIS_URL: redis://redis:6379
       RABBITMQ_URL: amqp://rabbitmq:5672
       WALLET_GRPC: wallet-shard1:50052
+      BALANCE_CONFIG: /config/balance.yaml
+    volumes:
+      - "./config/balance.yaml:/config/balance.yaml:ro"
+    depends_on:
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      wallet-shard1:
+        condition: service_started
 
   auction-vault2:
-    build: ../services/auction
-    profiles: ["local", "node-b"]
+    build:
+      context: ..
+      dockerfile: services/auction/Dockerfile
+    profiles: ["node-b"]
+    restart: unless-stopped
     environment:
+      AUCTION_ADDR: "50051"
       VAULT_ID: vault-2
       WALLET_GRPC: wallet-shard2:50052
+      BALANCE_CONFIG: /config/balance.yaml
+    volumes:
+      - "./config/balance.yaml:/config/balance.yaml:ro"
 
   wallet-shard1:
-    build: ../services/wallet
+    build:
+      context: ..
+      dockerfile: services/wallet/Dockerfile
     profiles: ["local", "node-a"]
+    restart: unless-stopped
     environment:
+      WALLET_ADDR: "50052"
       SHARD_ID: shard-1
       PG_URL: postgres://hammer@postgres-primary:5432/hammerprice
       REDIS_URL: redis://redis:6379
+      BALANCE_CONFIG: /config/balance.yaml
+    volumes:
+      - "./config/balance.yaml:/config/balance.yaml:ro"
+    depends_on:
+      postgres-primary:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
 
   wallet-shard2:
-    build: ../services/wallet
-    profiles: ["local", "node-b"]
+    build:
+      context: ..
+      dockerfile: services/wallet/Dockerfile
+    profiles: ["node-b"]
+    restart: unless-stopped
     environment:
+      WALLET_ADDR: "50052"
       SHARD_ID: shard-2
+      BALANCE_CONFIG: /config/balance.yaml
+    volumes:
+      - "./config/balance.yaml:/config/balance.yaml:ro"
 
   worker:
-    build: ../services/worker
+    build:
+      context: ..
+      dockerfile: services/worker/Dockerfile
     profiles: ["local", "node-b"]
+    restart: unless-stopped
     environment:
       RABBITMQ_URL: amqp://rabbitmq:5672
       REDIS_URL: redis://redis:6379
-      PG_URL: postgres://hammer@postgres-replica:5432/hammerprice
+      # TODO Fase 7: no node-b passa a ler da réplica (postgres-replica).
+      PG_URL: postgres://hammer@postgres-primary:5432/hammerprice
+      BALANCE_CONFIG: /config/balance.yaml
+    volumes:
+      - "./config/balance.yaml:/config/balance.yaml:ro"
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
 
   frontend:
-    build: ../services/frontend
+    build:
+      context: ..
+      dockerfile: services/frontend/Dockerfile
     profiles: ["local"]
+    environment:
+      # O navegador (host) fala com o gateway publicado em localhost:8080.
+      VITE_GATEWAY_URL: ws://localhost:8080
     ports: ["5173:5173"]
+    depends_on:
+      gateway:
+        condition: service_started
     # Em produção o frontend é build estático em S3+CloudFront (ver docs/08).
 
 volumes:

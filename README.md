@@ -33,6 +33,8 @@ Toda a concepção do projeto está em [`docs/`](docs/):
 | [08 — Deploy AWS](docs/08-deploy-aws.md) | Topologia EC2, passo a passo, domínio |
 | [09 — Modelo de Dados](docs/09-modelo-de-dados.md) | Esquemas Postgres/Redis e invariantes |
 
+**Estado do desenvolvimento (o que está feito / a fazer):** [`plan/ROADMAP.md`](plan/ROADMAP.md).
+
 Instruções para desenvolvimento assistido por IA: [`CLAUDE.md`](CLAUDE.md).
 
 ---
@@ -59,17 +61,20 @@ Instruções para desenvolvimento assistido por IA: [`CLAUDE.md`](CLAUDE.md).
 
 ## 🚀 Como rodar (desenvolvimento local)
 
-> O esqueleto de cada serviço está em [`services/`](services/). O ambiente local
-> completo sobe via Docker Compose:
+O ambiente local completo (frontend, gateway, leilão, carteira, worker + Redis,
+RabbitMQ e Postgres) sobe via Docker Compose, usando o **profile `local`**:
 
 ```bash
 cd infra
-docker compose up --build
+docker compose --profile local up --build
 ```
 
-Frontend: http://localhost:5173 · Gateway: ws://localhost:8080
+Frontend: http://localhost:5173 · Gateway: ws://localhost:8080 ·
+Console RabbitMQ: http://localhost:15672 (guest/guest)
 
-Detalhes de cada serviço nos respectivos `README` dentro de `services/`.
+> Os parâmetros de jogo vêm de [`infra/config/balance.yaml`](infra/config/balance.yaml)
+> (sem recompilar). Detalhes e a alternativa "4 terminais sem Docker" estão em
+> [`RUNNING.md`](RUNNING.md); detalhes de cada serviço nos `README` dentro de `services/`.
 
 ---
 

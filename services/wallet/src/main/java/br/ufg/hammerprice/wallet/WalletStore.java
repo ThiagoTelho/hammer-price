@@ -13,14 +13,22 @@ import java.util.Map;
  */
 public final class WalletStore {
 
-    /** Orçamento concedido a um jogador na primeira interação. */
-    public static final long INITIAL_BUDGET = 1000;
+    /** Orçamento concedido a um jogador na primeira interação (do balance.yaml). */
+    private final long initialBudget;
+
+    public WalletStore(long initialBudget) {
+        this.initialBudget = initialBudget;
+    }
 
     private static final class Player {
-        long balance = INITIAL_BUDGET;
+        final long balance;
         long reserved = 0;
         /** Reservas ativas por caixa, para permitir Release idempotente. */
         final Map<String, Long> byBox = new HashMap<>();
+
+        Player(long balance) {
+            this.balance = balance;
+        }
     }
 
     /** Resultado de uma tentativa de reserva. */
@@ -32,7 +40,7 @@ public final class WalletStore {
     private final Map<String, Player> players = new HashMap<>();
 
     private Player getOrCreate(String id) {
-        return players.computeIfAbsent(id, k -> new Player());
+        return players.computeIfAbsent(id, k -> new Player(initialBudget));
     }
 
     /**

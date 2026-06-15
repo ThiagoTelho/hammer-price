@@ -15,7 +15,11 @@ import io.grpc.stub.StreamObserver;
 public final class WalletServer {
 
     static final class WalletService extends WalletGrpc.WalletImplBase {
-        private final WalletStore store = new WalletStore();
+        private final WalletStore store;
+
+        WalletService(WalletStore store) {
+            this.store = store;
+        }
 
         @Override
         public void reserve(ReserveRequest req, StreamObserver<ReserveReply> obs) {
@@ -50,8 +54,9 @@ public final class WalletServer {
 
     public static void main(String[] args) throws Exception {
         int port = parsePort(System.getenv("WALLET_ADDR"), 50052);
+        long initialBudget = BalanceConfig.load().matchLong("initial_budget", 1000);
         Server server = ServerBuilder.forPort(port)
-                .addService(new WalletService())
+                .addService(new WalletService(new WalletStore(initialBudget)))
                 .build()
                 .start();
         System.out.println("wallet: ouvindo em :" + port);

@@ -23,6 +23,7 @@ O **valor base** é a referência; o **preço de mercado** (seção 6) flutua em
 | Orçamento inicial por jogador | 1.000 |
 | Duração da partida | 15 min |
 | Jogadores por sala | 2–6 |
+| Mínimo de jogadores para iniciar a partida | 2 |
 | Caixas simultâneas (vaults × caixas) | 4 (2 vaults × 2 caixas) |
 | Incremento mínimo de lance | 5% do lance atual (mín. 5) |
 | Cronômetro base da caixa | 20 s |

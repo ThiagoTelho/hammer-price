@@ -4,6 +4,10 @@
 > demonstrável** que já satisfaz todos os requisitos obrigatórios, deixando
 > mecânicas ricas (mercado, mímico, seguro) como incrementos opcionais.
 
+> 📍 **Estado vivo das tarefas:** este documento descreve a *estratégia*. O
+> acompanhamento concreto (o que está feito / em andamento / a fazer, por fase) fica em
+> [`../plan/ROADMAP.md`](../plan/ROADMAP.md) — a fonte única do estado de desenvolvimento.
+
 ## Estratégia de escopo: núcleo vs. extras
 
 ### Núcleo (essencial — cobre TODOS os requisitos)

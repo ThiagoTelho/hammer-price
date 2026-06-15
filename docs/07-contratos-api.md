@@ -9,10 +9,14 @@
 ### REST (ações pontuais — cliente-servidor síncrono)
 | Método | Rota | Descrição |
 |---|---|---|
-| `POST` | `/api/rooms` | Cria uma sala/partida |
-| `POST` | `/api/rooms/{id}/join` | Entra na sala; retorna `playerId` + token |
+| `POST` | `/api/rooms` | Cria uma sala; o criador vira **host**. Retorna `roomId`, **`code`** e `playerId` + token |
+| `POST` | `/api/rooms/join` | Entra **pelo código** (`{ code, displayName }`); retorna `roomId` + `playerId` + token |
+| `POST` | `/api/rooms/{id}/start` | **Host** inicia a partida (exige ≥ **2** jogadores; `WAITING` → `RUNNING`) |
 | `GET` | `/api/rooms/{id}/state` | Snapshot inicial do estado (depois vem por WS) |
 | `GET` | `/api/rooms/{id}/leaderboard` | Ranking (lido da **réplica** Postgres) |
+
+> O **`code`** é o identificador curto e digitável da sala (ex.: `4F2K9`), distinto do
+> `roomId` interno (`room-...`). É por ele que os demais jogadores entram.
 
 ### WebSocket (tempo real)
 Conexão: `wss://<gateway>/ws?room={id}&token=...`
@@ -28,6 +32,9 @@ Conexão: `wss://<gateway>/ws?room={id}&token=...`
 
 **Servidor → Cliente** (eventos difundidos via Pub/Sub):
 ```jsonc
+{ "type": "ROOM_STATE", "status": "WAITING", "code": "4F2K9", "host": "player-1", "players": [ /* ... */ ] }
+{ "type": "PLAYER_JOINED", "player": "player-2", "displayName": "bob", "count": 2 }
+{ "type": "MATCH_STARTED", "endsAt": 1750000000000 }
 { "type": "BID_PLACED", "boxId": "box-12", "amount": 65, "leader": "player-3", "timerMs": 8000 }
 { "type": "BOX_SOLD", "boxId": "box-12", "winner": "player-3", "price": 65 }
 { "type": "BOX_OPENED", "boxId": "box-12", "player": "player-3", "item": "GOLD" }

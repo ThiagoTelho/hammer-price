@@ -3,6 +3,15 @@
 Este arquivo orienta agentes de IA (Claude Code) que trabalharem neste repositório.
 Leia também os documentos em `docs/` antes de implementar qualquer coisa.
 
+## ⭐ Estado do desenvolvimento — comece aqui
+
+[`plan/ROADMAP.md`](plan/ROADMAP.md) é a **fonte única da verdade do estado de
+desenvolvimento**: o que já foi feito, o que está em andamento e o que falta, por fase.
+**Antes de implementar**, leia a fase relevante lá (e o doc correspondente em `docs/`).
+**Ao concluir uma tarefa**, marque o checkbox e registre o progresso no mesmo commit —
+o protocolo completo (legenda de status, Definition of Done, matriz de requisitos) está
+no topo do próprio `plan/ROADMAP.md`. Mantê-lo sincronizado com o código é obrigatório.
+
 ## O que é este projeto
 
 Jogo web multijogador de leilão de caixas misteriosas em tempo real. É o **Trabalho
@@ -71,11 +80,13 @@ de prosseguir.
 
 ## Fluxo de trabalho sugerido
 
-1. Leia o doc relevante em `docs/`.
-2. Para uma feature, comece pelo contrato (proto/evento) e pelo modelo de dados.
-3. Implemente o serviço dono do dado; exponha via gRPC/REST; emita eventos.
-4. Escreva teste de concorrência (corrida de lances, saldo compartilhado) quando aplicável.
-5. Atualize o doc correspondente se o comportamento mudar.
+1. Consulte [`plan/ROADMAP.md`](plan/ROADMAP.md) para o estado atual e a próxima tarefa; marque-a `[~]`.
+2. Leia o doc relevante em `docs/`.
+3. Para uma feature, comece pelo contrato (proto/evento) e pelo modelo de dados.
+4. Implemente o serviço dono do dado; exponha via gRPC/REST; emita eventos.
+5. Escreva teste de concorrência (corrida de lances, saldo compartilhado) quando aplicável.
+6. Atualize o doc correspondente se o comportamento mudar.
+7. Marque a tarefa `[x]` em `plan/ROADMAP.md` e adicione uma linha ao registro de progresso.
 
 ## Comandos úteis
 

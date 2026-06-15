@@ -99,7 +99,7 @@ public final class AuctionServer {
         BoxStore.Wallet gw = new WalletGateway(WalletGrpc.newBlockingStub(channel));
 
         Server server = ServerBuilder.forPort(port)
-                .addService(new AuctionService(new BoxStore(gw)))
+                .addService(new AuctionService(new BoxStore(gw, BalanceConfig.load())))
                 .build()
                 .start();
         System.out.println("auction: ouvindo em :" + port + " (carteira em " + walletAddr + ")");

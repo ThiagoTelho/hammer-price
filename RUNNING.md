@@ -1,11 +1,33 @@
-# Executando a fatia vertical (local)
+# Executando localmente
 
-Esta é a **fatia vertical** do Hammer Price: um lance percorre
-`frontend (React) → gateway (Node) → leilão (Java) → carteira (Java)`.
+Um lance percorre `frontend (React) → gateway (Node) → leilão (Java) → carteira (Java)`.
 
-> Estado em memória (sem Postgres/Redis/RabbitMQ ainda). O objetivo é ter o caminho
-> ponta a ponta funcionando; as camadas de persistência, Pub/Sub, mensageria,
-> particionamento por vault e RNG de abertura entram nas próximas etapas.
+Há dois jeitos de subir: **Docker Compose** (recomendado — sobe tudo, incluindo Redis,
+RabbitMQ e Postgres) ou **4 terminais** sem Docker (backend Java/Node à mão).
+
+> O leilão e a carteira ainda mantêm estado **em memória**; Redis/RabbitMQ/Postgres já
+> sobem e o schema é aplicado, mas o wiring de persistência, Pub/Sub e mensageria entra
+> nas Fases 2–5 (ver [`plan/ROADMAP.md`](plan/ROADMAP.md)).
+
+## Opção A — Docker Compose (recomendado)
+
+Pré-requisito: Docker Desktop. A partir de `infra/`:
+
+```bash
+cd infra
+docker compose --profile local up --build
+```
+
+Sobe os 5 serviços + Redis + RabbitMQ + Postgres (com o schema de
+[`db/init`](infra/db/init/) aplicado na primeira subida). Os parâmetros de jogo são
+lidos de [`config/balance.yaml`](infra/config/balance.yaml), montado nos containers.
+
+- Frontend: http://localhost:5173 · Gateway: ws://localhost:8080
+- Console RabbitMQ: http://localhost:15672 (guest/guest) · Postgres: `localhost:5432`
+- Para overrides de credenciais/portas: `cp ../.env.example .env` e ajuste antes de subir.
+- Derrubar tudo: `docker compose --profile local down` (use `-v` para zerar o volume do Postgres).
+
+## Opção B — 4 terminais, sem Docker
 
 ## Pré-requisitos
 - Java 21+ (testado no Temurin 21)

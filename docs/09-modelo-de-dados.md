@@ -21,10 +21,15 @@
 ### `rooms`
 | Coluna | Tipo | Notas |
 |---|---|---|
-| `id` | text PK | `room-...` |
-| `status` | text | `WAITING` \| `RUNNING` \| `ENDED` |
+| `id` | text PK | `room-...` (id interno) |
+| `code` | text UNIQUE | código curto de entrada (ex.: `4F2K9`); é por ele que os jogadores entram |
+| `host_id` | text FK → players | jogador que criou a sala |
+| `status` | text | `WAITING` (lobby) \| `RUNNING` \| `ENDED` |
 | `started_at` / `ends_at` | timestamptz | partida com tempo fixo |
 | `seed` | bigint | seed base do RNG (reprodutibilidade) |
+
+**Invariante:** sai de `WAITING` para `RUNNING` apenas com **≥ 2 jogadores** na sala
+(mín. para iniciar). `code` é único entre salas ativas.
 
 ### `inventory_items`
 | Coluna | Tipo | Notas |

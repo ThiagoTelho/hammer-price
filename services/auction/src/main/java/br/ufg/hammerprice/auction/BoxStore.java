@@ -17,8 +17,11 @@ import java.util.concurrent.locks.ReentrantLock;
  */
 public final class BoxStore {
 
-    /** Tempo do cronômetro reiniciado a cada lance (ms). */
-    private static final long TIMER_BASE_MS = 20_000;
+    /** Tempo do cronômetro reiniciado a cada lance (ms) — vem do balance.yaml. */
+    private final long timerBaseMs;
+    /** Incremento mínimo de lance: percentual e piso absoluto (balance.yaml). */
+    private final long incrementPct;
+    private final long incrementAbs;
 
     /** Dependência da Carteira usada para reservar/devolver saldo. */
     public interface Wallet {
@@ -51,8 +54,11 @@ public final class BoxStore {
     private final Map<String, Box> boxes = new LinkedHashMap<>();
 
     /** Cria o estado inicial com um conjunto fixo de caixas (fatia vertical). */
-    public BoxStore(Wallet wallet) {
+    public BoxStore(Wallet wallet, BalanceConfig cfg) {
         this.wallet = wallet;
+        this.timerBaseMs = cfg.matchLong("box_timer_seconds", 20) * 1000;
+        this.incrementPct = cfg.matchLong("min_bid_increment_pct", 5);
+        this.incrementAbs = cfg.matchLong("min_bid_increment_abs", 5);
         long now = System.currentTimeMillis();
         seed("box-1", "BRONZE", now);
         seed("box-2", "SILVER", now);
@@ -61,13 +67,13 @@ public final class BoxStore {
     }
 
     private void seed(String id, String type, long now) {
-        boxes.put(id, new Box(id, type, now + TIMER_BASE_MS));
+        boxes.put(id, new Box(id, type, now + timerBaseMs));
     }
 
-    /** Incremento mínimo: 5% do lance atual, mínimo absoluto de 5. */
-    private static long minIncrement(long cur) {
-        long inc = cur * 5 / 100;
-        return Math.max(inc, 5);
+    /** Incremento mínimo: percentual do lance atual, com piso absoluto (balance.yaml). */
+    private long minIncrement(long cur) {
+        long inc = cur * incrementPct / 100;
+        return Math.max(inc, incrementAbs);
     }
 
     /** Aplica um lance de forma atômica para a caixa indicada. */
@@ -95,7 +101,7 @@ public final class BoxStore {
 
             b.curBid = amount;
             b.leader = playerId;
-            b.deadlineMs = System.currentTimeMillis() + TIMER_BASE_MS; // reseta o cronômetro
+            b.deadlineMs = System.currentTimeMillis() + timerBaseMs; // reseta o cronômetro
             return new BidResult(true, "OK", b.curBid, b.leader, remainingMs(b));
         } finally {
             b.lock.unlock();
