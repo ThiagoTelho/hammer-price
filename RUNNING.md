@@ -11,7 +11,20 @@ RabbitMQ e Postgres) ou **4 terminais** sem Docker (backend Java/Node à mão).
 
 ## Opção A — Docker Compose (recomendado)
 
-Pré-requisito: Docker Desktop. A partir de `infra/`:
+Pré-requisito: Docker Desktop. O jeito mais fácil é o script `dev.sh` (raiz do repo),
+que garante o Docker no ar e escolhe uma **porta livre para o Postgres** se a 5432
+estiver ocupada:
+
+```bash
+./dev.sh            # build + sobe + segue os logs (Ctrl+C derruba)
+./dev.sh start      # sobe em background
+./dev.sh ps         # status        ./dev.sh logs [svc]   # logs
+./dev.sh test       # roda o test-slice.mjs ponta a ponta
+./dev.sh down       # derruba        ./dev.sh reset        # derruba + zera o Postgres
+./dev.sh doctor     # checa Docker e mostra a PG_PORT que será usada
+```
+
+Ou, equivalente, direto pelo compose a partir de `infra/`:
 
 ```bash
 cd infra

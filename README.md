@@ -62,7 +62,14 @@ Instruções para desenvolvimento assistido por IA: [`CLAUDE.md`](CLAUDE.md).
 ## 🚀 Como rodar (desenvolvimento local)
 
 O ambiente local completo (frontend, gateway, leilão, carteira, worker + Redis,
-RabbitMQ e Postgres) sobe via Docker Compose, usando o **profile `local`**:
+RabbitMQ e Postgres) sobe com um comando, via o script `dev.sh` (recomendado — garante
+o Docker no ar e evita conflito de porta do Postgres):
+
+```bash
+./dev.sh            # build + sobe + logs   ·   ./dev.sh down para derrubar
+```
+
+Ou direto pelo Docker Compose (profile `local`):
 
 ```bash
 cd infra
