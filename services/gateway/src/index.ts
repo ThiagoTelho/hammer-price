@@ -7,7 +7,7 @@
 // Próxima etapa: o fan-out passa a usar Redis Pub/Sub (para múltiplas
 // instâncias de gateway) e entra uma fila RabbitMQ para o worker.
 import { WebSocketServer, WebSocket } from "ws";
-import { placeBid, getVaultState, AUCTION_GRPC } from "./grpcClients.js";
+import { placeBid, getVaultState, openBox, AUCTION_GRPC } from "./grpcClients.js";
 
 const PORT = Number(process.env.GATEWAY_PORT ?? 8080);
 const ROOM = "room-1"; // sala única na fatia vertical
@@ -28,17 +28,19 @@ function broadcast(msg: unknown): void {
 
 // Última visão conhecida de cada caixa, para detectar arremates (uma caixa some
 // quando é arrematada e reposta por outra com novo id).
-let lastBoxes = new Map<string, { leader: string; currentBid: number }>();
+let lastBoxes = new Map<string, { leader: string; currentBid: number; boxType: string }>();
 
 async function broadcastState(): Promise<void> {
   try {
     const state = await getVaultState(ROOM);
-    const current = new Map(state.boxes.map((b) => [b.boxId, { leader: b.leader, currentBid: b.currentBid }]));
+    const current = new Map(
+      state.boxes.map((b) => [b.boxId, { leader: b.leader, currentBid: b.currentBid, boxType: b.boxType }]),
+    );
     // Caixa que sumiu e tinha líder => foi arrematada. (Interim: na Fase 4 isso vira
     // evento box.sold via Redis Pub/Sub, sem polling.)
     for (const [boxId, prev] of lastBoxes) {
       if (!current.has(boxId) && prev.leader) {
-        broadcast({ type: "BOX_SOLD", boxId, winner: prev.leader, price: prev.currentBid });
+        broadcast({ type: "BOX_SOLD", boxId, boxType: prev.boxType, winner: prev.leader, price: prev.currentBid });
       }
     }
     lastBoxes = current;
@@ -106,6 +108,36 @@ wss.on("connection", async (ws, req) => {
       } catch (err) {
         console.error("gateway: erro no PLACE_BID:", err);
         ws.send(JSON.stringify({ type: "ERROR", reason: "BID_FAILED" }));
+      }
+    }
+
+    if (msg.type === "OPEN_BOX") {
+      try {
+        const reply = await openBox(ROOM, msg.boxId, playerId);
+        // Resposta SÍNCRONA ao vencedor (resultado do sorteio).
+        ws.send(
+          JSON.stringify({
+            type: "OPEN_RESULT",
+            boxId: msg.boxId,
+            ok: reply.ok,
+            reason: reply.reason,
+            item: reply.item,
+            isMimic: reply.isMimic,
+          }),
+        );
+        // Evento ASSÍNCRONO difundido a todos quando a abertura dá certo.
+        if (reply.ok) {
+          broadcast({
+            type: "BOX_OPENED",
+            boxId: msg.boxId,
+            player: playerId,
+            item: reply.item,
+            isMimic: reply.isMimic,
+          });
+        }
+      } catch (err) {
+        console.error("gateway: erro no OPEN_BOX:", err);
+        ws.send(JSON.stringify({ type: "ERROR", reason: "OPEN_FAILED" }));
       }
     }
   });

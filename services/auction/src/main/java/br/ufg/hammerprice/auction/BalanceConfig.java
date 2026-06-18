@@ -4,6 +4,7 @@ import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import org.yaml.snakeyaml.Yaml;
 
@@ -50,5 +51,24 @@ public final class BalanceConfig {
     public long matchLong(String key, long def) {
         Object v = section("match").get(key);
         return v instanceof Number ? ((Number) v).longValue() : def;
+    }
+
+    /**
+     * Distribuição de drop (odds, em pontos percentuais) de um tipo de caixa, lida de
+     * {@code box_odds.<tipo>}. Ex.: {@code {COPPER=60, SILVER=30, GOLD=9, DIAMOND=1, MIMIC=0}}.
+     * Retorna mapa vazio se ausente — o chamador deve ter um fallback.
+     */
+    public Map<String, Integer> boxOdds(String boxType) {
+        Object byType = section("box_odds").get(boxType);
+        if (!(byType instanceof Map<?, ?> m)) {
+            return Collections.emptyMap();
+        }
+        Map<String, Integer> out = new LinkedHashMap<>();
+        for (Map.Entry<?, ?> e : m.entrySet()) {
+            if (e.getValue() instanceof Number n) {
+                out.put(String.valueOf(e.getKey()), n.intValue());
+            }
+        }
+        return out;
     }
 }

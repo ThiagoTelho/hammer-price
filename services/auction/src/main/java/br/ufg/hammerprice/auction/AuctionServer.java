@@ -2,10 +2,13 @@ package br.ufg.hammerprice.auction;
 
 import br.ufg.hammerprice.auction.grpc.AuctionGrpc;
 import br.ufg.hammerprice.auction.grpc.Box;
+import br.ufg.hammerprice.auction.grpc.OpenBoxReply;
+import br.ufg.hammerprice.auction.grpc.OpenBoxRequest;
 import br.ufg.hammerprice.auction.grpc.PlaceBidReply;
 import br.ufg.hammerprice.auction.grpc.PlaceBidRequest;
 import br.ufg.hammerprice.auction.grpc.VaultQuery;
 import br.ufg.hammerprice.auction.grpc.VaultState;
+import java.util.Map;
 import br.ufg.hammerprice.wallet.grpc.ReleaseRequest;
 import br.ufg.hammerprice.wallet.grpc.ReserveRequest;
 import br.ufg.hammerprice.wallet.grpc.SettleRequest;
@@ -99,7 +102,26 @@ public final class AuctionServer {
             obs.onNext(vs.build());
             obs.onCompleted();
         }
+
+        @Override
+        public void openBox(OpenBoxRequest req, StreamObserver<OpenBoxReply> obs) {
+            BoxStore.OpenResult r = store.openBox(req.getBoxId(), req.getPlayerId());
+            obs.onNext(OpenBoxReply.newBuilder()
+                    .setOk(r.ok())
+                    .setReason(r.reason())
+                    .setItem(r.item())
+                    .setIsMimic(r.isMimic())
+                    .build());
+            obs.onCompleted();
+        }
     }
+
+    /** Odds de fallback (espelham o balance.yaml) caso a config não esteja disponível. */
+    private static final Map<String, Map<String, Integer>> DEFAULT_ODDS = Map.of(
+            "BRONZE", Map.of("COPPER", 60, "SILVER", 30, "GOLD", 9, "DIAMOND", 1, "MIMIC", 0),
+            "SILVER", Map.of("COPPER", 35, "SILVER", 40, "GOLD", 20, "DIAMOND", 4, "MIMIC", 1),
+            "GOLD", Map.of("COPPER", 15, "SILVER", 30, "GOLD", 40, "DIAMOND", 12, "MIMIC", 3),
+            "VAULT", Map.of("COPPER", 5, "SILVER", 15, "GOLD", 35, "DIAMOND", 40, "MIMIC", 5));
 
     public static void main(String[] args) throws Exception {
         int port = parsePort(System.getenv("AUCTION_ADDR"), 50051);
@@ -117,7 +139,20 @@ public final class AuctionServer {
                 cfg.matchLong("antisnipe_reset_seconds", 8) * 1000,
                 cfg.matchLong("min_bid_increment_pct", 5),
                 cfg.matchLong("min_bid_increment_abs", 5));
-        BoxStore store = new BoxStore(gw, settings);
+
+        // RNG de abertura: usa odds do balance.yaml (com fallback) e seed injetável.
+        BoxOpener.Odds oddsSource = type -> {
+            Map<String, Integer> m = cfg.boxOdds(type);
+            return m.isEmpty() ? DEFAULT_ODDS.getOrDefault(type, Map.of()) : m;
+        };
+        String seedEnv = System.getenv("RNG_SEED");
+        BoxOpener opener = (seedEnv == null || seedEnv.isBlank())
+                ? new BoxOpener(oddsSource)
+                : new BoxOpener(oddsSource, Long.parseLong(seedEnv.trim()));
+        System.out.println("auction: RNG de abertura " + (seedEnv == null || seedEnv.isBlank()
+                ? "aleatório" : "com seed " + seedEnv.trim()));
+
+        BoxStore store = new BoxStore(gw, settings, opener);
         store.setCloseListener((boxId, winner, price) ->
                 System.out.println("auction: caixa " + boxId + " arrematada por " + winner + " (" + price + ")"));
 

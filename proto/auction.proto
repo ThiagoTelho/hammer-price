@@ -6,12 +6,13 @@ option java_package = "br.ufg.hammerprice.auction.grpc";
 option java_outer_classname = "AuctionProto";
 
 // Serviço de Leilão — núcleo concorrente.
-// Fatia vertical: PlaceBid (lance atômico) + GetVaultState (snapshot).
-// Estado das caixas em memória; particionamento por vault e RNG de abertura
-// entram em etapas posteriores.
+// PlaceBid (lance atômico), GetVaultState (snapshot) e OpenBox (sorteio do item
+// pelo RNG do servidor, ajustado pela afinidade do jogador). Estado em memória;
+// particionamento por vault entra numa etapa posterior.
 service Auction {
   rpc PlaceBid      (PlaceBidRequest) returns (PlaceBidReply);
   rpc GetVaultState (VaultQuery)      returns (VaultState);
+  rpc OpenBox       (OpenBoxRequest)  returns (OpenBoxReply);   // sorteio server-side
 }
 
 message PlaceBidRequest {
@@ -27,6 +28,20 @@ message PlaceBidReply {
   int64  current_bid = 3;
   string leader      = 4;
   int64  timer_ms    = 5;
+}
+
+// O VENCEDOR abre a caixa arrematada; o servidor sorteia o item.
+message OpenBoxRequest {
+  string room_id   = 1;
+  string box_id    = 2;
+  string player_id = 3;
+}
+
+message OpenBoxReply {
+  bool   ok       = 1;
+  string reason   = 2;   // OK | NOT_WINNER | UNKNOWN_BOX | ALREADY_OPENED
+  string item     = 3;   // COPPER | SILVER | GOLD | DIAMOND | MIMIC
+  bool   is_mimic = 4;   // armadilha (penalidade aplicada numa etapa posterior)
 }
 
 message VaultQuery { string room_id = 1; }

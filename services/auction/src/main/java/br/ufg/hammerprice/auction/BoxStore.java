@@ -2,6 +2,8 @@ package br.ufg.hammerprice.auction;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
@@ -40,6 +42,11 @@ public final class BoxStore {
         void onSold(String boxId, String winner, long price);
     }
 
+    /** Fonte da afinidade do jogador (item → pontos percentuais). Default: sem afinidade. */
+    public interface AffinitySource {
+        Map<String, Integer> forPlayer(String playerId);
+    }
+
     private static final String[] TYPES = {"BRONZE", "SILVER", "GOLD", "VAULT"};
 
     private static final class Box {
@@ -66,8 +73,15 @@ public final class BoxStore {
     /** Visão de uma caixa para o estado do vault. */
     public record Snapshot(String boxId, String boxType, String leader, long currentBid, long timerMs) {}
 
+    /** Caixa arrematada à espera de abertura pelo vencedor. */
+    private record PendingOpen(String winner, String boxType, long price) {}
+
+    /** Resultado de uma abertura de caixa (sorteio do item). */
+    public record OpenResult(boolean ok, String reason, String item, boolean isMimic) {}
+
     private final Wallet wallet;
     private final Settings cfg;
+    private final BoxOpener opener;
     private final ScheduledExecutorService scheduler =
             Executors.newSingleThreadScheduledExecutor(r -> {
                 Thread t = new Thread(r, "box-timer");
@@ -78,11 +92,16 @@ public final class BoxStore {
     private final AtomicReferenceArray<Box> slots;
     private final AtomicInteger boxSeq = new AtomicInteger();
     private volatile CloseListener closeListener = (id, w, p) -> {};
+    // Caixas arrematadas aguardando abertura pelo vencedor + ids já abertos.
+    private final ConcurrentHashMap<String, PendingOpen> pendingOpens = new ConcurrentHashMap<>();
+    private final Set<String> opened = ConcurrentHashMap.newKeySet();
+    private volatile AffinitySource affinitySource = p -> Map.of();
 
     /** Cria o conjunto inicial de caixas (uma por tipo), com o cronômetro desarmado. */
-    public BoxStore(Wallet wallet, Settings cfg) {
+    public BoxStore(Wallet wallet, Settings cfg, BoxOpener opener) {
         this.wallet = wallet;
         this.cfg = cfg;
+        this.opener = opener;
         this.slots = new AtomicReferenceArray<>(TYPES.length);
         for (int i = 0; i < TYPES.length; i++) {
             Box b = new Box(i, "box-" + boxSeq.incrementAndGet(), TYPES[i]);
@@ -153,6 +172,7 @@ public final class BoxStore {
     private void closeBox(Box b) {
         String soldId = null;
         String soldWinner = null;
+        String soldType = null;
         long soldPrice = 0;
         b.lock.lock();
         try {
@@ -170,14 +190,42 @@ public final class BoxStore {
             b.sold = true;
             soldId = b.id;
             soldWinner = b.leader;
+            soldType = b.type;
             soldPrice = b.curBid;
             replace(b);
         } finally {
             b.lock.unlock();
         }
         if (soldWinner != null) {
+            // O vencedor poderá ABRIR a caixa arrematada (sorteio do item).
+            pendingOpens.put(soldId, new PendingOpen(soldWinner, soldType, soldPrice));
             closeListener.onSold(soldId, soldWinner, soldPrice);
         }
+    }
+
+    public void setAffinitySource(AffinitySource s) {
+        this.affinitySource = (s == null) ? p -> Map.of() : s;
+    }
+
+    /**
+     * Abre uma caixa arrematada: valida que é o vencedor e que não foi aberta, e sorteia
+     * o item (RNG server-side) pelas odds do tipo + afinidade do jogador. Idempotente por
+     * remoção atômica do registro pendente.
+     */
+    public OpenResult openBox(String boxId, String playerId) {
+        PendingOpen po = pendingOpens.get(boxId);
+        if (po == null) {
+            return new OpenResult(false, opened.contains(boxId) ? "ALREADY_OPENED" : "UNKNOWN_BOX", "", false);
+        }
+        if (!po.winner().equals(playerId)) {
+            return new OpenResult(false, "NOT_WINNER", "", false);
+        }
+        if (!pendingOpens.remove(boxId, po)) {
+            return new OpenResult(false, "ALREADY_OPENED", "", false); // corrida: já aberta
+        }
+        opened.add(boxId);
+        String item = opener.draw(po.boxType(), affinitySource.forPlayer(playerId));
+        return new OpenResult(true, "OK", item, "MIMIC".equals(item));
     }
 
     /** Substitui a caixa fechada por uma nova no mesmo slot (mantém a oferta). */

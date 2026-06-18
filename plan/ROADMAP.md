@@ -8,7 +8,7 @@
 - **Disciplina:** Software Concorrente e Distribuído (SCD) — UFG, 2026.1
 - **Entrega:** 28/06/2026
 - **Última atualização deste arquivo:** 2026-06-15
-- **Marco atual:** Fase 2 em andamento (ciclo de vida da caixa concluído; falta abertura/RNG e particionamento)
+- **Marco atual:** Fase 2 em andamento (ciclo de vida + abertura/RNG concluídos; falta particionamento por vault)
 
 ---
 
@@ -118,18 +118,18 @@ Legenda: 🟢 satisfeito · 🟡 parcial · 🔴 ainda não.
 > Transforma o cronômetro informativo da fatia em leilão de verdade, com fechamento,
 > sorteio e particionamento. Ver [doc 03](../docs/03-regras-de-negocio.md) e [doc 04](../docs/04-arquitetura.md).
 >
-> **Increment 1 (ciclo de vida da caixa) concluído.** Faltam abertura/RNG+afinidade
-> (increment 2) e particionamento por vault (increment 3). A publicação de eventos em
-> Redis/RabbitMQ é da Fase 4/5; por ora o gateway expõe o fechamento por polling.
+> **Increments 1 (ciclo de vida) e 2 (abertura/RNG) concluídos.** Falta particionamento
+> por vault (increment 3). A publicação de eventos em Redis/RabbitMQ é da Fase 4/5; por
+> ora o gateway expõe fechamento/abertura por polling + broadcast.
 
 - [x] Timer por caixa com **fechamento automático** ao zerar (`ScheduledExecutorService` + guarda contra disparo obsoleto) *(R4)*
 - [x] **Anti-sniping:** lance nos últimos 5 s estende o cronômetro (volta a 8 s) *(R4)*
 - [x] Fechamento da caixa: **debita** o vencedor (`Settle`) e **devolve** aos perdedores (release no outbid) *(R3,R7)*
 - [x] Desempate do vencedor por **timestamp do servidor**: lock por caixa serializa; último lance válido vence *(R3)*
 - [x] **Reposição** de oferta: nova caixa (novo id) entra no mesmo slot ao arrematar
-- [ ] Tipos de caixa + **odds públicas** do `balance.yaml` (tipos já rodam; odds entram no open — increment 2)
-- [ ] **RNG de abertura** server-side com **seed injetável** — increment 2 *(R4)*
-- [ ] Afinidade somada às odds + **renormalização** (Σ P = 1, P ≥ 0) — increment 2
+- [x] Tipos de caixa + **odds do `balance.yaml`** dirigem o sorteio (`BoxOpener`); exibição pública das odds no frontend fica como polish
+- [x] **RNG de abertura** server-side com **seed injetável** (`RNG_SEED`); `OpenBox` RPC + fluxo do vencedor *(R4)*
+- [x] Afinidade somada às odds + **renormalização** (Σ P = 1, P ≥ 0) — mecanismo + teste; valores virão do *burn* (Fase 3)
 - [ ] **Particionamento por vault:** cada instância dona de um subconjunto — increment 3 *(R6)*
 - [ ] Publicação de eventos `bid.placed`/`box.sold`/`box.opened` (Redis Pub/Sub + RabbitMQ) — **Fase 4/5** *(R5)*
 - [x] **Teste de concorrência:** corrida de lances na mesma caixa (`BoxStoreTest`, 8×200 lances) *(R3)*
@@ -253,3 +253,4 @@ As **fases** são por escopo; os **marcos**, por tempo — ajuste conforme a dat
 - 2026-06-14 — _(este commit)_ — Especificada a entrada por sala: criar sala + **código**, entrar por código e **mínimo 2 jogadores** para iniciar (docs 02/03/07/09 + roadmap Fases 4 e 6).
 - 2026-06-14 — _(este commit)_ — **Fase 1 concluída.** Dockerfiles dos 5 serviços + `.dockerignore`; compose `--profile local` com healthchecks e ordem de subida; schema Postgres em `infra/db/init`; `balance.yaml` lido em runtime (Java `BalanceConfig` + worker Python); `PG_PORT` configurável. Verificado: `up --build` sobe os 8 containers (Redis/RabbitMQ/Postgres healthy) e o `test-slice.mjs` passa ponta a ponta dentro dos containers.
 - 2026-06-15 — _(este commit)_ — **Fase 2, increment 1 (ciclo de vida da caixa).** Auto-close por cronômetro + anti-sniping; `Settle` na carteira (debita o vencedor) + release dos perdedores; reposição por slot; desempate por lock/timestamp do servidor. Gateway expõe fechamento por polling (`BOX_SOLD`); frontend com contagem regressiva. Teste de concorrência `BoxStoreTest` (4 testes, 8×200 lances). Verificado: `mvn test` verde; no stack, lance → auto-close → `arrematada` → `BOX_SOLD`; regressão do `test-slice` ok.
+- 2026-06-15 — _(este commit)_ — **Fase 2, increment 2 (abertura/RNG).** `OpenBox` RPC; `BoxOpener` com RNG de seed injetável (`RNG_SEED`), odds do `balance.yaml`, afinidade somada + renormalização (Σ P = 1). Caixas arrematadas ficam disponíveis para o vencedor abrir; gateway trata `OPEN_BOX` (reply síncrono + broadcast `BOX_OPENED`); frontend abre a caixa e mostra o item. Testes: `BoxOpenerTest` (determinismo/renormalização/afinidade) + `openBox` no `BoxStore` (10 testes no total). Verificado: `mvn test` verde; no stack, lance → auto-close → `OPEN_BOX` → item sorteado (COPPER) → `BOX_OPENED`.

@@ -9,6 +9,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
@@ -47,7 +48,12 @@ class BoxStoreTest {
 
     private static BoxStore newStore(BoxStore.Wallet w) {
         // base 20s, janela anti-snipe 5s, reset 8s, incremento 5% / mín. 5
-        return new BoxStore(w, new BoxStore.Settings(20_000, 5_000, 8_000, 5, 5));
+        return new BoxStore(w, new BoxStore.Settings(20_000, 5_000, 8_000, 5, 5), testOpener());
+    }
+
+    private static BoxOpener testOpener() {
+        BoxOpener.Odds odds = t -> Map.of("COPPER", 60, "SILVER", 30, "GOLD", 9, "DIAMOND", 1, "MIMIC", 0);
+        return new BoxOpener(odds, 42L); // seed fixa: determinístico
     }
 
     private static long currentBid(BoxStore s, String boxId) {
@@ -155,6 +161,39 @@ class BoxStoreTest {
             BoxStore.BidResult low = store.placeBid("box-3", "bob", 102); // < 100 + 5
             assertFalse(low.accepted());
             assertEquals("TOO_LOW", low.reason());
+        } finally {
+            store.shutdown();
+        }
+    }
+
+    @Test
+    void winnerOpensBoxOnce() {
+        StubWallet w = new StubWallet();
+        BoxStore store = newStore(w);
+        try {
+            assertTrue(store.placeBid("box-1", "ana", 100).accepted());
+            store.closeNow("box-1");
+
+            BoxStore.OpenResult r = store.openBox("box-1", "ana");
+            assertTrue(r.ok(), "o vencedor abre a caixa");
+            assertEquals("OK", r.reason());
+            assertFalse(r.item().isEmpty(), "o sorteio retorna um item");
+            // segunda abertura da mesma caixa é rejeitada
+            assertEquals("ALREADY_OPENED", store.openBox("box-1", "ana").reason());
+        } finally {
+            store.shutdown();
+        }
+    }
+
+    @Test
+    void openBoxRejectsNonWinnerAndUnknown() {
+        StubWallet w = new StubWallet();
+        BoxStore store = newStore(w);
+        try {
+            assertTrue(store.placeBid("box-2", "ana", 100).accepted());
+            store.closeNow("box-2");
+            assertEquals("NOT_WINNER", store.openBox("box-2", "bob").reason());
+            assertEquals("UNKNOWN_BOX", store.openBox("box-999", "ana").reason());
         } finally {
             store.shutdown();
         }

@@ -59,4 +59,20 @@ export function getVaultState(roomId: string): Promise<{ boxes: Box[] }> {
   });
 }
 
+export interface OpenBoxReply {
+  ok: boolean;
+  reason: string;
+  item: string;
+  isMimic: boolean;
+}
+
+// O vencedor abre a caixa arrematada; o servidor sorteia o item (gRPC síncrono).
+export function openBox(roomId: string, boxId: string, playerId: string): Promise<OpenBoxReply> {
+  return new Promise((res, rej) => {
+    auction.OpenBox({ roomId, boxId, playerId }, (err: any, reply: OpenBoxReply) =>
+      err ? rej(err) : res(reply),
+    );
+  });
+}
+
 export { AUCTION_GRPC };

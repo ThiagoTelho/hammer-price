@@ -73,7 +73,12 @@ message PlaceBidReply {
 }
 
 message OpenBoxRequest { string room_id = 1; string box_id = 2; string player_id = 3; }
-message OpenBoxReply   { string item = 1; bool is_mimic = 2; string penalty = 3; }
+message OpenBoxReply   {
+  bool   ok       = 1;
+  string reason   = 2;   // OK | NOT_WINNER | UNKNOWN_BOX | ALREADY_OPENED
+  string item     = 3;   // COPPER | SILVER | GOLD | DIAMOND | MIMIC
+  bool   is_mimic = 4;   // penalidade do Mímico é aplicada numa etapa posterior (Fase 9)
+}
 ```
 
 ### `wallet.proto`

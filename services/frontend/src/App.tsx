@@ -33,7 +33,10 @@ export function App() {
   const [playerId, setPlayerId] = useState("");
   const [boxes, setBoxes] = useState<Box[]>([]);
   const [log, setLog] = useState<string[]>([]);
+  const [wonBoxes, setWonBoxes] = useState<{ boxId: string; boxType: string }[]>([]);
   const wsRef = useRef<WebSocket | null>(null);
+  // playerId via ref: o handler de mensagens é criado uma vez e precisa do id atual.
+  const playerIdRef = useRef("");
 
   const addLog = useCallback((line: string) => {
     setLog((prev) => [`${new Date().toLocaleTimeString()} — ${line}`, ...prev].slice(0, 30));
@@ -58,6 +61,7 @@ export function App() {
       switch (msg.type) {
         case "WELCOME":
           setPlayerId(msg.playerId);
+          playerIdRef.current = msg.playerId;
           setBoxes(withDeadlines(msg.boxes ?? []));
           break;
         case "STATE":
@@ -68,6 +72,26 @@ export function App() {
           break;
         case "BOX_SOLD":
           addLog(`🏆 ${msg.boxId} arrematada por ${msg.winner} (${msg.price})`);
+          if (msg.winner === playerIdRef.current) {
+            setWonBoxes((prev) =>
+              prev.some((b) => b.boxId === msg.boxId)
+                ? prev
+                : [...prev, { boxId: msg.boxId, boxType: msg.boxType }],
+            );
+          }
+          break;
+        case "OPEN_RESULT":
+          if (msg.ok) {
+            addLog(`🎁 Você abriu ${msg.boxId}: ${msg.item}${msg.isMimic ? " 💀 (Mímico!)" : ""}`);
+            setWonBoxes((prev) => prev.filter((b) => b.boxId !== msg.boxId));
+          } else {
+            addLog(`⚠️ Não foi possível abrir ${msg.boxId}: ${msg.reason}`);
+          }
+          break;
+        case "BOX_OPENED":
+          if (msg.player !== playerIdRef.current) {
+            addLog(`📦 ${msg.player} abriu ${msg.boxId}: ${msg.item}${msg.isMimic ? " 💀" : ""}`);
+          }
           break;
         case "BID_ACCEPTED":
           addLog(`✅ Seu lance em ${msg.boxId} foi aceito (atual: ${msg.currentBid})`);
@@ -99,6 +123,10 @@ export function App() {
   const sendBid = (boxId: string, currentBid: number) => {
     const amount = currentBid + Math.max(5, Math.floor(currentBid * 0.05));
     wsRef.current?.send(JSON.stringify({ type: "PLACE_BID", boxId, amount }));
+  };
+
+  const sendOpen = (boxId: string) => {
+    wsRef.current?.send(JSON.stringify({ type: "OPEN_BOX", boxId }));
   };
 
   return (
@@ -145,6 +173,17 @@ export function App() {
         ))}
       </div>
 
+      {wonBoxes.length > 0 && (
+        <div style={S.won}>
+          <b>🎉 Você arrematou! Abra:</b>{" "}
+          {wonBoxes.map((b) => (
+            <button key={b.boxId} style={S.openBtn} onClick={() => sendOpen(b.boxId)}>
+              Abrir {BOX_EMOJI[b.boxType] ?? "📦"} {b.boxId}
+            </button>
+          ))}
+        </div>
+      )}
+
       <h3>Eventos</h3>
       <div style={S.log}>
         {log.map((l, i) => (
@@ -183,4 +222,24 @@ const S: Record<string, React.CSSProperties> = {
   },
   bid: { fontSize: 18, fontWeight: 700, color: "#5b3df5" },
   log: { fontSize: 13, fontFamily: "ui-monospace, monospace", maxHeight: 220, overflowY: "auto" },
+  won: {
+    background: "#fff8e1",
+    border: "1px solid #ffe082",
+    borderRadius: 8,
+    padding: "10px 12px",
+    margin: "8px 0",
+    display: "flex",
+    flexWrap: "wrap",
+    gap: 8,
+    alignItems: "center",
+  },
+  openBtn: {
+    padding: "6px 12px",
+    fontSize: 14,
+    border: "none",
+    borderRadius: 6,
+    background: "#e67e22",
+    color: "#fff",
+    cursor: "pointer",
+  },
 };
