@@ -94,7 +94,8 @@ services:
       # Particionamento por sala: cada sala é servida por uma instância de Leilão própria.
       # O gateway roteia as ações (gRPC) e o fan-out de eventos para a instância dona da sala.
       ROOM_ROUTES: "room-1=auction-vault1:50051,room-2=auction-vault2:50051"
-      WALLET_GRPC: wallet-shard1:50052
+      # Carteira por sala (mesma partição): de onde o gateway lê o HUD do jogador.
+      WALLET_ROUTES: "room-1=wallet-shard1:50052,room-2=wallet-shard2:50052"
       GATEWAY_PORT: 8080
     ports: ["8080:8080"]
     depends_on:

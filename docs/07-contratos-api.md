@@ -44,7 +44,8 @@ Conexão: `wss://<gateway>/ws?room={id}&token=...`
 // Fim de rodada (winner null quando ninguém deu lance); a próxima ROUND_STARTED vem após a pausa.
 { "type": "ROUND_ENDED", "round": 7, "boxId": "box-12", "winner": "player-3", "price": 65 }
 { "type": "MARKET_UPDATED", "prices": { "COPPER": 11, "GOLD": 176, "DIAMOND": 2040 } }
-{ "type": "WALLET_UPDATED", "player": "player-3", "balance": 870, "reserved": 65 }
+// WALLET_UPDATED é PRIVADO: enviado só ao próprio jogador (saldo + reservas + inventário).
+{ "type": "WALLET_UPDATED", "balance": 870, "reserved": 65, "inventory": [ { "id": "itm-9", "type": "GOLD", "state": "FREE" } ] }
 { "type": "COLLECTION_FORMED", "player": "player-3", "collection": "ROYAL_TRIO", "bonus": 3000 }
 { "type": "MATCH_ENDED", "ranking": [ /* ... */ ] }
 { "type": "BID_REJECTED", "boxId": "box-12", "reason": "INSUFFICIENT_BALANCE" }

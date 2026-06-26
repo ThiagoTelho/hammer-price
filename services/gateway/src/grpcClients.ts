@@ -18,6 +18,24 @@ const packageDef = protoLoader.loadSync(resolve(PROTO_DIR, "auction.proto"), {
 const proto = grpc.loadPackageDefinition(packageDef) as any;
 const AuctionCtor = proto.hammerprice.auction.Auction;
 
+// Cliente de leitura da Carteira (saldo/reservas/inventário) — uma por shard, cacheada.
+const walletDef = protoLoader.loadSync(resolve(PROTO_DIR, "wallet.proto"), {
+  keepCase: false,
+  longs: Number,
+  defaults: true,
+  oneofs: true,
+});
+const WalletCtor = (grpc.loadPackageDefinition(walletDef) as any).hammerprice.wallet.Wallet;
+const walletByAddr = new Map<string, any>();
+function walletAt(addr: string) {
+  let c = walletByAddr.get(addr);
+  if (!c) {
+    c = new WalletCtor(addr, grpc.credentials.createInsecure());
+    walletByAddr.set(addr, c);
+  }
+  return c;
+}
+
 // Particionamento por sala: um cliente gRPC por instância de Leilão (cada sala tem a sua),
 // cacheado por endereço. O gateway escolhe o endereço pela sala do cliente.
 const clientsByAddr = new Map<string, any>();
@@ -82,6 +100,27 @@ export interface OpenBoxReply {
   reason: string;
   item: string;
   isMimic: boolean;
+}
+
+export interface WalletItem {
+  id: string;
+  type: string;
+  state: string;
+}
+export interface PlayerState {
+  playerId: string;
+  balance: number;
+  reserved: number;
+  inventory: WalletItem[];
+}
+
+// Leitura do estado do jogador (saldo, reservas, inventário) na sua wallet shard.
+export function getPlayer(addr: string, playerId: string): Promise<PlayerState> {
+  return new Promise((res, rej) => {
+    walletAt(addr).GetPlayer({ playerId }, (err: any, reply: PlayerState) =>
+      err ? rej(err) : res(reply),
+    );
+  });
 }
 
 // O vencedor abre a caixa arrematada; o servidor sorteia o item (gRPC síncrono).

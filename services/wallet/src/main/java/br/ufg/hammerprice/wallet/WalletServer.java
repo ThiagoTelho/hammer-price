@@ -1,6 +1,8 @@
 package br.ufg.hammerprice.wallet;
 
 import br.ufg.hammerprice.wallet.grpc.Ack;
+import br.ufg.hammerprice.wallet.grpc.AddItemRequest;
+import br.ufg.hammerprice.wallet.grpc.Item;
 import br.ufg.hammerprice.wallet.grpc.PlayerQuery;
 import br.ufg.hammerprice.wallet.grpc.PlayerState;
 import br.ufg.hammerprice.wallet.grpc.ReleaseRequest;
@@ -49,13 +51,27 @@ public final class WalletServer {
         }
 
         @Override
+        public void addItem(AddItemRequest req, StreamObserver<Ack> obs) {
+            store.addItem(req.getPlayerId(), req.getType());
+            obs.onNext(Ack.newBuilder().setOk(true).build());
+            obs.onCompleted();
+        }
+
+        @Override
         public void getPlayer(PlayerQuery req, StreamObserver<PlayerState> obs) {
             WalletStore.PlayerView v = store.get(req.getPlayerId());
-            obs.onNext(PlayerState.newBuilder()
+            PlayerState.Builder b = PlayerState.newBuilder()
                     .setPlayerId(req.getPlayerId())
                     .setBalance(v.balance())
-                    .setReserved(v.reserved())
-                    .build());
+                    .setReserved(v.reserved());
+            for (WalletStore.Item it : v.items()) {
+                b.addInventory(Item.newBuilder()
+                        .setId(it.id())
+                        .setType(it.type())
+                        .setState(it.state())
+                        .build());
+            }
+            obs.onNext(b.build());
             obs.onCompleted();
         }
     }

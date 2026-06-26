@@ -49,6 +49,11 @@ export function App() {
   const [log, setLog] = useState<string[]>([]);
   const [wonBoxes, setWonBoxes] = useState<{ boxId: string; boxType: string }[]>([]);
   const [prices, setPrices] = useState<Record<string, number>>({});
+  const [wallet, setWallet] = useState<{
+    balance: number;
+    reserved: number;
+    inventory: { id: string; type: string; state: string }[];
+  } | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
   // playerId via ref: o handler de mensagens é criado uma vez e precisa do id atual.
   const playerIdRef = useRef("");
@@ -130,6 +135,13 @@ export function App() {
         case "MARKET_UPDATED":
           setPrices(msg.prices ?? {});
           break;
+        case "WALLET_UPDATED":
+          setWallet({
+            balance: msg.balance ?? 0,
+            reserved: msg.reserved ?? 0,
+            inventory: msg.inventory ?? [],
+          });
+          break;
         case "ERROR":
           addLog(`⚠️ ${msg.reason}`);
           break;
@@ -165,6 +177,13 @@ export function App() {
       .map((k) => `${ITEM_EMOJI[k]} ${odds[k]}%`)
       .join("   ");
 
+  const invCounts = (inv: { type: string }[]): string => {
+    const counts: Record<string, number> = {};
+    for (const it of inv) counts[it.type] = (counts[it.type] ?? 0) + 1;
+    const parts = ITEM_ORDER.filter((t) => counts[t]).map((t) => `${ITEM_EMOJI[t]}×${counts[t]}`);
+    return parts.length ? parts.join("  ") : "vazio";
+  };
+
   return (
     <div style={S.page}>
       <h1 style={{ margin: 0 }}>🔨 Hammer Price</h1>
@@ -191,6 +210,15 @@ export function App() {
         <p>
           Jogando como <b>{playerId}</b> · <b>Sala {room}</b> · <b>Rodada {round || "—"}</b>
         </p>
+      )}
+
+      {connected && wallet && (
+        <div style={S.hud}>
+          <span>💰 Saldo <b>{wallet.balance}</b></span>
+          <span>🔒 Reservado <b>{wallet.reserved}</b></span>
+          <span>🟢 Gastável <b>{wallet.balance - wallet.reserved}</b></span>
+          <span style={{ marginLeft: "auto" }}>🎒 {invCounts(wallet.inventory)}</span>
+        </div>
       )}
 
       {Object.keys(prices).length > 0 && (
@@ -259,6 +287,18 @@ const S: Record<string, React.CSSProperties> = {
     background: "#5b3df5",
     color: "#fff",
     cursor: "pointer",
+  },
+  hud: {
+    display: "flex",
+    gap: 16,
+    alignItems: "center",
+    flexWrap: "wrap",
+    background: "#f5f3ff",
+    border: "1px solid #ddd6fe",
+    borderRadius: 8,
+    padding: "8px 12px",
+    fontSize: 14,
+    margin: "6px 0",
   },
   market: {
     background: "#eef6ff",

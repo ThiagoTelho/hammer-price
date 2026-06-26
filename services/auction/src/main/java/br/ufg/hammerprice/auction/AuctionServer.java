@@ -10,6 +10,7 @@ import br.ufg.hammerprice.auction.grpc.RoomQuery;
 import br.ufg.hammerprice.auction.grpc.RoomState;
 import java.util.Map;
 import java.util.Random;
+import br.ufg.hammerprice.wallet.grpc.AddItemRequest;
 import br.ufg.hammerprice.wallet.grpc.ReleaseRequest;
 import br.ufg.hammerprice.wallet.grpc.ReserveRequest;
 import br.ufg.hammerprice.wallet.grpc.SettleRequest;
@@ -66,15 +67,28 @@ public final class AuctionServer {
                 System.err.println("auction: erro ao debitar o vencedor: " + e.getMessage());
             }
         }
+
+        /** Credita ao inventário do jogador o item sorteado na abertura da caixa. */
+        void addItem(String playerId, String type) {
+            try {
+                stub.withDeadlineAfter(2, TimeUnit.SECONDS)
+                        .addItem(AddItemRequest.newBuilder()
+                                .setPlayerId(playerId).setType(type).build());
+            } catch (Exception e) {
+                System.err.println("auction: erro ao creditar item: " + e.getMessage());
+            }
+        }
     }
 
     static final class AuctionService extends AuctionGrpc.AuctionImplBase {
         private final BoxStore store;
         private final EventPublisher events;
+        private final WalletGateway wallet;
 
-        AuctionService(BoxStore store, EventPublisher events) {
+        AuctionService(BoxStore store, EventPublisher events, WalletGateway wallet) {
             this.store = store;
             this.events = events;
+            this.wallet = wallet;
         }
 
         @Override
@@ -125,8 +139,12 @@ public final class AuctionServer {
                     .setIsMimic(r.isMimic())
                     .build());
             obs.onCompleted();
-            // Difunde o resultado e enfileira box.opened (RabbitMQ) para o worker de mercado.
             if (r.ok()) {
+                // Credita o item ao inventário do vencedor (MIMIC é penalidade, não vira item).
+                if (!r.isMimic()) {
+                    wallet.addItem(req.getPlayerId(), r.item());
+                }
+                // Difunde o resultado e enfileira box.opened (RabbitMQ) para o worker de mercado.
                 events.boxOpened(req.getBoxId(), req.getPlayerId(), r.item(), r.isMimic());
             }
         }
@@ -146,7 +164,7 @@ public final class AuctionServer {
         ManagedChannel channel = ManagedChannelBuilder.forTarget(walletAddr)
                 .usePlaintext()
                 .build();
-        BoxStore.Wallet gw = new WalletGateway(WalletGrpc.newBlockingStub(channel));
+        WalletGateway gw = new WalletGateway(WalletGrpc.newBlockingStub(channel));
 
         BalanceConfig cfg = BalanceConfig.load();
         BoxStore.Settings settings = new BoxStore.Settings(
@@ -200,7 +218,7 @@ public final class AuctionServer {
         });
 
         Server server = ServerBuilder.forPort(port)
-                .addService(new AuctionService(store, events))
+                .addService(new AuctionService(store, events, gw))
                 .build()
                 .start();
         System.out.println("auction: ouvindo em :" + port + " (carteira em " + walletAddr + ")");

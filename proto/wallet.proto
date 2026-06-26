@@ -7,11 +7,13 @@ option java_outer_classname = "WalletProto";
 
 // Carteira / Inventário — guardião da consistência forte.
 // Reserve/Release/Settle sobre estado em memória; Redlock + transação Postgres
-// entram numa etapa posterior (Fase 3).
+// entram numa etapa posterior (Fase 3). AddItem credita ao inventário o item
+// sorteado na abertura da caixa.
 service Wallet {
   rpc Reserve   (ReserveRequest) returns (ReserveReply);
   rpc Release   (ReleaseRequest) returns (Ack);
   rpc Settle    (SettleRequest)  returns (Ack);   // debita de fato (arremate da caixa)
+  rpc AddItem   (AddItemRequest) returns (Ack);   // credita o item ao inventário (abertura)
   rpc GetPlayer (PlayerQuery)    returns (PlayerState);
 }
 
@@ -42,10 +44,25 @@ message SettleRequest {
 
 message PlayerQuery { string player_id = 1; }
 
+// Credita um item ao inventário do jogador (chamado pelo Leilão na abertura da caixa).
+// A Carteira gera o id do item; MIMIC não vira item (é penalidade — etapa posterior).
+message AddItemRequest {
+  string player_id = 1;
+  string type      = 2;   // COPPER | SILVER | GOLD | DIAMOND
+}
+
+// Item do inventário. `state`: FREE (livre) | LOCKED_COLLECTION | CONSUMED (etapas futuras).
+message Item {
+  string id    = 1;   // itm-...
+  string type  = 2;   // COPPER | SILVER | GOLD | DIAMOND
+  string state = 3;   // FREE | LOCKED_COLLECTION | CONSUMED
+}
+
 message PlayerState {
   string player_id = 1;
   int64  balance   = 2;
-  int64  reserved  = 3;   // saldo "gastável" = balance - reserved
+  int64  reserved  = 3;          // saldo "gastável" = balance - reserved
+  repeated Item inventory = 4;   // itens obtidos ao abrir caixas
 }
 
 message Ack { bool ok = 1; }

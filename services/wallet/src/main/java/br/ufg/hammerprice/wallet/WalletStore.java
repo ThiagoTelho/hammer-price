@@ -1,7 +1,10 @@
 package br.ufg.hammerprice.wallet;
 
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * Estado de saldo/reservas dos jogadores.
@@ -25,19 +28,25 @@ public final class WalletStore {
         long reserved = 0;
         /** Reservas ativas por caixa, para permitir Release/Settle idempotentes. */
         final Map<String, Long> byBox = new HashMap<>();
+        /** Inventário: itens obtidos ao abrir caixas. */
+        final List<Item> items = new ArrayList<>();
 
         Player(long balance) {
             this.balance = balance;
         }
     }
 
+    /** Item do inventário. {@code state}: FREE | LOCKED_COLLECTION | CONSUMED. */
+    public record Item(String id, String type, String state) {}
+
     /** Resultado de uma tentativa de reserva. */
     public record ReserveResult(boolean ok, long balance, long reserved) {}
 
-    /** Estado consultável de um jogador. */
-    public record PlayerView(long balance, long reserved) {}
+    /** Estado consultável de um jogador (saldo, reservas e inventário). */
+    public record PlayerView(long balance, long reserved, List<Item> items) {}
 
     private final Map<String, Player> players = new HashMap<>();
+    private final AtomicLong itemSeq = new AtomicLong();
 
     private Player getOrCreate(String id) {
         return players.computeIfAbsent(id, k -> new Player(initialBudget));
@@ -97,9 +106,20 @@ public final class WalletStore {
         return true;
     }
 
-    /** Retorna o estado atual do jogador (criando-o se necessário). */
+    /**
+     * Credita um item ao inventário do jogador (item sorteado ao abrir uma caixa).
+     * A carteira gera o id do item. Operação atômica.
+     */
+    public synchronized Item addItem(String playerId, String type) {
+        Player p = getOrCreate(playerId);
+        Item it = new Item("itm-" + itemSeq.incrementAndGet(), type, "FREE");
+        p.items.add(it);
+        return it;
+    }
+
+    /** Retorna o estado atual do jogador (saldo, reservas e inventário), criando-o se necessário. */
     public synchronized PlayerView get(String playerId) {
         Player p = getOrCreate(playerId);
-        return new PlayerView(p.balance, p.reserved);
+        return new PlayerView(p.balance, p.reserved, List.copyOf(p.items));
     }
 }
