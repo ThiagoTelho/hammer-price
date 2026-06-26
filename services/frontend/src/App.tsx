@@ -66,8 +66,12 @@ export function App() {
   const [code, setCode] = useState("");
   const [isHost, setIsHost] = useState(false);
   const [lobby, setLobby] = useState<{ status: string; host: string; players: string[] }>({ status: "WAITING", host: "", players: [] });
-  const [matchEndsAt, setMatchEndsAt] = useState(0);
   const [ranking, setRanking] = useState<RankRow[]>([]);
+  const [roundsToCreate, setRoundsToCreate] = useState(8);
+  const [matchRounds, setMatchRounds] = useState({ played: 0, total: 0 });
+  const [intermission, setIntermission] = useState<{ endsAt: number } | null>(null);
+  const [readyState, setReadyState] = useState({ ready: 0, total: 0 });
+  const [iAmReady, setIAmReady] = useState(false);
 
   const [round, setRound] = useState(0);
   const [box, setBox] = useState<Box | null>(null);
@@ -79,7 +83,7 @@ export function App() {
 
   const wsRef = useRef<WebSocket | null>(null);
   const playerIdRef = useRef("");
-  const pendingRef = useRef<{ kind: "create" } | { kind: "join"; code: string } | null>(null);
+  const pendingRef = useRef<{ kind: "create"; rounds: number } | { kind: "join"; code: string } | null>(null);
 
   const addLog = useCallback((line: string) => {
     setLog((prev) => [`${new Date().toLocaleTimeString()} — ${line}`, ...prev].slice(0, 30));
@@ -88,7 +92,7 @@ export function App() {
   const send = (o: unknown) => wsRef.current?.send(JSON.stringify(o));
 
   const connect = useCallback(
-    (action: { kind: "create" } | { kind: "join"; code: string }) => {
+    (action: { kind: "create"; rounds: number } | { kind: "join"; code: string }) => {
       const player = name.trim() || `player-${Math.floor(Math.random() * 9000 + 1000)}`;
       pendingRef.current = action;
       const ws = new WebSocket(`${GATEWAY_URL}?player=${encodeURIComponent(player)}`);
@@ -101,7 +105,7 @@ export function App() {
           case "HELLO":
             setPlayerId(msg.playerId);
             playerIdRef.current = msg.playerId;
-            if (pendingRef.current?.kind === "create") send({ type: "CREATE_ROOM" });
+            if (pendingRef.current?.kind === "create") send({ type: "CREATE_ROOM", rounds: pendingRef.current.rounds });
             else if (pendingRef.current?.kind === "join") send({ type: "JOIN_ROOM", code: pendingRef.current.code });
             break;
           case "ROOM_JOINED":
@@ -114,9 +118,10 @@ export function App() {
             if (msg.code) setCode(msg.code);
             break;
           case "MATCH_STARTED":
-            setMatchEndsAt(msg.endsAt ?? 0);
+            setMatchRounds({ played: msg.roundsPlayed ?? 0, total: msg.totalRounds ?? 0 });
+            setIntermission(null);
             setPhase("playing");
-            addLog("🚀 Partida iniciada!");
+            addLog(`🚀 Partida iniciada! ${msg.totalRounds} rodadas.`);
             break;
           case "MATCH_ENDED":
             setRanking(msg.ranking ?? []);
@@ -130,10 +135,21 @@ export function App() {
           case "ROUND_STARTED":
             setRound(msg.round ?? 0);
             setBox(withDeadline(msg.box ?? null));
-            addLog(`🆕 Rodada ${msg.round}: caixa ${msg.box?.boxType ?? "?"} em leilão`);
+            setIntermission(null);
+            setIAmReady(false);
+            addLog(`🆕 Nova rodada: caixa ${msg.box?.boxType ?? "?"} em leilão`);
             break;
           case "ROUND_ENDED":
-            if (!msg.winner) addLog(`⌛ Rodada ${msg.round} encerrada sem lances`);
+            if (!msg.winner) addLog(`⌛ Rodada encerrada sem lances`);
+            break;
+          case "ROUND_INTERMISSION":
+            setBox(null);
+            setIntermission({ endsAt: msg.endsAt ?? 0 });
+            setMatchRounds({ played: msg.roundsPlayed ?? 0, total: msg.totalRounds ?? 0 });
+            setIAmReady(false);
+            break;
+          case "READY_STATE":
+            setReadyState({ ready: msg.ready ?? 0, total: msg.total ?? 0 });
             break;
           case "BID_PLACED":
             addLog(`🔨 ${msg.leader} deu lance de ${msg.amount} em ${msg.boxId}`);
@@ -211,8 +227,8 @@ export function App() {
     if (!b.leader || !b.deadlineAt) return "—";
     return `${Math.max(0, Math.ceil((b.deadlineAt - Date.now()) / 1000))}s`;
   };
-  const matchClock = (): string => {
-    const s = Math.max(0, Math.ceil((matchEndsAt - Date.now()) / 1000));
+  const intermissionCountdown = (endsAt: number): string => {
+    const s = Math.max(0, Math.ceil((endsAt - Date.now()) / 1000));
     return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
   };
 
@@ -234,8 +250,10 @@ export function App() {
         </div>
         {phase === "playing" && (
           <div className="text-right">
-            <div className="text-2xl font-bold text-gold tabular-nums">⏳ {matchClock()}</div>
-            <div className="text-xs text-muted">Sala {code} · Rodada {round || "—"}</div>
+            <div className="text-2xl font-bold text-gold tabular-nums">
+              Rodada {Math.min(matchRounds.played + 1, matchRounds.total)}/{matchRounds.total}
+            </div>
+            <div className="text-xs text-muted">Sala {code}</div>
           </div>
         )}
       </header>
@@ -248,7 +266,15 @@ export function App() {
             <input className={`${C.input} mt-1`} placeholder="ex.: ana" value={name} onChange={(e) => setName(e.target.value)} />
           </div>
           {!name.trim() && <p className="text-xs text-muted -mt-2">Digite um nome para jogar.</p>}
-          <button className={C.btnGold} disabled={!name.trim()} onClick={() => connect({ kind: "create" })}>
+          <div>
+            <label className="text-xs uppercase tracking-wide text-muted">Rodadas (ao criar)</label>
+            <select className={`${C.input} mt-1`} value={roundsToCreate} onChange={(e) => setRoundsToCreate(Number(e.target.value))}>
+              {[5, 8, 10, 15].map((n) => (
+                <option key={n} value={n}>{n} rodadas</option>
+              ))}
+            </select>
+          </div>
+          <button className={C.btnGold} disabled={!name.trim()} onClick={() => connect({ kind: "create", rounds: roundsToCreate })}>
             Criar sala
           </button>
           <div className="flex items-center gap-3 text-muted text-xs">
@@ -375,7 +401,23 @@ export function App() {
                 })()}
               </div>
             ) : (
-              <div className="text-muted py-10">⏳ Aguardando a próxima rodada…</div>
+              <div className={`${C.card} p-6 text-center flex flex-col items-center gap-3 w-80`}>
+                <div className="text-muted">⏳ Intervalo — venda, queime ou forme coleções</div>
+                <div className="text-4xl font-bold text-gold tabular-nums">
+                  {intermission ? intermissionCountdown(intermission.endsAt) : "—"}
+                </div>
+                <div className="text-sm text-muted">{readyState.ready}/{readyState.total} prontos</div>
+                <button
+                  className={`${C.btnGold} w-full`}
+                  disabled={iAmReady || !intermission}
+                  onClick={() => {
+                    send({ type: "READY" });
+                    setIAmReady(true);
+                  }}
+                >
+                  {iAmReady ? "Pronto ✓" : "Estou pronto"}
+                </button>
+              </div>
             )}
           </div>
 

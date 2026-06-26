@@ -15,7 +15,8 @@ match:
 
 round:                          # modelo round-based: UMA caixa por rodada
   boxes_per_round: 1
-  intermission_seconds: 3       # pausa curta entre rodadas (abertura + anúncio)
+  intermission_max_seconds: 120 # TETO do intervalo entre rodadas; o gateway abre antes
+                                # se todos os jogadores marcarem "pronto"
   box_type_weights:             # sorteio aleatório do tipo da caixa a cada rodada
     BRONZE: 50
     SILVER: 30

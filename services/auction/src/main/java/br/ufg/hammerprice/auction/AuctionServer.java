@@ -1,5 +1,6 @@
 package br.ufg.hammerprice.auction;
 
+import br.ufg.hammerprice.auction.grpc.AdvanceReply;
 import br.ufg.hammerprice.auction.grpc.AuctionGrpc;
 import br.ufg.hammerprice.auction.grpc.Box;
 import br.ufg.hammerprice.auction.grpc.OpenBoxReply;
@@ -168,6 +169,13 @@ public final class AuctionServer {
                 events.boxOpened(req.getBoxId(), req.getPlayerId(), r.item(), r.isMimic());
             }
         }
+
+        @Override
+        public void advanceRound(RoomQuery req, StreamObserver<AdvanceReply> obs) {
+            store.advanceRound(); // encerra o intervalo e abre já a próxima rodada
+            obs.onNext(AdvanceReply.newBuilder().setStarted(true).build());
+            obs.onCompleted();
+        }
     }
 
     /** Odds de fallback (espelham o balance.yaml) caso a config não esteja disponível. */
@@ -193,7 +201,7 @@ public final class AuctionServer {
                 cfg.matchLong("antisnipe_reset_seconds", 8) * 1000,
                 cfg.matchLong("min_bid_increment_pct", 5),
                 cfg.matchLong("min_bid_increment_abs", 5),
-                cfg.roundLong("intermission_seconds", 3) * 1000);
+                cfg.roundLong("intermission_max_seconds", 120) * 1000);
 
         // RNG de abertura: usa odds do balance.yaml (com fallback) e seed injetável.
         BoxOpener.Odds oddsSource = type -> {

@@ -105,6 +105,8 @@ public final class BoxStore {
     private String leader = "";
     private long deadlineMs = 0;
     private ScheduledFuture<?> closeTask;
+    private volatile boolean inIntermission = false;   // entre rodadas: aguarda "todos prontos" ou o teto
+    private volatile ScheduledFuture<?> nextRoundTask;  // fallback que abre a próxima rodada no teto de tempo
     private final AtomicInteger boxSeq = new AtomicInteger();
 
     // Caixas arrematadas aguardando abertura pelo vencedor + ids já abertos.
@@ -266,9 +268,12 @@ public final class BoxStore {
             // Próxima rodada: imediata quando não há pausa (determinístico em teste);
             // caso contrário, agendada após a intermission.
             if (cfg.intermissionMs() <= 0) {
-                startNext = true;
+                startNext = true; // sem intervalo (determinístico em teste)
             } else {
-                scheduler.schedule(this::startRound, cfg.intermissionMs(), TimeUnit.MILLISECONDS);
+                // Intervalo entre rodadas: abre a próxima no TETO de tempo, salvo se
+                // advanceRound() for chamado antes (todos os jogadores prontos).
+                inIntermission = true;
+                nextRoundTask = scheduler.schedule(this::startNextRound, cfg.intermissionMs(), TimeUnit.MILLISECONDS);
             }
         } finally {
             lock.unlock();
@@ -281,6 +286,33 @@ public final class BoxStore {
         if (startNext) {
             startRound();
         }
+    }
+
+    /** Sai do intervalo e abre a próxima rodada — guardado para abrir UMA vez só
+     *  (vence o teto de tempo OU o "todos prontos", o que vier primeiro). */
+    private void startNextRound() {
+        boolean go = false;
+        lock.lock();
+        try {
+            if (inIntermission) {
+                inIntermission = false;
+                go = true;
+            }
+        } finally {
+            lock.unlock();
+        }
+        if (go) {
+            startRound();
+        }
+    }
+
+    /** Encerra o intervalo agora e abre a próxima rodada (ex.: todos os jogadores prontos). */
+    public void advanceRound() {
+        ScheduledFuture<?> t = nextRoundTask;
+        if (t != null) {
+            t.cancel(false);
+        }
+        startNextRound();
     }
 
     /**

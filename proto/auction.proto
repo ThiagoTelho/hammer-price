@@ -14,6 +14,7 @@ service Auction {
   rpc PlaceBid     (PlaceBidRequest) returns (PlaceBidReply);
   rpc GetRoomState (RoomQuery)       returns (RoomState);    // rodada atual + caixa + odds
   rpc OpenBox      (OpenBoxRequest)  returns (OpenBoxReply); // sorteio server-side
+  rpc AdvanceRound (RoomQuery)       returns (AdvanceReply); // encerra o intervalo e abre já a próxima rodada
 }
 
 message PlaceBidRequest {
@@ -46,6 +47,8 @@ message OpenBoxReply {
 }
 
 message RoomQuery { string room_id = 1; }
+
+message AdvanceReply { bool started = 1; }
 
 message Box {
   string box_id      = 1;

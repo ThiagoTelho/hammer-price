@@ -99,6 +99,15 @@ export function getRoomState(addr: string, roomId: string): Promise<RoomState> {
   });
 }
 
+// Encerra o intervalo e abre já a próxima rodada (chamado quando todos estão prontos).
+export function advanceRound(addr: string, roomId: string): Promise<{ started: boolean }> {
+  return new Promise((res, rej) => {
+    auctionAt(addr).AdvanceRound({ roomId }, callOpts(), (err: any, reply: { started: boolean }) =>
+      err ? rej(err) : res(reply),
+    );
+  });
+}
+
 export interface OpenBoxReply {
   ok: boolean;
   reason: string;
