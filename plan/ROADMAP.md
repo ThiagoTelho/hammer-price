@@ -8,10 +8,10 @@
 - **Disciplina:** Software Concorrente e Distribuído (SCD) — UFG, 2026.1
 - **Entrega:** 28/06/2026
 - **Última atualização deste arquivo:** 2026-06-25
-- **Marco atual:** **Reta final (entrega 28/06)** — de-risk do **deploy AWS (Fase 8)** iniciado:
-  scripts de provisão/subida em [`infra/deploy/`](../infra/deploy/) para o smoke test em
-  uma EC2. Em paralelo seguem pendentes: particionamento por vault (Fase 2), async real
-  (Pub/Sub + RabbitMQ, Fases 4/5) e replicação (Fase 7).
+- **Marco atual:** **Reta final (entrega 28/06)** — ✅ **smoke test em AWS EC2 verde (25/06)**:
+  o stack completo sobe numa EC2 e o jogo roda (R9 de-risked — maior risco do projeto
+  retirado). A seguir: async real (Pub/Sub + RabbitMQ, Fases 4/5), particionamento por
+  vault (Fase 2) e replicação / 2-node (Fases 7/8).
 
 ---
 
@@ -82,7 +82,7 @@ cada um é satisfeito. Atualize a coluna **Status** conforme as fases avançam.
 | R6 | Replicação **e** particionamento | 🔴 falta | → vault/jogador + Postgres réplica + Redis (Fases 2,3,7) |
 | R7 | Consistência **e** disponibilidade | 🟡 parcial | Saldo nunca negativo (em memória); → forte (Fase 3) + failover (Fase 7) |
 | R8 | >1 linguagem **e** >1 paradigma | 🟡 parcial | TS+Java; cliente-servidor+pub-sub; → +Python +messaging (Fase 5) |
-| R9 | Demonstração em AWS EC2 | 🟡 em andamento | Scripts de deploy prontos (`infra/deploy/`); falta a 1ª subida na conta AWS (Fase 8) |
+| R9 | Demonstração em AWS EC2 | 🟢 ok | Stack roda numa EC2 (smoke test verde 25/06); pendentes: demo gravada (Fase 10) e topologia 2–3 instâncias p/ R6 |
 
 Legenda: 🟢 satisfeito · 🟡 parcial · 🔴 ainda não.
 
@@ -200,11 +200,11 @@ Legenda: 🟢 satisfeito · 🟡 parcial · 🔴 ainda não.
 
 > A demonstração avaliada **roda na nuvem**. Ver [doc 08](../docs/08-deploy-aws.md).
 
-- [~] Provisionamento das instâncias **EC2** (2–3) *(R9)* — script `infra/deploy/provision.sh` pronto (1 instância p/ o smoke test); falta executar na conta AWS
-- [~] Deploy dos serviços via Docker/Compose nas instâncias *(R9)* — `infra/deploy/start.sh` sobe o stack apontando o frontend ao DNS público; falta validar na nuvem
-- [ ] **Acessível na Internet** a múltiplos clientes (frontend + API públicos) *(R1,R9)*
-- [~] Scripts de deploy versionados em [`infra/`](../infra/) *(R9)* — `infra/deploy/` (`provision.sh`, `user-data.sh`, `start.sh`, `DEPLOY.md`)
-- [~] "Hello world" em EC2 **cedo** (mitigação de risco do doc 06) *(R9)* — caminho turnkey pronto; pendente a 1ª subida real (de-risk em andamento)
+- [~] Provisionamento das instâncias **EC2** (2–3) *(R9)* — 1 instância no ar (smoke test verde via console + EC2 Instance Connect); faltam as 2–3 p/ particionamento entre máquinas (R6)
+- [x] Deploy dos serviços via Docker/Compose nas instâncias *(R9)* — `infra/deploy/start.sh` subiu o stack completo numa EC2 (AL2023, t3.medium) e o jogo roda
+- [~] **Acessível na Internet** a múltiplos clientes (frontend + API públicos) *(R1,R9)* — endpoints públicos (`:5173`/`:8080`) no ar; falta validar com 2+ jogadores remotos simultâneos
+- [x] Scripts de deploy versionados em [`infra/`](../infra/) *(R9)* — `infra/deploy/` (`provision.sh`, `user-data.sh`, `start.sh`, `DEPLOY.md`); inclui install do buildx no bootstrap
+- [x] "Hello world" em EC2 **cedo** (mitigação de risco do doc 06) *(R9)* — smoke test verde em 2026-06-25 (maior risco do projeto retirado)
 
 ## 📍 Fase 9 — Extras (opcionais)
 
@@ -257,3 +257,4 @@ As **fases** são por escopo; os **marcos**, por tempo — ajuste conforme a dat
 - 2026-06-14 — _(este commit)_ — **Fase 1 concluída.** Dockerfiles dos 5 serviços + `.dockerignore`; compose `--profile local` com healthchecks e ordem de subida; schema Postgres em `infra/db/init`; `balance.yaml` lido em runtime (Java `BalanceConfig` + worker Python); `PG_PORT` configurável. Verificado: `up --build` sobe os 8 containers (Redis/RabbitMQ/Postgres healthy) e o `test-slice.mjs` passa ponta a ponta dentro dos containers.
 - 2026-06-15 — _(este commit)_ — **Fase 2, increment 1 (ciclo de vida da caixa).** Auto-close por cronômetro + anti-sniping; `Settle` na carteira (debita o vencedor) + release dos perdedores; reposição por slot; desempate por lock/timestamp do servidor. Gateway expõe fechamento por polling (`BOX_SOLD`); frontend com contagem regressiva. Teste de concorrência `BoxStoreTest` (4 testes, 8×200 lances). Verificado: `mvn test` verde; no stack, lance → auto-close → `arrematada` → `BOX_SOLD`; regressão do `test-slice` ok.
 - 2026-06-15 — _(este commit)_ — **Fase 2, increment 2 (abertura/RNG).** `OpenBox` RPC; `BoxOpener` com RNG de seed injetável (`RNG_SEED`), odds do `balance.yaml`, afinidade somada + renormalização (Σ P = 1). Caixas arrematadas ficam disponíveis para o vencedor abrir; gateway trata `OPEN_BOX` (reply síncrono + broadcast `BOX_OPENED`); frontend abre a caixa e mostra o item. Testes: `BoxOpenerTest` (determinismo/renormalização/afinidade) + `openBox` no `BoxStore` (10 testes no total). Verificado: `mvn test` verde; no stack, lance → auto-close → `OPEN_BOX` → item sorteado (COPPER) → `BOX_OPENED`.
+- 2026-06-25 — _(este commit)_ — **Fase 8 (de-risk R9): smoke test em AWS EC2 verde.** Scripts versionados em `infra/deploy/` (`provision.sh`, `user-data.sh`, `start.sh` + `DEPLOY.md`) sobem o stack completo numa EC2 (AL2023, t3.medium) via Docker Compose; correção do `VITE_GATEWAY_URL` para o DNS público e install do buildx no bootstrap (compose `--build` exige buildx ≥ 0.17). Verificado: jogo acessível em `http://<dns-público>:5173`. Pendentes: validar multi-cliente (R1), topologia 2–3 instâncias (R6) e demo gravada (Fase 10).
