@@ -9,8 +9,6 @@ import * as protoLoader from "@grpc/proto-loader";
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PROTO_DIR = resolve(__dirname, "../../../proto");
 
-const AUCTION_GRPC = process.env.AUCTION_GRPC ?? "localhost:50051";
-
 const packageDef = protoLoader.loadSync(resolve(PROTO_DIR, "auction.proto"), {
   keepCase: false,
   longs: Number,
@@ -20,7 +18,17 @@ const packageDef = protoLoader.loadSync(resolve(PROTO_DIR, "auction.proto"), {
 const proto = grpc.loadPackageDefinition(packageDef) as any;
 const AuctionCtor = proto.hammerprice.auction.Auction;
 
-const auction = new AuctionCtor(AUCTION_GRPC, grpc.credentials.createInsecure());
+// Particionamento por sala: um cliente gRPC por instância de Leilão (cada sala tem a sua),
+// cacheado por endereço. O gateway escolhe o endereço pela sala do cliente.
+const clientsByAddr = new Map<string, any>();
+function auctionAt(addr: string) {
+  let c = clientsByAddr.get(addr);
+  if (!c) {
+    c = new AuctionCtor(addr, grpc.credentials.createInsecure());
+    clientsByAddr.set(addr, c);
+  }
+  return c;
+}
 
 export interface PlaceBidReply {
   accepted: boolean;
@@ -48,21 +56,22 @@ export interface RoomState {
 }
 
 export function placeBid(
+  addr: string,
   roomId: string,
   boxId: string,
   playerId: string,
   amount: number,
 ): Promise<PlaceBidReply> {
   return new Promise((res, rej) => {
-    auction.PlaceBid({ roomId, boxId, playerId, amount }, (err: any, reply: PlaceBidReply) =>
+    auctionAt(addr).PlaceBid({ roomId, boxId, playerId, amount }, (err: any, reply: PlaceBidReply) =>
       err ? rej(err) : res(reply),
     );
   });
 }
 
-export function getRoomState(roomId: string): Promise<RoomState> {
+export function getRoomState(addr: string, roomId: string): Promise<RoomState> {
   return new Promise((res, rej) => {
-    auction.GetRoomState({ roomId }, (err: any, reply: RoomState) =>
+    auctionAt(addr).GetRoomState({ roomId }, (err: any, reply: RoomState) =>
       err ? rej(err) : res(reply),
     );
   });
@@ -76,12 +85,15 @@ export interface OpenBoxReply {
 }
 
 // O vencedor abre a caixa arrematada; o servidor sorteia o item (gRPC síncrono).
-export function openBox(roomId: string, boxId: string, playerId: string): Promise<OpenBoxReply> {
+export function openBox(
+  addr: string,
+  roomId: string,
+  boxId: string,
+  playerId: string,
+): Promise<OpenBoxReply> {
   return new Promise((res, rej) => {
-    auction.OpenBox({ roomId, boxId, playerId }, (err: any, reply: OpenBoxReply) =>
+    auctionAt(addr).OpenBox({ roomId, boxId, playerId }, (err: any, reply: OpenBoxReply) =>
       err ? rej(err) : res(reply),
     );
   });
 }
-
-export { AUCTION_GRPC };

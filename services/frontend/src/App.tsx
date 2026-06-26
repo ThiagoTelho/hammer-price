@@ -41,6 +41,7 @@ const ITEM_EMOJI: Record<string, string> = {
 
 export function App() {
   const [name, setName] = useState("");
+  const [room, setRoom] = useState("room-1");
   const [connected, setConnected] = useState(false);
   const [playerId, setPlayerId] = useState("");
   const [round, setRound] = useState(0);
@@ -58,7 +59,9 @@ export function App() {
 
   const connect = useCallback(() => {
     const player = name.trim() || `player-${Math.floor(Math.random() * 9000 + 1000)}`;
-    const ws = new WebSocket(`${GATEWAY_URL}?player=${encodeURIComponent(player)}`);
+    const ws = new WebSocket(
+      `${GATEWAY_URL}?player=${encodeURIComponent(player)}&room=${encodeURIComponent(room)}`,
+    );
     wsRef.current = ws;
 
     ws.onopen = () => {
@@ -131,7 +134,7 @@ export function App() {
           break;
       }
     };
-  }, [name, addLog]);
+  }, [name, room, addLog]);
 
   useEffect(() => () => wsRef.current?.close(), []);
 
@@ -175,13 +178,17 @@ export function App() {
             onChange={(e) => setName(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && connect()}
           />
+          <select style={S.select} value={room} onChange={(e) => setRoom(e.target.value)}>
+            <option value="room-1">Sala room-1</option>
+            <option value="room-2">Sala room-2</option>
+          </select>
           <button style={S.btn} onClick={connect}>
             Entrar na sala
           </button>
         </div>
       ) : (
         <p>
-          Jogando como <b>{playerId}</b> · <b>Rodada {round || "—"}</b>
+          Jogando como <b>{playerId}</b> · <b>Sala {room}</b> · <b>Rodada {round || "—"}</b>
         </p>
       )}
 
@@ -242,6 +249,7 @@ const S: Record<string, React.CSSProperties> = {
   page: { fontFamily: "system-ui, sans-serif", maxWidth: 760, margin: "0 auto", padding: 24 },
   connectBox: { display: "flex", gap: 8, margin: "12px 0" },
   input: { padding: "8px 10px", fontSize: 14, border: "1px solid #ccc", borderRadius: 6, flex: 1 },
+  select: { padding: "8px 10px", fontSize: 14, border: "1px solid #ccc", borderRadius: 6 },
   btn: {
     padding: "8px 14px",
     fontSize: 14,

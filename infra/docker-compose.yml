@@ -74,7 +74,9 @@ services:
     restart: unless-stopped
     environment:
       REDIS_URL: redis://redis:6379
-      AUCTION_GRPC: auction-vault1:50051
+      # Particionamento por sala: cada sala é servida por uma instância de Leilão própria.
+      # O gateway roteia as ações (gRPC) e o fan-out de eventos para a instância dona da sala.
+      ROOM_ROUTES: "room-1=auction-vault1:50051,room-2=auction-vault2:50051"
       WALLET_GRPC: wallet-shard1:50052
       GATEWAY_PORT: 8080
     ports: ["8080:8080"]
@@ -82,6 +84,8 @@ services:
       redis:
         condition: service_healthy
       auction-vault1:
+        condition: service_started
+      auction-vault2:
         condition: service_started
 
   auction-vault1:
@@ -92,7 +96,7 @@ services:
     restart: unless-stopped
     environment:
       AUCTION_ADDR: "50051"
-      VAULT_ID: vault-1
+      ROOM_ID: room-1                # esta instância é dona da sala room-1 (partição)
       REDIS_URL: redis://redis:6379
       RABBITMQ_URL: amqp://rabbitmq:5672
       WALLET_GRPC: wallet-shard1:50052
@@ -111,15 +115,24 @@ services:
     build:
       context: ..
       dockerfile: services/auction/Dockerfile
-    profiles: ["node-b"]
+    profiles: ["local", "node-b"]
     restart: unless-stopped
     environment:
       AUCTION_ADDR: "50051"
-      VAULT_ID: vault-2
+      ROOM_ID: room-2                # esta instância é dona da sala room-2 (partição)
+      REDIS_URL: redis://redis:6379
+      RABBITMQ_URL: amqp://rabbitmq:5672
       WALLET_GRPC: wallet-shard2:50052
       BALANCE_CONFIG: /config/balance.yaml
     volumes:
       - "./config/balance.yaml:/config/balance.yaml:ro"
+    depends_on:
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      wallet-shard2:
+        condition: service_started
 
   wallet-shard1:
     build:
@@ -145,7 +158,7 @@ services:
     build:
       context: ..
       dockerfile: services/wallet/Dockerfile
-    profiles: ["node-b"]
+    profiles: ["local", "node-b"]
     restart: unless-stopped
     environment:
       WALLET_ADDR: "50052"

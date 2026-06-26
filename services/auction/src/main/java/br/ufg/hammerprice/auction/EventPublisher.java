@@ -2,7 +2,6 @@ package br.ufg.hammerprice.auction;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.rabbitmq.client.Channel;
-import com.rabbitmq.client.Connection;
 import com.rabbitmq.client.ConnectionFactory;
 import com.rabbitmq.client.MessageProperties;
 import java.net.URI;
@@ -32,31 +31,45 @@ public final class EventPublisher {
     private final String roomChannel;
     private final ObjectMapper json = new ObjectMapper();
     private final JedisPool redis;     // null se indisponível
-    private final Connection mqConn;   // null se indisponível
-    private final Channel mqChannel;   // null se indisponível
+    private final Channel mqChannel;   // null se indisponível (canal RabbitMQ)
 
     public EventPublisher(String roomId, String redisUrl, String rabbitUrl) {
         this.roomId = roomId;
         this.roomChannel = "room:" + roomId + ":events";
         this.redis = initRedis(redisUrl);
-        Connection conn = null;
-        Channel ch = null;
-        try {
-            if (rabbitUrl != null && !rabbitUrl.isBlank()) {
-                ConnectionFactory f = new ConnectionFactory();
-                f.setUri(rabbitUrl);
-                conn = f.newConnection("auction");
-                ch = conn.createChannel();
-                ch.exchangeDeclare(EXCHANGE, "topic", true); // durável
-                System.out.println("auction: RabbitMQ conectado em " + rabbitUrl);
-            }
-        } catch (Exception e) {
-            System.err.println("auction: RabbitMQ indisponível (" + e.getMessage() + "); messaging desativado");
-            conn = null;
-            ch = null;
+        this.mqChannel = initRabbit(rabbitUrl);
+    }
+
+    private static Channel initRabbit(String url) {
+        if (url == null || url.isBlank()) {
+            return null;
         }
-        this.mqConn = conn;
-        this.mqChannel = ch;
+        ConnectionFactory f = new ConnectionFactory();
+        try {
+            f.setUri(url);
+        } catch (Exception e) {
+            System.err.println("auction: RABBITMQ_URL inválida (" + e.getMessage() + "); messaging desativado");
+            return null;
+        }
+        // RabbitMQ pode demorar a aceitar conexões mesmo após o healthcheck; tenta com backoff.
+        for (int attempt = 1; attempt <= 10; attempt++) {
+            try {
+                Channel ch = f.newConnection("auction").createChannel();
+                ch.exchangeDeclare(EXCHANGE, "topic", true); // durável
+                System.out.println("auction: RabbitMQ conectado em " + url);
+                return ch;
+            } catch (Exception e) {
+                System.err.println("auction: RabbitMQ ainda não pronto (tentativa " + attempt + "); aguardando…");
+                try {
+                    Thread.sleep(2000);
+                } catch (InterruptedException ie) {
+                    Thread.currentThread().interrupt();
+                    return null;
+                }
+            }
+        }
+        System.err.println("auction: RabbitMQ indisponível após retries; messaging desativado");
+        return null;
     }
 
     private static JedisPool initRedis(String url) {
@@ -187,9 +200,7 @@ public final class EventPublisher {
         try {
             if (mqChannel != null) {
                 mqChannel.close();
-            }
-            if (mqConn != null) {
-                mqConn.close();
+                mqChannel.getConnection().close();
             }
         } catch (Exception ignored) {
             // encerramento best-effort
