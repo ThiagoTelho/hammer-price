@@ -30,6 +30,8 @@ public final class WalletStore {
         final Map<String, Long> byBox = new HashMap<>();
         /** Inventário: itens obtidos ao abrir caixas. */
         final List<Item> items = new ArrayList<>();
+        /** Afinidade por tipo (pontos percentuais), aumentada ao "queimar" itens. */
+        final Map<String, Integer> affinity = new HashMap<>();
 
         Player(long balance) {
             this.balance = balance;
@@ -42,8 +44,14 @@ public final class WalletStore {
     /** Resultado de uma tentativa de reserva. */
     public record ReserveResult(boolean ok, long balance, long reserved) {}
 
-    /** Estado consultável de um jogador (saldo, reservas e inventário). */
-    public record PlayerView(long balance, long reserved, List<Item> items) {}
+    /** Resultado de uma venda de item. */
+    public record SellResult(boolean ok, String reason, long price, String type, long balance) {}
+
+    /** Resultado de uma queima de item (afinidade resultante). */
+    public record BurnResult(boolean ok, String reason, String type, int affinity) {}
+
+    /** Estado consultável de um jogador (saldo, reservas, inventário e afinidades). */
+    public record PlayerView(long balance, long reserved, List<Item> items, Map<String, Integer> affinities) {}
 
     private final Map<String, Player> players = new HashMap<>();
     private final AtomicLong itemSeq = new AtomicLong();
@@ -117,9 +125,60 @@ public final class WalletStore {
         return it;
     }
 
-    /** Retorna o estado atual do jogador (saldo, reservas e inventário), criando-o se necessário. */
+    private static Item findItem(Player p, String itemId) {
+        for (Item it : p.items) {
+            if (it.id().equals(itemId)) {
+                return it;
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Vende um item LIVRE pelo preço de mercado do seu tipo (resolvido pelo chamador e
+     * passado em {@code prices}). Remove o item e credita o valor ao saldo. Atômica.
+     */
+    public synchronized SellResult sellItem(String playerId, String itemId, Map<String, Long> prices) {
+        Player p = players.get(playerId);
+        Item it = (p == null) ? null : findItem(p, itemId);
+        if (it == null) {
+            return new SellResult(false, "ITEM_NOT_FOUND", 0, "", p == null ? 0 : p.balance);
+        }
+        if (!"FREE".equals(it.state())) {
+            return new SellResult(false, "ITEM_LOCKED", 0, it.type(), p.balance);
+        }
+        long price = prices.getOrDefault(it.type(), 0L);
+        p.items.remove(it);
+        p.balance += price;
+        return new SellResult(true, "OK", price, it.type(), p.balance);
+    }
+
+    /**
+     * Queima um item LIVRE: destrói o item e soma {@code gain} à afinidade pelo seu tipo,
+     * com teto {@code cap}. Rejeitada se a afinidade já estiver no teto. Atômica.
+     */
+    public synchronized BurnResult burnItem(String playerId, String itemId, int gain, int cap) {
+        Player p = players.get(playerId);
+        Item it = (p == null) ? null : findItem(p, itemId);
+        if (it == null) {
+            return new BurnResult(false, "ITEM_NOT_FOUND", "", 0);
+        }
+        if (!"FREE".equals(it.state())) {
+            return new BurnResult(false, "ITEM_LOCKED", it.type(), p.affinity.getOrDefault(it.type(), 0));
+        }
+        int cur = p.affinity.getOrDefault(it.type(), 0);
+        if (cur >= cap) {
+            return new BurnResult(false, "AT_CAP", it.type(), cur);
+        }
+        int next = Math.min(cap, cur + gain);
+        p.affinity.put(it.type(), next);
+        p.items.remove(it);
+        return new BurnResult(true, "OK", it.type(), next);
+    }
+
+    /** Retorna o estado atual do jogador (saldo, reservas, inventário e afinidades). */
     public synchronized PlayerView get(String playerId) {
         Player p = getOrCreate(playerId);
-        return new PlayerView(p.balance, p.reserved, List.copyOf(p.items));
+        return new PlayerView(p.balance, p.reserved, List.copyOf(p.items), Map.copyOf(p.affinity));
     }
 }

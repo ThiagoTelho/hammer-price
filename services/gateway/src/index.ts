@@ -7,7 +7,7 @@
 //   apenas aos clientes daquela sala. O gateway é stateless e replicável.
 import { WebSocketServer, WebSocket } from "ws";
 import Redis from "ioredis";
-import { placeBid, getRoomState, openBox, getPlayer, type Box } from "./grpcClients.js";
+import { placeBid, getRoomState, openBox, getPlayer, sellItem, burnItem, type Box } from "./grpcClients.js";
 
 const PORT = Number(process.env.GATEWAY_PORT ?? 8080);
 const REDIS_URL = process.env.REDIS_URL ?? "redis://localhost:6379";
@@ -64,11 +64,27 @@ async function sendWallet(c: Client): Promise<void> {
     const p = await getPlayer(waddr, c.playerId);
     if (c.ws.readyState === WebSocket.OPEN) {
       c.ws.send(
-        JSON.stringify({ type: "WALLET_UPDATED", balance: p.balance, reserved: p.reserved, inventory: p.inventory }),
+        JSON.stringify({
+          type: "WALLET_UPDATED",
+          balance: p.balance,
+          reserved: p.reserved,
+          inventory: p.inventory,
+          affinities: p.affinities,
+        }),
       );
     }
   } catch {
     /* wallet shard indisponível → segue sem atualização */
+  }
+}
+
+// Lê o snapshot de mercado da réplica para precificar uma venda.
+async function currentMarket(): Promise<Record<string, number>> {
+  try {
+    const raw = await replica.get("market:prices");
+    return raw ? JSON.parse(raw) : {};
+  } catch {
+    return {};
   }
 }
 
@@ -190,6 +206,33 @@ wss.on("connection", async (ws, req) => {
       } catch (err) {
         console.error("gateway: erro no OPEN_BOX:", err);
         ws.send(JSON.stringify({ type: "ERROR", reason: "OPEN_FAILED" }));
+      }
+    }
+
+    if (msg.type === "SELL_ITEM") {
+      try {
+        const prices = await currentMarket(); // preço autoritativo do mercado
+        const reply = await sellItem(WALLET_ROUTES[room], playerId, msg.itemId, prices);
+        ws.send(
+          JSON.stringify({ type: "SELL_RESULT", ok: reply.ok, reason: reply.reason, itemType: reply.type, price: reply.price }),
+        );
+        if (reply.ok) void sendWallet(client); // inventário e saldo mudaram
+      } catch (err) {
+        console.error("gateway: erro no SELL_ITEM:", err);
+        ws.send(JSON.stringify({ type: "ERROR", reason: "SELL_FAILED" }));
+      }
+    }
+
+    if (msg.type === "BURN_ITEM") {
+      try {
+        const reply = await burnItem(WALLET_ROUTES[room], playerId, msg.itemId);
+        ws.send(
+          JSON.stringify({ type: "BURN_RESULT", ok: reply.ok, reason: reply.reason, itemType: reply.type, affinity: reply.affinity }),
+        );
+        if (reply.ok) void sendWallet(client); // inventário e afinidade mudaram
+      } catch (err) {
+        console.error("gateway: erro no BURN_ITEM:", err);
+        ws.send(JSON.stringify({ type: "ERROR", reason: "BURN_FAILED" }));
       }
     }
   });

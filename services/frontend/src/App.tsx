@@ -53,6 +53,7 @@ export function App() {
     balance: number;
     reserved: number;
     inventory: { id: string; type: string; state: string }[];
+    affinities: { type: string; points: number }[];
   } | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
   // playerId via ref: o handler de mensagens é criado uma vez e precisa do id atual.
@@ -152,7 +153,16 @@ export function App() {
             balance: msg.balance ?? 0,
             reserved: msg.reserved ?? 0,
             inventory: msg.inventory ?? [],
+            affinities: msg.affinities ?? [],
           });
+          break;
+        case "SELL_RESULT":
+          if (msg.ok) addLog(`💸 Vendeu ${msg.itemType} por ${msg.price}`);
+          else addLog(`⚠️ Venda falhou: ${msg.reason}`);
+          break;
+        case "BURN_RESULT":
+          if (msg.ok) addLog(`🔥 Queimou ${msg.itemType} → afinidade ${msg.itemType} agora +${msg.affinity}`);
+          else addLog(`⚠️ Queima falhou: ${msg.reason}`);
           break;
         case "ERROR":
           addLog(`⚠️ ${msg.reason}`);
@@ -183,6 +193,9 @@ export function App() {
   const sendOpen = (boxId: string) => {
     wsRef.current?.send(JSON.stringify({ type: "OPEN_BOX", boxId }));
   };
+
+  const sell = (itemId: string) => wsRef.current?.send(JSON.stringify({ type: "SELL_ITEM", itemId }));
+  const burn = (itemId: string) => wsRef.current?.send(JSON.stringify({ type: "BURN_ITEM", itemId }));
 
   const oddsLine = (odds: Record<string, number>): string =>
     ITEM_ORDER.filter((k) => odds?.[k] != null)
@@ -230,6 +243,37 @@ export function App() {
           <span>🔒 Reservado <b>{wallet.reserved}</b></span>
           <span>🟢 Gastável <b>{wallet.balance - wallet.reserved}</b></span>
           <span style={{ marginLeft: "auto" }}>🎒 {invCounts(wallet.inventory)}</span>
+        </div>
+      )}
+
+      {connected && wallet && wallet.inventory.length > 0 && (
+        <div style={S.inv}>
+          {ITEM_ORDER.filter((t) => wallet.inventory.some((i) => i.type === t)).map((t) => {
+            const count = wallet.inventory.filter((i) => i.type === t).length;
+            const firstFree = wallet.inventory.find((i) => i.type === t && i.state === "FREE");
+            return (
+              <div key={t} style={S.invRow}>
+                <span style={{ minWidth: 110 }}>
+                  {ITEM_EMOJI[t]} {t} ×{count}
+                </span>
+                <span style={{ fontSize: 12, color: "#888", minWidth: 64 }}>
+                  {prices[t] != null ? `mkt ${prices[t]}` : ""}
+                </span>
+                <button style={S.smallBtn} disabled={!firstFree} onClick={() => firstFree && sell(firstFree.id)}>
+                  vender
+                </button>
+                <button style={S.smallBtn} disabled={!firstFree} onClick={() => firstFree && burn(firstFree.id)}>
+                  queimar
+                </button>
+              </div>
+            );
+          })}
+        </div>
+      )}
+      {connected && wallet && wallet.affinities.length > 0 && (
+        <div style={S.affinity}>
+          ✨ Afinidade (chance extra ao abrir):{" "}
+          {wallet.affinities.map((a) => `${ITEM_EMOJI[a.type]} +${a.points}`).join("   ")}
         </div>
       )}
 
@@ -320,6 +364,26 @@ const S: Record<string, React.CSSProperties> = {
     fontSize: 14,
     margin: "6px 0",
   },
+  inv: {
+    border: "1px solid #eee",
+    borderRadius: 8,
+    padding: "8px 12px",
+    margin: "6px 0",
+    display: "flex",
+    flexDirection: "column",
+    gap: 6,
+  },
+  invRow: { display: "flex", gap: 10, alignItems: "center", fontSize: 14 },
+  smallBtn: {
+    padding: "4px 10px",
+    fontSize: 13,
+    border: "none",
+    borderRadius: 6,
+    background: "#5b3df5",
+    color: "#fff",
+    cursor: "pointer",
+  },
+  affinity: { fontSize: 13, color: "#16a34a", margin: "4px 0" },
   stage: { display: "flex", justifyContent: "center", margin: "16px 0" },
   card: {
     border: "1px solid #e3e3e3",
