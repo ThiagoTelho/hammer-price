@@ -36,3 +36,90 @@ body {
     0 0 0 1px rgba(232, 185, 35, 0.35),
     0 10px 40px -12px rgba(232, 185, 35, 0.25);
 }
+
+/* ---------- Palco da casa de leilão ---------- */
+
+/* Holofote atrás do pedestal: cone de luz quente subindo do centro. */
+.stage {
+  position: relative;
+  border-radius: 1rem;
+  overflow: hidden;
+  background:
+    radial-gradient(120% 80% at 50% 120%, rgba(232, 185, 35, 0.16), transparent 55%),
+    linear-gradient(180deg, #211a13 0%, #15110d 60%, #0c0a09 100%);
+  border: 1px solid var(--color-line);
+}
+.stage-spot {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(46% 70% at 50% 8%, rgba(245, 215, 122, 0.18), transparent 60%);
+  pointer-events: none;
+}
+/* Piso de madeira do palco. */
+.stage-floor {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 28%;
+  background:
+    linear-gradient(180deg, transparent, rgba(0, 0, 0, 0.35)),
+    repeating-linear-gradient(90deg, #3a2a1b 0 14px, #43301f 14px 28px);
+  opacity: 0.55;
+  pointer-events: none;
+}
+
+/* Cortinas de veludo vermelho enquadrando o palco. */
+.curtain {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 14%;
+  z-index: 2;
+  pointer-events: none;
+  background:
+    repeating-linear-gradient(90deg, #5c0f12 0 10px, #7a1418 10px 16px, #4a0c0f 16px 26px);
+  box-shadow: inset 0 0 40px rgba(0, 0, 0, 0.6);
+}
+.curtain-l {
+  left: 0;
+  border-right: 2px solid #2c0608;
+  border-radius: 1rem 0 0 1rem;
+}
+.curtain-r {
+  right: 0;
+  border-left: 2px solid #2c0608;
+  border-radius: 0 1rem 1rem 0;
+}
+.curtain-top {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 11%;
+  z-index: 3;
+  pointer-events: none;
+  background:
+    radial-gradient(closest-side at 50% 0, #7a1418, #5c0f12) 0 0 / 9% 100% repeat-x;
+  box-shadow: inset 0 -10px 24px rgba(0, 0, 0, 0.55);
+}
+
+/* Pedestal sob o lote. */
+.pedestal {
+  width: 60%;
+  height: 18px;
+  margin: 6px auto 0;
+  border-radius: 50%;
+  background: radial-gradient(closest-side, rgba(232, 185, 35, 0.4), transparent 75%);
+}
+
+/* Tremor (Mímico / alerta). */
+@keyframes hp-shake {
+  10%, 90% { transform: translateX(-2px); }
+  20%, 80% { transform: translateX(4px); }
+  30%, 50%, 70% { transform: translateX(-7px); }
+  40%, 60% { transform: translateX(7px); }
+}
+.shake {
+  animation: hp-shake 0.55s cubic-bezier(0.36, 0.07, 0.19, 0.97) both;
+}

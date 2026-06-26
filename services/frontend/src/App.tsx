@@ -1,6 +1,8 @@
 // Mesa de leilão do Hammer Price — tema "casa de leilão" (escuro + dourado, Tailwind).
 // Fluxo: menu (criar/entrar) → lobby → partida (rodadas + HUD) → ranking final.
 import { useEffect, useRef, useState, useCallback } from "react";
+import { AnimatePresence, motion } from "framer-motion";
+import * as sfx from "./sound";
 
 const GATEWAY_URL = import.meta.env.VITE_GATEWAY_URL ?? "ws://localhost:8080";
 
@@ -82,6 +84,8 @@ export function App() {
   const [lastBids, setLastBids] = useState<Record<string, number>>({});
   const [log, setLog] = useState<string[]>([]);
   const [bidAmount, setBidAmount] = useState("");
+  const [flash, setFlash] = useState<{ kind: "win" | "open" | "mimic"; emoji: string; title: string; sub: string } | null>(null);
+  const [muted, setMutedState] = useState(false);
 
   const wsRef = useRef<WebSocket | null>(null);
   const playerIdRef = useRef("");
@@ -151,6 +155,7 @@ export function App() {
             setBox(withDeadline(msg.box ?? null));
             setIntermission(null);
             setIAmReady(false);
+            sfx.whoosh();
             addLog(`🆕 Nova rodada: caixa ${msg.box?.boxType ?? "?"} em leilão`);
             break;
           case "ROUND_ENDED":
@@ -170,6 +175,7 @@ export function App() {
             break;
           case "BID_PLACED":
             addLog(`🔨 ${msg.leader} deu lance de ${msg.amount} em ${msg.boxId}`);
+            sfx.gavel();
             setLastBids((prev) => ({ ...prev, [msg.leader]: msg.amount }));
             setBox((prev) =>
               prev && prev.boxId === msg.boxId
@@ -177,22 +183,33 @@ export function App() {
                 : prev,
             );
             break;
-          case "BOX_SOLD":
+          case "BOX_SOLD": {
             addLog(`🏆 ${msg.boxId} arrematada por ${msg.winner} (${msg.price})`);
-            if (msg.winner === playerIdRef.current) {
+            sfx.gavel();
+            const mine = msg.winner === playerIdRef.current;
+            if (mine) {
               setWonBoxes((prev) => (prev.some((b) => b.boxId === msg.boxId) ? prev : [...prev, { boxId: msg.boxId, boxType: msg.boxType }]));
             }
+            setFlash({ kind: "win", emoji: "🏆", title: mine ? "Você arrematou!" : `${msg.winner} arrematou`, sub: `${BOX_EMOJI[msg.boxType] ?? "📦"} ${msg.boxType} por ${msg.price}` });
             break;
+          }
           case "OPEN_RESULT":
             if (msg.ok) {
               setWonBoxes((prev) => prev.filter((b) => b.boxId !== msg.boxId));
-              if (!msg.isMimic) addLog(`🎁 Você abriu: ${msg.item}`); // mímico é narrado pelo BOX_OPENED
+              if (!msg.isMimic) {
+                addLog(`🎁 Você abriu: ${msg.item}`); // mímico é narrado pelo BOX_OPENED
+                sfx.fanfare();
+                setFlash({ kind: "open", emoji: ITEM_EMOJI[msg.item] ?? "🎁", title: `Você abriu: ${msg.item}`, sub: "Item creditado ao inventário" });
+              }
             } else addLog(`⚠️ Não foi possível abrir ${msg.boxId}: ${msg.reason}`);
             break;
           case "BOX_OPENED": {
             const who = msg.player === playerIdRef.current ? "Você" : msg.player;
-            if (msg.isMimic) addLog(`💀 ${who} abriu um MÍMICO — perdeu ${msg.penaltyDetail || "—"}`);
-            else if (msg.player !== playerIdRef.current) addLog(`📦 ${msg.player} abriu: ${msg.item}`);
+            if (msg.isMimic) {
+              addLog(`💀 ${who} abriu um MÍMICO — perdeu ${msg.penaltyDetail || "—"}`);
+              sfx.thud();
+              setFlash({ kind: "mimic", emoji: "💀", title: `${who} pegou um MÍMICO!`, sub: `Perdeu ${msg.penaltyDetail || "—"}` });
+            } else if (msg.player !== playerIdRef.current) addLog(`📦 ${msg.player} abriu: ${msg.item}`);
             break;
           }
           case "BID_ACCEPTED":
@@ -219,12 +236,14 @@ export function App() {
             });
             break;
           case "SELL_RESULT":
+            if (msg.ok) sfx.coin();
             addLog(msg.ok ? `💸 Vendeu ${msg.itemType} por ${msg.price}` : `⚠️ Venda falhou: ${msg.reason}`);
             break;
           case "BURN_RESULT":
             addLog(msg.ok ? `🔥 Queimou ${msg.itemType} → afinidade +${msg.affinity}` : `⚠️ Queima falhou: ${msg.reason}`);
             break;
           case "FORM_RESULT":
+            if (msg.ok) sfx.fanfare();
             addLog(msg.ok ? `🏅 Coleção ${msg.kind} formada! +${msg.bonus}` : `⚠️ Não deu para formar ${msg.kind}: ${msg.reason}`);
             break;
           case "ERROR":
@@ -243,6 +262,19 @@ export function App() {
     const id = setInterval(() => setTick((t) => t + 1), 250);
     return () => clearInterval(id);
   }, []);
+
+  // Overlay de destaque (vitória / abertura / mímico): some sozinho após alguns segundos.
+  useEffect(() => {
+    if (!flash) return;
+    const id = setTimeout(() => setFlash(null), flash.kind === "mimic" ? 2600 : 2200);
+    return () => clearTimeout(id);
+  }, [flash]);
+
+  const toggleMute = () => {
+    const m = !muted;
+    setMutedState(m);
+    sfx.setMuted(m);
+  };
 
   const boxCountdown = (b: Box): string => {
     if (!b.leader || !b.deadlineAt) return "—";
@@ -263,20 +295,25 @@ export function App() {
   const canForm = (requires: Record<string, number>): boolean => Object.entries(requires).every(([t, n]) => freeCount(t) >= n);
 
   return (
-    <div className="max-w-3xl mx-auto px-5 py-7">
+    <div className="max-w-6xl mx-auto px-5 py-7">
       <header className="flex items-end justify-between gap-3 border-b border-line pb-4">
         <div>
           <h1 className="font-display text-4xl font-bold text-gold leading-none">🔨 Hammer Price</h1>
           <p className="text-muted text-sm mt-1">Leilão de caixas misteriosas em tempo real</p>
         </div>
-        {phase === "playing" && (
-          <div className="text-right">
-            <div className="text-2xl font-bold text-gold tabular-nums">
-              Rodada {Math.min(matchRounds.played + 1, matchRounds.total)}/{matchRounds.total}
+        <div className="flex items-end gap-3">
+          {phase === "playing" && (
+            <div className="text-right">
+              <div className="text-2xl font-bold text-gold tabular-nums">
+                Rodada {Math.min(matchRounds.played + 1, matchRounds.total)}/{matchRounds.total}
+              </div>
+              <div className="text-xs text-muted">Sala {code}</div>
             </div>
-            <div className="text-xs text-muted">Sala {code}</div>
-          </div>
-        )}
+          )}
+          <button className={C.btnSmall} onClick={toggleMute} title={muted ? "Ativar som" : "Silenciar"}>
+            {muted ? "🔇" : "🔊"}
+          </button>
+        </div>
       </header>
 
       {/* ---------- MENU ---------- */}
@@ -349,194 +386,191 @@ export function App() {
 
       {/* ---------- PARTIDA ---------- */}
       {phase === "playing" && (
-        <div className="mt-5 flex flex-col gap-3">
-          {wallet && (
-            <div className="flex flex-wrap items-center gap-2">
-              <span className={C.chip}>💰 Saldo <b className="text-gold">{wallet.balance}</b></span>
-              <span className={C.chip}>🔒 Reservado <b>{wallet.reserved}</b></span>
-              <span className={C.chip}>🟢 Gastável <b className="text-emerald-400">{wallet.balance - wallet.reserved}</b></span>
-              {isHost && (
-                <button className={`${C.btnSmall} ml-auto`} onClick={() => send({ type: "END_MATCH" })}>
-                  Encerrar partida
-                </button>
-              )}
-            </div>
-          )}
-
-          {Object.keys(prices).length > 0 && (
-            <div className="bg-surface-2 border border-line rounded-xl px-4 py-2 text-sm">
-              <span className="text-muted">📈 Mercado:</span>{" "}
-              {ITEM_ORDER.filter((k) => prices[k] != null).map((k) => `${ITEM_EMOJI[k]} ${prices[k]}`).join("   ")}
-            </div>
-          )}
-
-          {/* Caixa em leilão */}
-          <div className="flex justify-center my-3">
-            {box ? (
-              <div className={`${C.card} box-glow p-6 w-72 text-center flex flex-col items-center gap-2`}>
-                <div className="text-6xl">{BOX_EMOJI[box.boxType] ?? "📦"}</div>
-                <div className="font-display text-xl text-gold">Caixa {box.boxType}</div>
-                <div className="text-xs text-muted">{box.boxId}</div>
-                <div className="text-xs text-stone-400">
-                  {ITEM_ORDER.filter((k) => box.odds?.[k] != null).map((k) => `${ITEM_EMOJI[k]} ${box.odds[k]}%`).join("  ")}
+        <div className="mt-5 grid gap-4 lg:grid-cols-[260px_minmax(0,1fr)_300px]">
+          {/* ----- ESQUERDA: você + mesa ----- */}
+          <aside className="order-2 lg:order-1 flex flex-col gap-4">
+            {wallet && (
+              <div className={`${C.card} p-4`}>
+                <div className="text-sm text-muted mb-2">💼 Você</div>
+                <div className="flex flex-col gap-1.5 text-sm">
+                  <div className="flex justify-between"><span className="text-muted">💰 Saldo</span><b className="text-gold">{wallet.balance}</b></div>
+                  <div className="flex justify-between"><span className="text-muted">🔒 Reservado</span><span>{wallet.reserved}</span></div>
+                  <div className="flex justify-between"><span className="text-muted">🟢 Gastável</span><b className="text-emerald-400">{wallet.balance - wallet.reserved}</b></div>
                 </div>
-                <div className="text-2xl font-bold text-gold mt-1">{box.currentBid > 0 ? `💰 ${box.currentBid}` : "sem lances"}</div>
-                <div className="text-sm">líder: <b className={box.leader === playerId ? "text-gold" : ""}>{box.leader || "—"}</b></div>
-                <div className="text-sm text-red-400 tabular-nums">⏱ {boxCountdown(box)}</div>
-                {(() => {
-                  const minInc = Math.max(5, Math.floor(box.currentBid * 0.05));
-                  const minNext = box.currentBid + minInc;
-                  const customVal = Number(bidAmount);
-                  const customOk = bidAmount === "" || customVal >= minNext;
-                  const bidValue = bidAmount === "" ? minNext : customVal;
-                  return (
-                    <div className="w-full flex flex-col gap-2 mt-1">
-                      <div className="text-xs text-muted">lance mínimo: <b className="text-gold">{minNext}</b></div>
-                      <div className="flex gap-1.5 justify-center">
-                        <button className={C.btnSmall} onClick={() => placeBid(box.boxId, minNext)}>Mín</button>
-                        {[10, 50, 100].map((n) => (
-                          <button
-                            key={n}
-                            className={C.btnSmall}
-                            disabled={box.currentBid + n < minNext}
-                            onClick={() => placeBid(box.boxId, box.currentBid + n)}
-                          >
-                            +{n}
-                          </button>
-                        ))}
-                      </div>
-                      <div className="flex gap-1.5">
-                        <input
-                          className={`${C.input} text-center`}
-                          type="number"
-                          placeholder={`${minNext}`}
-                          value={bidAmount}
-                          onChange={(e) => setBidAmount(e.target.value)}
-                        />
-                        <button className={C.btnGold} disabled={!customOk} onClick={() => placeBid(box.boxId, bidValue)}>
-                          Dar lance
-                        </button>
-                      </div>
-                    </div>
-                  );
-                })()}
-              </div>
-            ) : (
-              <div className={`${C.card} p-6 text-center flex flex-col items-center gap-3 w-80`}>
-                <div className="text-muted">⏳ Intervalo — venda, queime ou forme coleções</div>
-                <div className="text-4xl font-bold text-gold tabular-nums">
-                  {intermission ? intermissionCountdown(intermission.endsAt) : "—"}
-                </div>
-                <div className="text-sm text-muted">{readyState.ready}/{readyState.total} prontos</div>
-                <button
-                  className={`${C.btnGold} w-full`}
-                  disabled={iAmReady || !intermission}
-                  onClick={() => {
-                    send({ type: "READY" });
-                    setIAmReady(true);
-                  }}
-                >
-                  {iAmReady ? "Pronto ✓" : "Estou pronto"}
-                </button>
+                {wallet.affinities.length > 0 && (
+                  <div className="text-xs text-emerald-400 pt-2">✨ {wallet.affinities.map((a) => `${ITEM_EMOJI[a.type]} +${a.points}`).join("  ")}</div>
+                )}
+                {isHost && (
+                  <button className={`${C.btnSmall} w-full mt-3`} onClick={() => send({ type: "END_MATCH" })}>Encerrar partida</button>
+                )}
               </div>
             )}
-          </div>
 
-          {/* Mesa — leitura dos rivais (dinheiro, itens livres, último lance) */}
-          {players.length > 0 && (
-            <div className={`${C.card} p-4`}>
-              <div className="text-sm text-muted mb-2">🃏 Mesa</div>
-              <div className="flex flex-col gap-1">
-                {[...players].sort((a, b) => b.net - a.net).map((p) => (
-                  <div
-                    key={p.id}
-                    className={`flex items-center gap-3 text-sm rounded-lg px-2 py-1 ${p.id === playerId ? "bg-gold/10" : ""}`}
+            {/* Mesa — leitura dos rivais (dinheiro, itens livres, último lance) */}
+            {players.length > 0 && (
+              <div className={`${C.card} p-4`}>
+                <div className="text-sm text-muted mb-2">🃏 Mesa</div>
+                <div className="flex flex-col gap-1">
+                  {[...players].sort((a, b) => b.net - a.net).map((p) => (
+                    <div key={p.id} className={`flex items-center gap-2 text-sm rounded-lg px-2 py-1 ${p.id === playerId ? "bg-gold/10" : ""}`}>
+                      <span className={`flex-1 truncate ${p.id === playerId ? "text-gold font-semibold" : ""}`}>{p.id}{p.id === playerId ? " (você)" : ""}</span>
+                      <span className="whitespace-nowrap">💰 <b className="text-gold">{p.money}</b></span>
+                      <span className="whitespace-nowrap text-muted">🎒 {p.itemCount}</span>
+                      <span className="whitespace-nowrap text-xs text-stone-400 w-14 text-right">{lastBids[p.id] ? `🔨 ${lastBids[p.id]}` : "—"}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </aside>
+
+          {/* ----- CENTRO: palco da casa de leilão ----- */}
+          <main className="order-1 lg:order-2 flex flex-col gap-3">
+            <div className="stage min-h-[360px] flex items-center justify-center px-[16%] py-8">
+              <div className="curtain curtain-l" />
+              <div className="curtain curtain-r" />
+              <div className="curtain-top" />
+              <div className="stage-spot" />
+              <div className="stage-floor" />
+              <AnimatePresence mode="wait">
+                {box ? (
+                  <motion.div
+                    key={box.boxId}
+                    initial={{ scale: 0.6, opacity: 0, y: 14 }}
+                    animate={{ scale: 1, opacity: 1, y: 0 }}
+                    exit={{ scale: 0.6, opacity: 0 }}
+                    transition={{ type: "spring", stiffness: 260, damping: 20 }}
+                    className="relative z-[4] w-full max-w-[300px] text-center flex flex-col items-center gap-2"
                   >
-                    <span className={`flex-1 truncate ${p.id === playerId ? "text-gold font-semibold" : ""}`}>
-                      {p.id}{p.id === playerId ? " (você)" : ""}
-                    </span>
-                    <span className="w-24 text-right">💰 <b className="text-gold">{p.money}</b></span>
-                    <span className="w-14 text-right text-muted">🎒 {p.itemCount}</span>
-                    <span className="w-20 text-right text-xs text-stone-400">{lastBids[p.id] ? `🔨 ${lastBids[p.id]}` : "—"}</span>
-                  </div>
+                    <motion.div
+                      className="text-7xl drop-shadow-[0_6px_22px_rgba(232,185,35,0.4)]"
+                      animate={{ y: [0, -7, 0] }}
+                      transition={{ repeat: Infinity, duration: 2.4, ease: "easeInOut" }}
+                    >
+                      {BOX_EMOJI[box.boxType] ?? "📦"}
+                    </motion.div>
+                    <div className="pedestal" />
+                    <div className="font-display text-xl text-gold">Caixa {box.boxType}</div>
+                    <div className="text-[11px] text-stone-400">
+                      {ITEM_ORDER.filter((k) => box.odds?.[k] != null).map((k) => `${ITEM_EMOJI[k]} ${box.odds[k]}%`).join("  ")}
+                    </div>
+                    <motion.div key={box.currentBid} initial={{ scale: 1.35 }} animate={{ scale: 1 }} className="text-2xl font-bold text-gold mt-1">
+                      {box.currentBid > 0 ? `💰 ${box.currentBid}` : "sem lances"}
+                    </motion.div>
+                    <div className="text-sm">líder: <b className={box.leader === playerId ? "text-gold" : ""}>{box.leader || "—"}</b></div>
+                    <div className="text-sm text-red-400 tabular-nums">⏱ {boxCountdown(box)}</div>
+                    {(() => {
+                      const minInc = Math.max(5, Math.floor(box.currentBid * 0.05));
+                      const minNext = box.currentBid + minInc;
+                      const customVal = Number(bidAmount);
+                      const customOk = bidAmount === "" || customVal >= minNext;
+                      const bidValue = bidAmount === "" ? minNext : customVal;
+                      return (
+                        <div className="w-full flex flex-col gap-2 mt-1">
+                          <div className="text-xs text-muted">lance mínimo: <b className="text-gold">{minNext}</b></div>
+                          <div className="flex gap-1.5 justify-center">
+                            <button className={C.btnSmall} onClick={() => placeBid(box.boxId, minNext)}>Mín</button>
+                            {[10, 50, 100].map((n) => (
+                              <button key={n} className={C.btnSmall} disabled={box.currentBid + n < minNext} onClick={() => placeBid(box.boxId, box.currentBid + n)}>+{n}</button>
+                            ))}
+                          </div>
+                          <div className="flex gap-1.5">
+                            <input className={`${C.input} text-center`} type="number" placeholder={`${minNext}`} value={bidAmount} onChange={(e) => setBidAmount(e.target.value)} />
+                            <button className={C.btnGold} disabled={!customOk} onClick={() => placeBid(box.boxId, bidValue)}>Dar lance</button>
+                          </div>
+                        </div>
+                      );
+                    })()}
+                  </motion.div>
+                ) : (
+                  <motion.div
+                    key="intermission"
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    className="relative z-[4] w-full max-w-[300px] text-center flex flex-col items-center gap-3"
+                  >
+                    <div className="text-muted">⏳ Intervalo — venda, queime ou forme coleções</div>
+                    <div className="text-5xl font-bold text-gold tabular-nums">{intermission ? intermissionCountdown(intermission.endsAt) : "—"}</div>
+                    <div className="text-sm text-muted">{readyState.ready}/{readyState.total} prontos</div>
+                    <button className={`${C.btnGold} w-full`} disabled={iAmReady || !intermission} onClick={() => { send({ type: "READY" }); setIAmReady(true); }}>
+                      {iAmReady ? "Pronto ✓" : "Estou pronto"}
+                    </button>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
+
+            {wonBoxes.length > 0 && (
+              <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="bg-gold/10 border border-gold-dim rounded-xl px-4 py-3 flex flex-wrap items-center gap-2 justify-center">
+                <b className="text-gold">🎉 Você arrematou! Abra:</b>
+                {wonBoxes.map((b) => (
+                  <button key={b.boxId} className={C.btnGold} onClick={() => sendOpen(b.boxId)}>Abrir {BOX_EMOJI[b.boxType] ?? "📦"}</button>
                 ))}
+              </motion.div>
+            )}
+          </main>
+
+          {/* ----- DIREITA: mercado + inventário + coleções + eventos ----- */}
+          <aside className="order-3 flex flex-col gap-4">
+            {Object.keys(prices).length > 0 && (
+              <div className="bg-surface-2 border border-line rounded-xl px-4 py-2 text-sm">
+                <span className="text-muted">📈 Mercado</span>
+                <div className="flex flex-wrap gap-x-3 gap-y-0.5 mt-1">
+                  {ITEM_ORDER.filter((k) => prices[k] != null).map((k) => (<span key={k}>{ITEM_EMOJI[k]} {prices[k]}</span>))}
+                </div>
+              </div>
+            )}
+
+            {/* Inventário */}
+            {wallet && wallet.inventory.length > 0 && (
+              <div className={`${C.card} p-4 flex flex-col gap-2`}>
+                <div className="text-sm text-muted">🎒 Inventário</div>
+                {ITEM_ORDER.filter((t) => wallet.inventory.some((i) => i.type === t)).map((t) => {
+                  const count = wallet.inventory.filter((i) => i.type === t).length;
+                  const locked = wallet.inventory.filter((i) => i.type === t && i.state !== "FREE").length;
+                  const firstFree = wallet.inventory.find((i) => i.type === t && i.state === "FREE");
+                  return (
+                    <div key={t} className="flex items-center gap-2 text-sm">
+                      <span className="flex-1">{ITEM_EMOJI[t]} {t} ×{count}{locked > 0 ? <span className="text-muted"> ({locked}🔒)</span> : ""}</span>
+                      <button className={C.btnSmall} disabled={!firstFree} onClick={() => firstFree && sell(firstFree.id)}>vender</button>
+                      <button className={C.btnSmall} disabled={!firstFree} onClick={() => firstFree && burn(firstFree.id)}>queimar</button>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            {/* Coleções */}
+            {wallet && (
+              <div className="bg-surface border border-gold-dim rounded-2xl p-4 flex flex-col gap-1.5">
+                <div className="text-gold font-semibold text-sm">🏅 Coleções</div>
+                {COLLECTIONS.map((c) => {
+                  const formed = wallet.collections.filter((f) => f.kind === c.kind).length;
+                  const reqStr = Object.entries(c.requires).map(([t, n]) => `${ITEM_EMOJI[t]}×${n}`).join(" ");
+                  return (
+                    <div key={c.kind} className="flex items-center gap-2 text-xs">
+                      <span className="flex-1">{c.label} <span className="text-muted">{reqStr}</span></span>
+                      <span className="text-gold">+{c.bonus}</span>
+                      {formed > 0 && <span className="text-emerald-400">✓×{formed}</span>}
+                      <button className={C.btnSmall} disabled={!canForm(c.requires)} onClick={() => form(c.kind)}>formar</button>
+                    </div>
+                  );
+                })}
+                {wallet.collections.length > 0 && (
+                  <div className="text-sm pt-1">Bônus total: <b className="text-gold">{wallet.collections.reduce((s, f) => s + f.bonus, 0)}</b></div>
+                )}
+              </div>
+            )}
+
+            {/* Eventos */}
+            <div>
+              <div className="text-sm text-muted mb-1">Eventos</div>
+              <div className="font-mono text-xs max-h-56 overflow-y-auto bg-surface-2 border border-line rounded-xl p-3">
+                {log.map((l, i) => (<div key={i} className="py-0.5 border-b border-line/60 last:border-0">{l}</div>))}
               </div>
             </div>
-          )}
-
-          {wonBoxes.length > 0 && (
-            <div className="bg-gold/10 border border-gold-dim rounded-xl px-4 py-3 flex flex-wrap items-center gap-2">
-              <b className="text-gold">🎉 Você arrematou! Abra:</b>
-              {wonBoxes.map((b) => (
-                <button key={b.boxId} className={C.btnSmall} onClick={() => sendOpen(b.boxId)}>
-                  Abrir {BOX_EMOJI[b.boxType] ?? "📦"} {b.boxId}
-                </button>
-              ))}
-            </div>
-          )}
-
-          {/* Inventário */}
-          {wallet && wallet.inventory.length > 0 && (
-            <div className={`${C.card} p-4 flex flex-col gap-2`}>
-              <div className="text-sm text-muted">🎒 Inventário</div>
-              {ITEM_ORDER.filter((t) => wallet.inventory.some((i) => i.type === t)).map((t) => {
-                const count = wallet.inventory.filter((i) => i.type === t).length;
-                const locked = wallet.inventory.filter((i) => i.type === t && i.state !== "FREE").length;
-                const firstFree = wallet.inventory.find((i) => i.type === t && i.state === "FREE");
-                return (
-                  <div key={t} className="flex items-center gap-3 text-sm">
-                    <span className="w-32">
-                      {ITEM_EMOJI[t]} {t} ×{count}
-                      {locked > 0 ? <span className="text-muted"> ({locked}🔒)</span> : ""}
-                    </span>
-                    <span className="w-16 text-xs text-muted">{prices[t] != null ? `mkt ${prices[t]}` : ""}</span>
-                    <button className={C.btnSmall} disabled={!firstFree} onClick={() => firstFree && sell(firstFree.id)}>vender</button>
-                    <button className={C.btnSmall} disabled={!firstFree} onClick={() => firstFree && burn(firstFree.id)}>queimar</button>
-                  </div>
-                );
-              })}
-              {wallet.affinities.length > 0 && (
-                <div className="text-xs text-emerald-400 pt-1">
-                  ✨ Afinidade: {wallet.affinities.map((a) => `${ITEM_EMOJI[a.type]} +${a.points}`).join("   ")}
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* Coleções */}
-          {wallet && (
-            <div className="bg-surface border border-gold-dim rounded-2xl p-4 flex flex-col gap-1.5">
-              <div className="text-gold font-semibold text-sm">🏅 Coleções</div>
-              {COLLECTIONS.map((c) => {
-                const formed = wallet.collections.filter((f) => f.kind === c.kind).length;
-                const reqStr = Object.entries(c.requires).map(([t, n]) => `${ITEM_EMOJI[t]}×${n}`).join(" ");
-                return (
-                  <div key={c.kind} className="flex items-center gap-3 text-sm">
-                    <span className="w-32">{c.label}</span>
-                    <span className="w-32 text-xs text-muted">{reqStr}</span>
-                    <span className="w-14 text-xs text-gold">+{c.bonus}</span>
-                    {formed > 0 && <span className="text-xs text-emerald-400">✓×{formed}</span>}
-                    <button className={`${C.btnSmall} ml-auto`} disabled={!canForm(c.requires)} onClick={() => form(c.kind)}>formar</button>
-                  </div>
-                );
-              })}
-              {wallet.collections.length > 0 && (
-                <div className="text-sm pt-1">
-                  Bônus total: <b className="text-gold">{wallet.collections.reduce((s, f) => s + f.bonus, 0)}</b>
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* Eventos */}
-          <div>
-            <div className="text-sm text-muted mb-1">Eventos</div>
-            <div className="font-mono text-xs max-h-48 overflow-y-auto bg-surface-2 border border-line rounded-xl p-3">
-              {log.map((l, i) => (
-                <div key={i} className="py-0.5 border-b border-line/60 last:border-0">{l}</div>
-              ))}
-            </div>
-          </div>
+          </aside>
         </div>
       )}
 
@@ -582,6 +616,32 @@ export function App() {
           </div>
         </div>
       )}
+
+      {/* ---------- Destaque (vitória / abertura / mímico) ---------- */}
+      <AnimatePresence>
+        {flash && (
+          <motion.div
+            className="fixed inset-0 z-50 flex items-center justify-center pointer-events-none px-4"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+          >
+            <motion.div
+              className={`px-8 py-6 rounded-2xl text-center border ${
+                flash.kind === "mimic" ? "bg-red-950/90 border-red-700 shake" : "bg-surface/95 border-gold-dim box-glow"
+              }`}
+              initial={{ scale: 0.4, y: 20 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.6, opacity: 0 }}
+              transition={{ type: "spring", stiffness: 320, damping: 18 }}
+            >
+              <div className="text-7xl">{flash.emoji}</div>
+              <div className={`font-display text-2xl mt-2 ${flash.kind === "mimic" ? "text-red-300" : "text-gold"}`}>{flash.title}</div>
+              <div className="text-muted text-sm mt-1">{flash.sub}</div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
