@@ -84,6 +84,7 @@ export function App() {
   const [folded, setFolded] = useState(false); // passei a vez nesta rodada
   const [foldState, setFoldState] = useState({ folded: 0, total: 0 });
   const [spectating, setSpectating] = useState(false); // desisti e só assisto
+  const [chat, setChat] = useState<{ player: string; text: string; ts: number }[]>([]);
 
   const [round, setRound] = useState(0);
   const [box, setBox] = useState<Box | null>(null);
@@ -200,6 +201,9 @@ export function App() {
             break;
           case "FOLD_STATE":
             setFoldState({ folded: msg.folded ?? 0, total: msg.total ?? 0 });
+            break;
+          case "CHAT":
+            setChat((prev) => [...prev, { player: msg.player, text: msg.text, ts: msg.ts }].slice(-80));
             break;
           case "SPECTATING":
             setSpectating(true);
@@ -500,7 +504,8 @@ export function App() {
 
       {/* ---------- LOBBY ---------- */}
       {phase === "lobby" && (
-        <div className={`${C.card} p-6 mt-8 max-w-md mx-auto text-center`}>
+        <div className="max-w-md mx-auto mt-8 flex flex-col gap-4">
+          <div className={`${C.card} p-6 text-center`}>
           <p className="text-xs uppercase tracking-wide text-muted">Código da sala</p>
           <div className="font-display text-5xl text-gold tracking-[0.25em] my-2">{code}</div>
           <p className="text-muted text-sm mb-5">Compartilhe o código. A partida exige ao menos 2 jogadores.</p>
@@ -523,6 +528,8 @@ export function App() {
           ) : (
             <p className="text-muted">Aguardando o host iniciar…</p>
           )}
+          </div>
+          <ChatPanel messages={chat} me={playerId} onSend={(t) => send({ type: "CHAT_SEND", text: t })} />
         </div>
       )}
 
@@ -779,6 +786,9 @@ export function App() {
                 {log.map((l, i) => (<div key={i} className="py-0.5 border-b border-line/60 last:border-0">{l}</div>))}
               </div>
             </div>
+
+            {/* Chat da sala */}
+            <ChatPanel messages={chat} me={playerId} onSend={(t) => send({ type: "CHAT_SEND", text: t })} />
           </aside>
         </div>
       )}
@@ -823,6 +833,7 @@ export function App() {
             )}
             <button className={C.btnSmall} onClick={() => window.location.reload()}>Voltar ao menu</button>
           </div>
+          <ChatPanel messages={chat} me={playerId} onSend={(t) => send({ type: "CHAT_SEND", text: t })} className="mt-5" />
         </div>
       )}
 
@@ -911,6 +922,62 @@ function Confetti() {
           />
         );
       })}
+    </div>
+  );
+}
+
+// Chat da sala — lista de mensagens (auto-rola) + caixa de envio. Cada instância gerencia
+// seu próprio input; o estado das mensagens vive no App (compartilhado entre as fases).
+function ChatPanel({
+  messages,
+  me,
+  onSend,
+  className = "",
+}: {
+  messages: { player: string; text: string; ts: number }[];
+  me: string;
+  onSend: (t: string) => void;
+  className?: string;
+}) {
+  const [text, setText] = useState("");
+  const endRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    endRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages.length]);
+  const submit = () => {
+    const t = text.trim();
+    if (!t) return;
+    onSend(t);
+    setText("");
+  };
+  return (
+    <div className={`${C.card} p-3 flex flex-col ${className}`}>
+      <div className="text-sm text-muted mb-2">💬 Chat da sala</div>
+      <div className="flex-1 min-h-0 overflow-y-auto flex flex-col gap-1 text-sm pr-1" style={{ maxHeight: 240, minHeight: 120 }}>
+        {messages.length === 0 && <div className="text-xs text-muted">Sem mensagens ainda. Diga oi! 👋</div>}
+        {messages.map((m, i) => (
+          <div key={i} className="leading-snug">
+            <span className={`font-semibold ${m.player === me ? "text-gold" : "text-stone-300"}`}>{m.player === me ? "Você" : m.player}:</span>{" "}
+            <span className="text-stone-200 break-words">{m.text}</span>
+          </div>
+        ))}
+        <div ref={endRef} />
+      </div>
+      <div className="flex gap-2 mt-2">
+        <input
+          className={`${C.input} text-sm`}
+          placeholder="Mensagem…"
+          maxLength={300}
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") submit();
+          }}
+        />
+        <button className={`${C.btnSmall} whitespace-nowrap`} onClick={submit}>
+          Enviar
+        </button>
+      </div>
     </div>
   );
 }

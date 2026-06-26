@@ -36,6 +36,7 @@ interface Client {
   ws: WebSocket;
   playerId: string;
   room: string | null; // slot da sala, definido ao criar/entrar
+  lastChat?: number; // timestamp do último chat (anti-spam leve)
 }
 const clients = new Set<Client>();
 
@@ -242,14 +243,25 @@ async function maybeCloseByFold(room: string): Promise<void> {
 
 // Fan-out assíncrono por sala — só repassa eventos de jogo enquanto a partida está RUNNING.
 const sub = new Redis(REDIS_URL);
+// Conexão separada para PUBLICAR o chat (a `sub` está em modo subscribe e não publica).
+const pub = new Redis(REDIS_URL);
 sub.on("error", (e) => console.error("gateway: erro no Redis:", e.message));
+pub.on("error", (e) => console.error("gateway: erro no Redis (pub):", e.message));
 for (const room of ROOMS) {
   sub.subscribe(`room:${room}:events`).catch((e) => console.error(`gateway: falha ao assinar ${room}:`, e.message));
+  // Canal de chat por sala (pub/sub) — funciona em qualquer estado (lobby/partida/fim).
+  sub.subscribe(`room:${room}:chat`).catch((e) => console.error(`gateway: falha ao assinar chat ${room}:`, e.message));
 }
 const MONEY_EVENTS = new Set(["BID_PLACED", "BOX_SOLD", "BOX_OPENED"]);
 // Eventos que mudam o patrimônio de alguém ou abrem rodada → republica a "leitura da mesa".
 const PANEL_EVENTS = new Set(["BOX_SOLD", "BOX_OPENED", "ROUND_STARTED", "ROUND_ENDED"]);
 sub.on("message", (channel, message) => {
+  // Chat: difunde a todos da sala independentemente do estado da partida.
+  const chatMt = /^room:(.+):chat$/.exec(channel);
+  if (chatMt) {
+    broadcastToRoom(chatMt[1], message);
+    return;
+  }
   const mt = /^room:(.+):events$/.exec(channel);
   if (!mt) return;
   const room = mt[1];
@@ -450,6 +462,19 @@ wss.on("connection", (ws, req) => {
         void broadcastPlayersPanel(slot);
         await maybeCloseByFold(slot); // sair pode deixar só o líder
       }
+      return;
+    }
+
+    // Chat da sala (pub/sub Redis) — disponível no lobby, na partida e no fim; espectador também.
+    if (msg.type === "CHAT_SEND") {
+      const room = client.room;
+      if (!room) return;
+      const now = Date.now();
+      if (now - (client.lastChat ?? 0) < 400) return; // anti-spam leve
+      const text = String(msg.text ?? "").trim().slice(0, 300);
+      if (!text) return;
+      client.lastChat = now;
+      pub.publish(`room:${room}:chat`, JSON.stringify({ type: "CHAT", player: playerId, text, ts: now }));
       return;
     }
 

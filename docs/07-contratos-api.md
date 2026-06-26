@@ -28,7 +28,12 @@ Conexão: `wss://<gateway>/ws?room={id}&token=...`
 { "type": "SELL_ITEM", "itemId": "itm-9" }
 { "type": "BURN_ITEM", "itemId": "itm-9", "affinity": "DIAMOND" }
 { "type": "BUY_INSURANCE", "boxId": "box-12" }
+{ "type": "CHAT_SEND", "text": "boa sorte!" }   // chat da sala; gateway define o remetente
 ```
+
+> **Chat da sala:** `CHAT_SEND` é publicado pelo gateway no canal `room:{id}:chat` (Pub/Sub) e
+> volta como `{ "type": "CHAT", "player": "...", "text": "...", "ts": 0 }` a todos da sala — em
+> qualquer estado (lobby/partida/fim). Remetente autoritativo, texto ≤ 300 chars, anti-spam leve.
 
 **Servidor → Cliente** (eventos difundidos via Pub/Sub):
 ```jsonc
@@ -148,6 +153,7 @@ consumidos pelo Worker.
 | Canal | Quem publica | Quem assina |
 |---|---|---|
 | `room:{id}:events` | Leilão, Carteira, Worker | Gateway (faz fan-out aos clientes WS) |
+| `room:{id}:chat` | Gateway (mensagens dos jogadores) | Gateway (fan-out aos clientes da sala) |
 | `market:updates` | Worker | Gateway |
 
 ## 5. Convenções
