@@ -7,8 +7,11 @@
 
 - **Disciplina:** Software Concorrente e Distribuído (SCD) — UFG, 2026.1
 - **Entrega:** 28/06/2026
-- **Última atualização deste arquivo:** 2026-06-15
-- **Marco atual:** Fase 2 em andamento (ciclo de vida + abertura/RNG concluídos; falta particionamento por vault)
+- **Última atualização deste arquivo:** 2026-06-25
+- **Marco atual:** **Reta final (entrega 28/06)** — de-risk do **deploy AWS (Fase 8)** iniciado:
+  scripts de provisão/subida em [`infra/deploy/`](../infra/deploy/) para o smoke test em
+  uma EC2. Em paralelo seguem pendentes: particionamento por vault (Fase 2), async real
+  (Pub/Sub + RabbitMQ, Fases 4/5) e replicação (Fase 7).
 
 ---
 
@@ -79,7 +82,7 @@ cada um é satisfeito. Atualize a coluna **Status** conforme as fases avançam.
 | R6 | Replicação **e** particionamento | 🔴 falta | → vault/jogador + Postgres réplica + Redis (Fases 2,3,7) |
 | R7 | Consistência **e** disponibilidade | 🟡 parcial | Saldo nunca negativo (em memória); → forte (Fase 3) + failover (Fase 7) |
 | R8 | >1 linguagem **e** >1 paradigma | 🟡 parcial | TS+Java; cliente-servidor+pub-sub; → +Python +messaging (Fase 5) |
-| R9 | Demonstração em AWS EC2 | 🔴 falta | → Fase 8 |
+| R9 | Demonstração em AWS EC2 | 🟡 em andamento | Scripts de deploy prontos (`infra/deploy/`); falta a 1ª subida na conta AWS (Fase 8) |
 
 Legenda: 🟢 satisfeito · 🟡 parcial · 🔴 ainda não.
 
@@ -197,11 +200,11 @@ Legenda: 🟢 satisfeito · 🟡 parcial · 🔴 ainda não.
 
 > A demonstração avaliada **roda na nuvem**. Ver [doc 08](../docs/08-deploy-aws.md).
 
-- [ ] Provisionamento das instâncias **EC2** (2–3) *(R9)*
-- [ ] Deploy dos serviços via Docker/Compose nas instâncias *(R9)*
+- [~] Provisionamento das instâncias **EC2** (2–3) *(R9)* — script `infra/deploy/provision.sh` pronto (1 instância p/ o smoke test); falta executar na conta AWS
+- [~] Deploy dos serviços via Docker/Compose nas instâncias *(R9)* — `infra/deploy/start.sh` sobe o stack apontando o frontend ao DNS público; falta validar na nuvem
 - [ ] **Acessível na Internet** a múltiplos clientes (frontend + API públicos) *(R1,R9)*
-- [ ] Scripts de deploy versionados em [`infra/`](../infra/) *(R9)*
-- [ ] "Hello world" em EC2 **cedo** (mitigação de risco do doc 06) *(R9)*
+- [~] Scripts de deploy versionados em [`infra/`](../infra/) *(R9)* — `infra/deploy/` (`provision.sh`, `user-data.sh`, `start.sh`, `DEPLOY.md`)
+- [~] "Hello world" em EC2 **cedo** (mitigação de risco do doc 06) *(R9)* — caminho turnkey pronto; pendente a 1ª subida real (de-risk em andamento)
 
 ## 📍 Fase 9 — Extras (opcionais)
 
