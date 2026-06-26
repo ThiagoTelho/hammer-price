@@ -31,8 +31,6 @@ public final class WalletStore {
         final Map<String, Long> byBox = new HashMap<>();
         /** Inventário: itens obtidos ao abrir caixas. */
         final List<Item> items = new ArrayList<>();
-        /** Afinidade por tipo (pontos percentuais), aumentada ao "queimar" itens. */
-        final Map<String, Integer> affinity = new HashMap<>();
         /** Coleções formadas (itens travados + bônus). */
         final List<FormedCollection> collections = new ArrayList<>();
 
@@ -50,9 +48,6 @@ public final class WalletStore {
     /** Resultado de uma venda de item. */
     public record SellResult(boolean ok, String reason, long price, String type, long balance) {}
 
-    /** Resultado de uma queima de item (afinidade resultante). */
-    public record BurnResult(boolean ok, String reason, String type, int affinity) {}
-
     /** Coleção formada por um jogador. */
     public record FormedCollection(String kind, long bonus) {}
 
@@ -62,9 +57,9 @@ public final class WalletStore {
     /** Resultado da penalidade do Mímico. {@code kind}: MONEY | ITEM | COLLECTION | NONE. */
     public record MimicResult(String kind, String detail, long value) {}
 
-    /** Estado consultável de um jogador (saldo, reservas, inventário, afinidades e coleções). */
+    /** Estado consultável de um jogador (saldo, reservas, inventário e coleções). */
     public record PlayerView(long balance, long reserved, List<Item> items,
-                             Map<String, Integer> affinities, List<FormedCollection> collections) {}
+                             List<FormedCollection> collections) {}
 
     private final Map<String, Player> players = new HashMap<>();
     private final AtomicLong itemSeq = new AtomicLong();
@@ -167,29 +162,6 @@ public final class WalletStore {
         return new SellResult(true, "OK", price, it.type(), p.balance);
     }
 
-    /**
-     * Queima um item LIVRE: destrói o item e soma {@code gain} à afinidade pelo seu tipo,
-     * com teto {@code cap}. Rejeitada se a afinidade já estiver no teto. Atômica.
-     */
-    public synchronized BurnResult burnItem(String playerId, String itemId, int gain, int cap) {
-        Player p = players.get(playerId);
-        Item it = (p == null) ? null : findItem(p, itemId);
-        if (it == null) {
-            return new BurnResult(false, "ITEM_NOT_FOUND", "", 0);
-        }
-        if (!"FREE".equals(it.state())) {
-            return new BurnResult(false, "ITEM_LOCKED", it.type(), p.affinity.getOrDefault(it.type(), 0));
-        }
-        int cur = p.affinity.getOrDefault(it.type(), 0);
-        if (cur >= cap) {
-            return new BurnResult(false, "AT_CAP", it.type(), cur);
-        }
-        int next = Math.min(cap, cur + gain);
-        p.affinity.put(it.type(), next);
-        p.items.remove(it);
-        return new BurnResult(true, "OK", it.type(), next);
-    }
-
     private static int countFree(Player p, String type) {
         int n = 0;
         for (Item it : p.items) {
@@ -270,15 +242,14 @@ public final class WalletStore {
         }
     }
 
-    /** Zera o jogador para uma nova partida: orçamento inicial, sem itens/afinidade/coleções. */
+    /** Zera o jogador para uma nova partida: orçamento inicial, sem itens/coleções. */
     public synchronized void reset(String playerId) {
         players.put(playerId, new Player(initialBudget));
     }
 
-    /** Retorna o estado atual do jogador (saldo, reservas, inventário, afinidades e coleções). */
+    /** Retorna o estado atual do jogador (saldo, reservas, inventário e coleções). */
     public synchronized PlayerView get(String playerId) {
         Player p = getOrCreate(playerId);
-        return new PlayerView(p.balance, p.reserved, List.copyOf(p.items),
-                Map.copyOf(p.affinity), List.copyOf(p.collections));
+        return new PlayerView(p.balance, p.reserved, List.copyOf(p.items), List.copyOf(p.collections));
     }
 }

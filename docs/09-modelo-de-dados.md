@@ -41,14 +41,7 @@
 | `state` | text | `FREE` \| `LOCKED_COLLECTION` \| `CONSUMED` |
 | `acquired_at` | timestamptz | |
 
-**Invariante:** um item está em **exatamente um** `state`. Vender/queimar só se `FREE`.
-
-### `affinities`
-| Coluna | Tipo | Notas |
-|---|---|---|
-| `player_id` | text | PK composta com `type` |
-| `type` | text | tipo de item |
-| `points` | int | 0..teto (ex.: 15) |
+**Invariante:** um item está em **exatamente um** `state`. Vender só se `FREE`.
 
 ### `collections`
 | Coluna | Tipo | Notas |
@@ -97,7 +90,7 @@ version          : 7            # optimistic concurrency
 ```
 
 ### Locks distribuídos (Redlock)
-- `lock:wallet:{playerId}` — serializa Reserve/Release/Settle/Sell/Burn do jogador.
+- `lock:wallet:{playerId}` — serializa Reserve/Release/Settle/Sell do jogador.
 - `lock:box:{boxId}` — serializa lances/abertura da caixa (alternativa ao mutex em processo
   quando a sala tem réplicas de Leilão).
 

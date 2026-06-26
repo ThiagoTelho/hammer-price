@@ -53,7 +53,7 @@
 ### Cliente Web — React + TypeScript
 Renderiza o estado compartilhado (caixas, lances, cronômetros, inventário, mercado,
 ranking). Recebe atualizações em tempo real por **WebSocket**; envia ações como dar lance,
-abrir caixa, vender/queimar item via mensagens que o gateway encaminha.
+abrir caixa, vender item via mensagens que o gateway encaminha.
 
 ### Gateway de Tempo-Real — Node.js + TypeScript
 - Mantém milhares de conexões WebSocket (I/O assíncrono é o forte do Node).

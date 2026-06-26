@@ -53,11 +53,6 @@ collections:                    # bônus ~2–3× o valor de mercado dos itens c
   ROYAL_FLUSH:     { requires: { SILVER: 1, GOLD: 1, DIAMOND: 2 },         bonus: 2000 }
   LEGENDARY_VAULT: { requires: { DIAMOND: 5 },                             bonus: 5000 }
 
-affinity:
-  gain_per_burn_pct: 2
-  cost_doubles_every_points: 3
-  cap_pct: 15
-
 mimic:                          # penalidade ao abrir uma caixa 💀 (sorteada na Carteira)
   steal_money_pct: 10           # quando a penalidade é MONEY: rouba 10% do saldo
 

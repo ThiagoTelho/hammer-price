@@ -52,11 +52,6 @@ public final class BoxStore {
         void onRoundEnded(int round, String boxId, String boxType, String winner, long price);
     }
 
-    /** Fonte da afinidade do jogador (item → pontos percentuais). Default: sem afinidade. */
-    public interface AffinitySource {
-        Map<String, Integer> forPlayer(String playerId);
-    }
-
     /** Resultado de um lance. */
     public record BidResult(boolean accepted, String reason, long currentBid, String leader, long timerMs) {}
 
@@ -120,7 +115,6 @@ public final class BoxStore {
         public void onRoundEnded(int r, String b, String t, String w, long p) {}
     };
     private volatile RoundListener roundListener = NO_OP;
-    private volatile AffinitySource affinitySource = p -> Map.of();
 
     /** Cria o leilão e abre a rodada 1 imediatamente. */
     public BoxStore(Wallet wallet, Settings cfg, BoxOpener opener,
@@ -147,10 +141,6 @@ public final class BoxStore {
 
     public void setRoundListener(RoundListener l) {
         this.roundListener = (l == null) ? NO_OP : l;
-    }
-
-    public void setAffinitySource(AffinitySource s) {
-        this.affinitySource = (s == null) ? p -> Map.of() : s;
     }
 
     /** Sorteia o tipo da caixa pelos pesos cumulativos (sob o lock). */
@@ -349,7 +339,7 @@ public final class BoxStore {
 
     /**
      * Abre uma caixa arrematada: valida que é o vencedor e que não foi aberta, e sorteia
-     * o item (RNG server-side) pelas odds do tipo + afinidade do jogador. Idempotente por
+     * o item (RNG server-side) pelas odds públicas do tipo + a quantidade. Idempotente por
      * remoção atômica do registro pendente.
      */
     public OpenResult openBox(String reqBoxId, String playerId) {
@@ -364,7 +354,7 @@ public final class BoxStore {
             return new OpenResult(false, "ALREADY_OPENED", "", 0, false); // corrida: já aberta
         }
         opened.add(reqBoxId);
-        String item = opener.draw(po.boxType(), affinitySource.forPlayer(playerId));
+        String item = opener.draw(po.boxType());
         boolean mimic = "MIMIC".equals(item);
         // Mímico é penalidade única (sem itens); item real rende de min..max unidades.
         int quantity = mimic ? 0 : opener.drawQuantity(cfg.minItems(), cfg.maxItems());

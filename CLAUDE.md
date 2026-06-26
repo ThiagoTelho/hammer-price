@@ -75,8 +75,8 @@ de prosseguir.
 - Um item **não** pode ser vendido e usado em coleção ao mesmo tempo (consistência de inventário).
 - O **último lance válido antes do timer zerar** vence a caixa — desempate por timestamp
   do servidor, não do cliente.
-- Probabilidades exibidas = probabilidades reais aplicadas (com afinidade do jogador somada),
-  e a soma das probabilidades de uma caixa é sempre 100%.
+- Probabilidades exibidas = probabilidades reais aplicadas, e a soma das probabilidades de
+  uma caixa é sempre 100%.
 
 ## Fluxo de trabalho sugerido
 

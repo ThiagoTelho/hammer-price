@@ -20,7 +20,7 @@ import yaml
 
 EXCHANGE = "hammerprice"          # topic exchange (ver docs/07-contratos-api.md §3)
 QUEUE = "worker.events"
-ROUTING_KEYS = ["box.opened", "item.sold", "item.burned", "ledger.entry", "match.tick", "round.started"]
+ROUTING_KEYS = ["box.opened", "item.sold", "ledger.entry", "match.tick", "round.started"]
 ROOM_ID = os.environ.get("ROOM_ID", "room-1")
 EVENTS_CHANNEL = f"room:{ROOM_ID}:events"   # mesmo canal que o gateway assina
 PRICED_ITEMS = ["COPPER", "SILVER", "GOLD", "DIAMOND"]  # MIMIC é penalidade, não tem preço

@@ -26,7 +26,6 @@ Conexão: `wss://<gateway>/ws?room={id}&token=...`
 { "type": "PLACE_BID", "boxId": "box-12", "amount": 65 }
 { "type": "OPEN_BOX", "boxId": "box-12" }
 { "type": "SELL_ITEM", "itemId": "itm-9" }
-{ "type": "BURN_ITEM", "itemId": "itm-9", "affinity": "DIAMOND" }
 { "type": "BUY_INSURANCE", "boxId": "box-12" }
 { "type": "CHAT_SEND", "text": "boa sorte!" }   // chat da sala; gateway define o remetente
 ```
@@ -119,7 +118,6 @@ service Wallet {
   rpc Settle   (SettleRequest)   returns (Ack);            // debita de fato (arremate)
   rpc AddItem  (AddItemRequest)  returns (Ack);
   rpc SellItem (SellItemRequest) returns (SellReply);
-  rpc BurnItem (BurnItemRequest) returns (BurnReply);
   rpc GetPlayer(PlayerQuery)     returns (PlayerState);
 }
 
@@ -141,7 +139,6 @@ consumidos pelo Worker.
 | `round.started` | `{ roomId, round, boxId, boxType, odds }` | Worker: métricas/manutenção da partida |
 | `box.opened` | `{ roomId, boxId, player, item, isMimic }` | Worker: avaliação de coleções, efeito do mímico |
 | `item.sold` | `{ roomId, player, item, price }` | Worker: atualiza oferta → recálculo de mercado |
-| `item.burned` | `{ roomId, player, item, affinity }` | Worker: oferta + afinidade |
 | `ledger.entry` | `{ player, delta, reason, ts }` | Worker: reconciliação |
 | `match.tick` | `{ roomId, remainingMs }` | Worker: manutenção periódica |
 

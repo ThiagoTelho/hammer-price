@@ -78,15 +78,13 @@ esperado (EV)** da caixa e decide quanto vale apostar.
 - Quando o cronômetro zera, o último lance válido **arremata**. O valor reservado é
   debitado de fato.
 - Quem perdeu o lance tem o valor reservado **devolvido** ao saldo (assíncrono).
-- O arrematante **abre** a caixa: o servidor sorteia um item conforme as odds, ajustadas
-  pela **afinidade** do jogador. O resultado é notificado a todos.
+- O arrematante **abre** a caixa: o servidor sorteia **1 a 4 unidades** de um item conforme
+  as odds públicas (ex.: `3× Diamante`). O resultado é notificado a todos.
 
 ### 3. Gerir o inventário
 Cada item obtido pode ser:
 - **Guardado** — para fechar **coleções** (ver abaixo).
 - **Vendido** no mercado — vira dinheiro pelo **preço atual de mercado** (que flutua).
-- **Queimado** — destrói o item e aumenta sua **afinidade** por um tipo escolhido
-  (mais chance daquele item nas próximas aberturas), com custo marginal crescente.
 
 ### 4. Comprar seguro (opcional)
 - Antes de abrir uma caixa de alto risco, o jogador pode pagar um **seguro** que mitiga
@@ -105,17 +103,8 @@ Exemplos (valores em [03 — Regras de Negócio](03-regras-de-negocio.md)):
 | Trinca Real | 3× Diamante | Bônus alto |
 | Cofre Lendário | 5× Diamante | Bônus máximo |
 
-O dilema central: **guardar** o item para a coleção, **vender** por dinheiro imediato, ou
-**queimar** para melhorar a sorte futura? Cada peça é uma decisão.
-
-## Afinidade (sorte controlável)
-
-- Cada jogador tem uma **afinidade** por tipo de item, que **soma** à probabilidade base
-  das caixas na hora de abrir (respeitando o teto e renormalizando para 100%).
-- Aumenta-se a afinidade **queimando** itens, com **custo marginal crescente** e **teto**
-  — para impedir a estratégia degenerada de "quem queima mais, ganha".
-- É uma aposta de longo prazo: investir em virar especialista em Diamante agora pode
-  pagar muito depois — ou ser desperdício se a partida acabar antes.
+O dilema central: **guardar** o item para a coleção ou **vender** por dinheiro imediato?
+Cada peça é uma decisão.
 
 ## Mercado dinâmico
 
@@ -153,6 +142,6 @@ seguro até o martelo final.
    mas nega a Ana) ou economizar para uma rodada futura com odds melhores.
 4. Dá o lance → **aceito** (síncrono). O cronômetro reseta (e estende se for nos
    segundos finais).
-5. Ninguém cobre → você **arremata** e **abre**. Sai… **Ouro** 😖.
-6. O mercado avisa que Ouro caiu 12%. Decisão: **queimar** o Ouro por +afinidade de
-   Diamante, ou **guardar** para o Arco-íris? E já vem a **rodada 8**.
+5. Ninguém cobre → você **arremata** e **abre**. Saem… **2× Ouro** 😖.
+6. O mercado avisa que Ouro caiu 12%. Decisão: **vender** já por dinheiro, ou **guardar**
+   para fechar o Arco-íris? E já vem a **rodada 8**.

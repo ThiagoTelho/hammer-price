@@ -37,7 +37,7 @@ Recursos disputados:
   recurso, serializados pelo lock por caixa, com o vencedor decidido por timestamp do servidor.
 - **Saldo** do jogador — acessado concorrentemente pelos lances (reserva no lance,
   devolução ao ser superado, débito ao arrematar) e pelas operações de inventário/mercado.
-- **Inventário** — vender vs. usar em coleção vs. queimar.
+- **Inventário** — vender vs. usar em coleção.
 - **Mercado** — leituras/atualizações concorrentes.
 Mecanismos: `ReentrantLock` por caixa; **Redlock + transação** por jogador. Como os lances
 de vários jogadores caem em **shards de Carteira diferentes** (partição por `playerId`), as

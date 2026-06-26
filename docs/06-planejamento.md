@@ -14,7 +14,7 @@
 - Sala/partida com tempo fixo e múltiplos jogadores.
 - Leilão de caixas com odds públicas, lances síncronos e cronômetro/anti-sniping.
 - Reserva e débito de saldo com consistência forte (sem saldo negativo).
-- Abertura de caixa com RNG server-side + afinidade.
+- Abertura de caixa com RNG server-side (item + quantidade 1–4).
 - Inventário + coleções + cálculo de patrimônio final.
 - Broadcast em tempo real (Pub/Sub) + uma fila de eventos (messaging).
 - Particionamento (sala/jogador) + replicação (Postgres réplica) demonstráveis.
@@ -33,7 +33,7 @@
 |---|---|---|
 | 1 | **Fundação** | Repos, contratos (proto/eventos), modelo de dados, docker-compose local subindo "esqueletos" que se comunicam |
 | 2 | **Leilão + Carteira** | Lance síncrono ponta a ponta; reserva/débito consistente; teste de corrida de lances |
-| 3 | **Abertura + Inventário + Tempo real** | RNG+afinidade; coleções; broadcast Pub/Sub; frontend jogável |
+| 3 | **Abertura + Inventário + Tempo real** | RNG (item + quantidade); coleções; broadcast Pub/Sub; frontend jogável |
 | 4 | **Distribuição** | Particionamento por sala/jogador; réplica Postgres; deploy em AWS EC2; cenário de falha |
 | 5 | **Extras + Polimento** | Mercado/mímico/seguro (se der); dados de teste; ensaiar demo |
 | 6 | **Fechamento** | Gravar vídeo, finalizar documentação, revisar, entregar (28/06) |

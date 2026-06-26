@@ -35,10 +35,10 @@ Resumo de uma partida:
 3. Cada caixa exibe a **probabilidade** de conter cada tipo de item.
 4. Jogadores dão **lances** com orçamento limitado; o maior lance quando o cronômetro
    da caixa zera arremata.
-5. O arrematante **abre** a caixa — o servidor sorteia o item conforme as odds (ajustadas
-   pela afinidade pessoal do jogador).
-6. Itens podem ser **guardados** (fechar coleções premiadas), **vendidos** (mercado
-   dinâmico) ou **queimados** (aumentar afinidade pessoal por um tipo).
+5. O arrematante **abre** a caixa — o servidor sorteia **1 a 4 unidades** de um item
+   conforme as odds públicas.
+6. Itens podem ser **guardados** (fechar coleções premiadas) ou **vendidos** (mercado
+   dinâmico).
 7. Ao fim do tempo, vence o maior **patrimônio líquido** (dinheiro + itens + bônus de coleções).
 
 A graça é a tensão **habilidade × sorte**, como no pôquer: aposta-se pelo valor esperado,

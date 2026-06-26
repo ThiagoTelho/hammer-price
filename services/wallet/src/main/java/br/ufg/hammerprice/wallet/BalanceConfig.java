@@ -59,12 +59,6 @@ public final class BalanceConfig {
         return v instanceof Number ? ((Number) v).longValue() : def;
     }
 
-    /** Valor inteiro de {@code affinity.<key>} (ex.: gain_per_burn_pct, cap_pct). */
-    public long affinityLong(String key, long def) {
-        Object v = section("affinity").get(key);
-        return v instanceof Number ? ((Number) v).longValue() : def;
-    }
-
     /** Valor inteiro de {@code mimic.<key>} (ex.: steal_money_pct). */
     public long mimicLong(String key, long def) {
         Object v = section("mimic").get(key);

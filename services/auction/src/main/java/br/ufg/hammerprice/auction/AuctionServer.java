@@ -12,10 +12,8 @@ import br.ufg.hammerprice.auction.grpc.RoomState;
 import java.util.Map;
 import java.util.Random;
 import br.ufg.hammerprice.wallet.grpc.AddItemRequest;
-import br.ufg.hammerprice.wallet.grpc.Affinity;
 import br.ufg.hammerprice.wallet.grpc.MimicReply;
 import br.ufg.hammerprice.wallet.grpc.PlayerQuery;
-import br.ufg.hammerprice.wallet.grpc.PlayerState;
 import br.ufg.hammerprice.wallet.grpc.ReleaseRequest;
 import br.ufg.hammerprice.wallet.grpc.ReserveRequest;
 import br.ufg.hammerprice.wallet.grpc.SettleRequest;
@@ -25,7 +23,6 @@ import io.grpc.ManagedChannelBuilder;
 import io.grpc.Server;
 import io.grpc.ServerBuilder;
 import io.grpc.stub.StreamObserver;
-import java.util.HashMap;
 import java.util.concurrent.TimeUnit;
 
 /** Servidor gRPC do Leilão (fatia vertical). Também é CLIENTE gRPC da Carteira. */
@@ -93,22 +90,6 @@ public final class AuctionServer {
             } catch (Exception e) {
                 System.err.println("auction: erro ao aplicar penalidade do Mímico: " + e.getMessage());
                 return null;
-            }
-        }
-
-        /** Lê a afinidade do jogador (alimenta o RNG da abertura). */
-        java.util.Map<String, Integer> getAffinity(String playerId) {
-            try {
-                PlayerState ps = stub.withDeadlineAfter(2, TimeUnit.SECONDS)
-                        .getPlayer(PlayerQuery.newBuilder().setPlayerId(playerId).build());
-                HashMap<String, Integer> out = new HashMap<>();
-                for (Affinity a : ps.getAffinitiesList()) {
-                    out.put(a.getType(), a.getPoints());
-                }
-                return out;
-            } catch (Exception e) {
-                System.err.println("auction: erro ao ler afinidade: " + e.getMessage());
-                return java.util.Map.of();
             }
         }
     }
@@ -258,8 +239,6 @@ public final class AuctionServer {
                 System.getenv("REDIS_URL"), System.getenv("RABBITMQ_URL"));
 
         BoxStore store = new BoxStore(gw, settings, opener, typeWeights, typeRng);
-        // Afinidade do jogador (do "queimar") alimenta o RNG da abertura: lida da Carteira.
-        store.setAffinitySource(gw::getAffinity);
         // A cada início/fim de rodada (thread do cronômetro), difunde os eventos do jogo.
         store.setRoundListener(new BoxStore.RoundListener() {
             @Override

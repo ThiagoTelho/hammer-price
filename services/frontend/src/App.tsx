@@ -20,7 +20,6 @@ interface Wallet {
   balance: number;
   reserved: number;
   inventory: { id: string; type: string; state: string }[];
-  affinities: { type: string; points: number }[];
   collections: { kind: string; bonus: number }[];
 }
 interface RankRow {
@@ -278,16 +277,12 @@ export function App() {
               balance: msg.balance ?? 0,
               reserved: msg.reserved ?? 0,
               inventory: msg.inventory ?? [],
-              affinities: msg.affinities ?? [],
               collections: msg.collections ?? [],
             });
             break;
           case "SELL_RESULT":
             if (msg.ok) sfx.coin();
             addLog(msg.ok ? `💸 Vendeu ${msg.itemType} por ${money(msg.price)}` : `⚠️ Venda falhou: ${msg.reason}`);
-            break;
-          case "BURN_RESULT":
-            addLog(msg.ok ? `🔥 Queimou ${msg.itemType} → afinidade +${msg.affinity}` : `⚠️ Queima falhou: ${msg.reason}`);
             break;
           case "FORM_RESULT":
             if (msg.ok) {
@@ -382,7 +377,6 @@ export function App() {
   const placeBid = (boxId: string, amount: number) => send({ type: "PLACE_BID", boxId, amount });
   const sendOpen = (boxId: string) => send({ type: "OPEN_BOX", boxId });
   const sell = (itemId: string) => send({ type: "SELL_ITEM", itemId });
-  const burn = (itemId: string) => send({ type: "BURN_ITEM", itemId });
   const form = (kind: string) => send({ type: "FORM_COLLECTION", kind });
 
   const freeCount = (type: string): number => wallet?.inventory.filter((i) => i.type === type && i.state === "FREE").length ?? 0;
@@ -443,7 +437,7 @@ export function App() {
                 { icon: "🎲", title: "Um baú por rodada", text: "A cada rodada sobe um baú aleatório — com as probabilidades de prêmio à vista." },
                 { icon: "🔨", title: "Dispute no lance", text: "O cronômetro só começa após o 1º lance; quem liderar quando ele zerar arremata. Sem interesse? É só passar." },
                 { icon: "🎁", title: "Abra o que ganhar", text: "Pode sair Cobre, Prata, Ouro ou Diamante… ou um 💀 Mímico, que aplica uma penalidade." },
-                { icon: "💰", title: "Faça seu patrimônio", text: "Venda no mercado, queime por afinidade ou junte coleções para multiplicar o valor dos itens." },
+                { icon: "💰", title: "Faça seu patrimônio", text: "Venda itens no mercado ou junte coleções para multiplicar o valor dos seus itens." },
                 { icon: "🏆", title: "Maior patrimônio vence", text: "No fim das rodadas, ganha quem tiver mais dinheiro + itens + bônus de coleções." },
               ].map((s, i) => (
                 <li key={i} className="flex gap-3 items-start">
@@ -546,9 +540,6 @@ export function App() {
                   <div className="flex justify-between"><span className="text-muted">🔒 Reservado</span><span>{money(wallet.reserved)}</span></div>
                   <div className="flex justify-between"><span className="text-muted">🟢 Gastável</span><b className="text-emerald-400">{money(wallet.balance - wallet.reserved)}</b></div>
                 </div>
-                {wallet.affinities.length > 0 && (
-                  <div className="text-xs text-emerald-400 pt-2">✨ {wallet.affinities.map((a) => `${ITEM_EMOJI[a.type]} +${a.points}`).join("  ")}</div>
-                )}
                 {spectating ? (
                   <div className="mt-3 text-center text-xs text-sky-300 bg-sky-500/10 border border-sky-500/30 rounded-lg py-1.5">👀 Assistindo</div>
                 ) : (
@@ -750,7 +741,6 @@ export function App() {
                     <div key={t} className="flex items-center gap-2 text-sm">
                       <span className="flex-1">{ITEM_EMOJI[t]} {t} ×{count}{locked > 0 ? <span className="text-muted"> ({locked}🔒)</span> : ""}</span>
                       <button className={C.btnSmall} disabled={!firstFree || spectating} onClick={() => firstFree && sell(firstFree.id)}>vender</button>
-                      <button className={C.btnSmall} disabled={!firstFree || spectating} onClick={() => firstFree && burn(firstFree.id)}>queimar</button>
                     </div>
                   );
                 })}

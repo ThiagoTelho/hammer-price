@@ -15,7 +15,6 @@ service Wallet {
   rpc Settle    (SettleRequest)   returns (Ack);   // debita de fato (arremate da caixa)
   rpc AddItem   (AddItemRequest)  returns (Ack);   // credita o item ao inventário (abertura)
   rpc SellItem  (SellItemRequest) returns (SellReply);  // item livre -> dinheiro (preço de mercado)
-  rpc BurnItem  (BurnItemRequest) returns (BurnReply);  // item livre -> +afinidade pelo tipo
   rpc FormCollection (FormCollectionRequest) returns (FormReply);  // trava itens numa coleção -> bônus
   rpc ResetPlayer (PlayerQuery)   returns (Ack);   // zera o jogador p/ uma nova partida (orçamento inicial)
   rpc ApplyMimic  (PlayerQuery)   returns (MimicReply);  // ao abrir 💀 Mímico: aplica 1 penalidade
@@ -71,12 +70,6 @@ message Item {
   string state = 3;   // FREE | LOCKED_COLLECTION | CONSUMED
 }
 
-// Afinidade do jogador por tipo de item (pontos percentuais somados às odds na abertura).
-message Affinity {
-  string type   = 1;   // COPPER | SILVER | GOLD | DIAMOND
-  int32  points = 2;   // 0..teto
-}
-
 // Vender um item LIVRE pelo preço de mercado atual. O gateway (que lê o mercado da
 // réplica Redis) passa os preços; a Carteira escolhe pelo tipo REAL do item (anti-fraude)
 // e cai no valor base se faltar.
@@ -91,15 +84,6 @@ message SellReply {
   int64  price   = 3;   // valor creditado
   string type    = 4;   // tipo vendido
   int64  balance = 5;   // saldo após a venda
-}
-
-// Queimar um item LIVRE: destrói o item e aumenta a afinidade pelo seu tipo (com teto).
-message BurnItemRequest { string player_id = 1; string item_id = 2; }
-message BurnReply {
-  bool   ok       = 1;
-  string reason   = 2;   // OK | ITEM_NOT_FOUND | ITEM_LOCKED | AT_CAP
-  string type     = 3;   // tipo queimado
-  int32  affinity = 4;   // afinidade resultante para o tipo
 }
 
 // Forma uma coleção: trava os itens LIVRES exigidos (state -> LOCKED_COLLECTION) e
@@ -122,7 +106,6 @@ message PlayerState {
   int64  balance   = 2;
   int64  reserved  = 3;             // saldo "gastável" = balance - reserved
   repeated Item       inventory   = 4;   // itens obtidos ao abrir caixas
-  repeated Affinity   affinities  = 5;   // afinidade por tipo (do "queimar")
   repeated Collection collections = 6;   // coleções formadas (bônus)
 }
 

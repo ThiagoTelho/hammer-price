@@ -9,7 +9,7 @@
 // - Fan-out ASSÍNCRONO: assina o canal Redis Pub/Sub de cada sala (só durante a partida).
 import { WebSocketServer, WebSocket } from "ws";
 import Redis from "ioredis";
-import { placeBid, getRoomState, openBox, getPlayer, sellItem, burnItem, formCollection, advanceRound, forceClose, resetPlayer, type Box } from "./grpcClients.js";
+import { placeBid, getRoomState, openBox, getPlayer, sellItem, formCollection, advanceRound, forceClose, resetPlayer, type Box } from "./grpcClients.js";
 
 const PORT = Number(process.env.GATEWAY_PORT ?? 8080);
 const REDIS_URL = process.env.REDIS_URL ?? "redis://localhost:6379";
@@ -126,7 +126,6 @@ async function sendWallet(c: Client): Promise<void> {
           balance: p.balance,
           reserved: p.reserved,
           inventory: p.inventory,
-          affinities: p.affinities,
           collections: p.collections,
         }),
       );
@@ -479,7 +478,7 @@ wss.on("connection", (ws, req) => {
     }
 
     // ---- Ações de jogo (só durante a partida e para quem NÃO é espectador) ----
-    const GAME_ACTIONS = ["PLACE_BID", "OPEN_BOX", "SELL_ITEM", "BURN_ITEM", "FORM_COLLECTION"];
+    const GAME_ACTIONS = ["PLACE_BID", "OPEN_BOX", "SELL_ITEM", "FORM_COLLECTION"];
     if (!inRunningMatch(client)) {
       if (GAME_ACTIONS.includes(msg.type)) ws.send(JSON.stringify({ type: "ERROR", reason: "MATCH_NOT_RUNNING" }));
       return;
@@ -537,16 +536,6 @@ wss.on("connection", (ws, req) => {
       }
     }
 
-    if (msg.type === "BURN_ITEM") {
-      try {
-        const reply = await burnItem(waddr, playerId, msg.itemId);
-        ws.send(JSON.stringify({ type: "BURN_RESULT", ok: reply.ok, reason: reply.reason, itemType: reply.type, affinity: reply.affinity }));
-        if (reply.ok) void sendWallet(client);
-      } catch (err) {
-        console.error("gateway: erro no BURN_ITEM:", err);
-        ws.send(JSON.stringify({ type: "ERROR", reason: "BURN_FAILED" }));
-      }
-    }
 
     if (msg.type === "FORM_COLLECTION") {
       try {

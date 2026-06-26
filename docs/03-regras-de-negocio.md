@@ -64,18 +64,17 @@ EV = 0,60·10 + 0,30·30 + 0,09·100 + 0,01·300 = 6 + 9 + 9 + 3 = 27
 → Lance racional "frio" ≈ 27. Jogadores perto de fechar uma coleção têm **EV pessoal**
 maior e tendem a sobre-apostar (ver seção 5).
 
-## 4. Abertura de caixa (RNG + afinidade)
+## 4. Abertura de caixa (RNG)
 
-A probabilidade efetiva de cada item, para um jogador `j` abrindo uma caixa `c`:
+O item é sorteado pelas **odds públicas** do tipo da caixa (as mesmas exibidas aos jogadores):
 
 ```
-P_efetiva(item) = normalizar( P_base(c, item) + afinidade(j, item) )
+P(item) = normalizar( P_base(c, item) )
 ```
-- `afinidade(j, item) ≥ 0`, com **teto** por item (ver seção 5).
-- `normalizar(...)` reescala o vetor para somar 100% (o Mímico também é renormalizado).
+- `normalizar(...)` reescala o vetor para somar 100% (o Mímico inclusive).
 - O sorteio usa um **RNG com seed injetável** (testes determinísticos) e roda **no
-  servidor** (cliente nunca sorteia).
-- **Invariante:** a soma de `P_efetiva` é exatamente 1; nenhuma probabilidade é negativa.
+  servidor** (cliente nunca sorteia). **Probabilidades exibidas = aplicadas.**
+- **Invariante:** a soma de `P` é exatamente 1; nenhuma probabilidade é negativa.
 - **Quantidade (camada de sorte):** sorteado o tipo, o baú rende **`open.min_items`..`open.max_items`
   unidades** (padrão **1 a 4**) DAQUELE tipo — ex.: `3× Diamante`. Isso eleva o teto de valor de
   um baú (um Cofre pode render `4× Diamante`). O **Mímico é penalidade única** (não rende itens).
@@ -88,7 +87,7 @@ Ao sair `MIMIC`, aplica-se **uma** penalidade sorteada:
 
 O **seguro** (seção 7) reduz a penalidade.
 
-## 5. Coleções e afinidade
+## 5. Coleções
 
 ### Coleções (bônus no patrimônio final)
 
@@ -107,19 +106,8 @@ O **seguro** (seção 7) reduz a penalidade.
 > Bônus calibrado em **~2–3× o valor de mercado** dos itens consumidos: formar uma coleção
 > rende mais que vender as peças soltas.
 
-- Itens "consumidos" por uma coleção ficam **travados** (não podem ser vendidos/queimados).
+- Itens "consumidos" por uma coleção ficam **travados** (não podem ser vendidos).
 - Uma coleção é avaliada uma vez; itens excedentes podem formar outra do mesmo tipo.
-
-### Afinidade
-
-| Parâmetro | Valor inicial |
-|---|---|
-| Ganho de afinidade por item queimado | +2 pontos percentuais |
-| Custo (queimar) | o próprio item + taxa crescente |
-| Custo marginal | dobra a cada 3 pontos acumulados no mesmo item |
-| Teto de afinidade por item | +15 pontos percentuais |
-
-**Invariante:** afinidade nunca ultrapassa o teto; queima rejeitada se exceder.
 
 ## 6. Mercado dinâmico
 
@@ -159,8 +147,7 @@ vence; empate desfeito por **quantidade de coleções**, depois por **patrimôni
 1. `saldo(j) ≥ 0` sempre — soma das reservas ativas nunca excede o saldo.
 2. Um item está em **exatamente um** estado: livre, reservado-para-coleção, ou consumido.
    Nunca vendido e colecionado ao mesmo tempo.
-3. Para toda caixa: `Σ P_efetiva = 1`, `P_efetiva(item) ≥ 0`.
+3. Para toda caixa: `Σ P = 1`, `P(item) ≥ 0` (odds exibidas = aplicadas).
 4. O vencedor de uma caixa é o **último lance válido** antes de o cronômetro zerar,
    desempatado pelo **timestamp do servidor** (não do cliente).
 5. Toda alteração de dinheiro tem registro no **ledger** (auditável; base da reconciliação).
-6. `afinidade(j, item) ≤ teto`.

@@ -139,10 +139,6 @@ export interface WalletItem {
   type: string;
   state: string;
 }
-export interface Affinity {
-  type: string;
-  points: number;
-}
 export interface CollectionInfo {
   kind: string;
   bonus: number;
@@ -152,11 +148,10 @@ export interface PlayerState {
   balance: number;
   reserved: number;
   inventory: WalletItem[];
-  affinities: Affinity[];
   collections: CollectionInfo[];
 }
 
-// Leitura do estado do jogador (saldo, reservas, inventário, afinidades) na sua wallet shard.
+// Leitura do estado do jogador (saldo, reservas, inventário, coleções) na sua wallet shard.
 export function getPlayer(addr: string, playerId: string): Promise<PlayerState> {
   return new Promise((res, rej) => {
     walletAt(addr).GetPlayer({ playerId }, callOpts(), (err: any, reply: PlayerState) =>
@@ -172,13 +167,6 @@ export interface SellReply {
   type: string;
   balance: number;
 }
-export interface BurnReply {
-  ok: boolean;
-  reason: string;
-  type: string;
-  affinity: number;
-}
-
 // Vende um item livre pelo preço de mercado (passado pelo gateway, que lê o mercado).
 export function sellItem(
   addr: string,
@@ -188,15 +176,6 @@ export function sellItem(
 ): Promise<SellReply> {
   return new Promise((res, rej) => {
     walletAt(addr).SellItem({ playerId, itemId, prices }, callOpts(), (err: any, reply: SellReply) =>
-      err ? rej(err) : res(reply),
-    );
-  });
-}
-
-// Queima um item livre: +afinidade pelo tipo (alimenta o RNG da abertura).
-export function burnItem(addr: string, playerId: string, itemId: string): Promise<BurnReply> {
-  return new Promise((res, rej) => {
-    walletAt(addr).BurnItem({ playerId, itemId }, callOpts(), (err: any, reply: BurnReply) =>
       err ? rej(err) : res(reply),
     );
   });

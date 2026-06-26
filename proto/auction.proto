@@ -7,9 +7,8 @@ option java_outer_classname = "AuctionProto";
 
 // Serviço de Leilão — núcleo concorrente (modelo round-based).
 // PlaceBid (lance atômico na caixa da rodada), GetRoomState (rodada atual + caixa +
-// odds públicas) e OpenBox (sorteio do item pelo RNG do servidor, ajustado pela
-// afinidade do jogador). Estado em memória; particionamento por sala entra numa etapa
-// posterior.
+// odds públicas) e OpenBox (sorteio do item + quantidade pelo RNG do servidor, pelas
+// odds públicas do tipo). Estado em memória; particionamento por sala por instância.
 service Auction {
   rpc PlaceBid     (PlaceBidRequest) returns (PlaceBidReply);
   rpc GetRoomState (RoomQuery)       returns (RoomState);    // rodada atual + caixa + odds
