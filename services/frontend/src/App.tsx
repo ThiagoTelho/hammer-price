@@ -102,6 +102,12 @@ export function App() {
           break;
         case "BID_PLACED":
           addLog(`🔨 ${msg.leader} deu lance de ${msg.amount} em ${msg.boxId}`);
+          // Atualiza o card da caixa: novo lance atual, líder e cronômetro reiniciado.
+          setBox((prev) =>
+            prev && prev.boxId === msg.boxId
+              ? { ...prev, currentBid: msg.amount, leader: msg.leader, timerMs: msg.timerMs, deadlineAt: Date.now() + msg.timerMs }
+              : prev,
+          );
           break;
         case "BOX_SOLD":
           addLog(`🏆 ${msg.boxId} arrematada por ${msg.winner} (${msg.price})`);
@@ -128,6 +134,12 @@ export function App() {
           break;
         case "BID_ACCEPTED":
           addLog(`✅ Seu lance em ${msg.boxId} foi aceito (atual: ${msg.currentBid})`);
+          // Feedback imediato no card (antes mesmo do BID_PLACED assíncrono chegar).
+          setBox((prev) =>
+            prev && prev.boxId === msg.boxId
+              ? { ...prev, currentBid: msg.currentBid, leader: msg.leader, timerMs: msg.timerMs, deadlineAt: Date.now() + msg.timerMs }
+              : prev,
+          );
           break;
         case "BID_REJECTED":
           addLog(`❌ Lance rejeitado em ${msg.boxId}: ${msg.reason}`);
