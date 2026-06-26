@@ -77,15 +77,15 @@ cada um é satisfeito. Atualize a coluna **Status** conforme as fases avançam.
 
 | # | Requisito | Status | Onde (atual → planejado) |
 |---|---|---|---|
-| R1 | Acessível a múltiplos clientes na Internet | 🟡 parcial | Local (WS+REST) → AWS EC2 (Fase 8) |
-| R2 | Vários componentes distribuídos coordenados | 🟢 ok | frontend/gateway/auction/wallet; + worker (Fase 5) |
-| R3 | Acessos concorrentes a recursos compartilhados | 🟢 ok | Lock por caixa + wallet `synchronized`; → Redlock+SQL (Fase 3) |
+| R1 | Acessível a múltiplos clientes na Internet | 🟢 ok | Deploy em **AWS EC2** (smoke test 25/06) + **lobby multijogador** (criar/entrar por código, ≥2 por sala); demo multi-cliente remoto = Fase 10 |
+| R2 | Vários componentes distribuídos coordenados | 🟢 ok | frontend, gateway, auction (×2), wallet (×2 shards), worker — coordenados; + Redis/RabbitMQ/Postgres de apoio |
+| R3 | Acessos concorrentes a recursos compartilhados | 🟢 ok | Sala inteira disputa a caixa (lock por caixa, teste 8×200) + reservas concorrentes nos shards de Carteira; → Redlock+SQL durável (Fase 3) |
 | R4 | Processamento servidor concorrente com clientes | 🟢 ok | Lances/RNG/rodadas + **worker de mercado** (Python) recalculando durante a partida |
 | R5 | Interação síncrona **e** assíncrona | 🟢 ok | gRPC síncrono (lance/abertura) + **Redis Pub/Sub** + **RabbitMQ** assíncronos |
 | R6 | Replicação **e** particionamento | 🟢 ok | **Partição ✓** (2 instâncias de Leilão por sala + 2 wallet shards) + **Replicação ✓** (Redis primary→réplica; gateway lê o mercado da réplica). Postgres streaming = stretch opcional |
-| R7 | Consistência **e** disponibilidade | 🟡 parcial | Saldo nunca negativo (em memória) + **isolamento de partição** (queda de instância só afeta uma sala) ✓; → consistência forte (Fase 3) + failover (Fase 7) |
+| R7 | Consistência **e** disponibilidade | 🟡 parcial | Consistência ✓: saldo nunca negativo, item em estado único, item travado não vende (em memória). Disponibilidade ✓: isolamento de partição + fail-fast (deadline gRPC). Stretch: consistência durável (Postgres+Redlock) + failover |
 | R8 | >1 linguagem **e** >1 paradigma | 🟢 ok | TS+Java+**Python**; cliente-servidor (REST/gRPC) + **pub-sub** (Redis) + **messaging** (RabbitMQ) |
-| R9 | Demonstração em AWS EC2 | 🟢 ok | Stack roda numa EC2 (smoke test verde 25/06); pendentes: demo gravada (Fase 10) e topologia 2–3 instâncias p/ R6 |
+| R9 | Demonstração em AWS EC2 | 🟢 ok | Stack roda numa EC2 (smoke test verde 25/06); pendente: **demo gravada** (Fase 10). Topologia 2–3 máquinas = polish opcional (R6 já demonstrado localmente) |
 
 Legenda: 🟢 satisfeito · 🟡 parcial · 🔴 ainda não.
 
