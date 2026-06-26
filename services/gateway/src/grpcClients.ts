@@ -36,6 +36,10 @@ function walletAt(addr: string) {
   return c;
 }
 
+// Deadline curto: se a instância dona da sala estiver fora, a chamada falha rápido
+// (em vez de pendurar) e o gateway responde "indisponível" ao cliente.
+const callOpts = () => ({ deadline: Date.now() + 3000 });
+
 // Particionamento por sala: um cliente gRPC por instância de Leilão (cada sala tem a sua),
 // cacheado por endereço. O gateway escolhe o endereço pela sala do cliente.
 const clientsByAddr = new Map<string, any>();
@@ -81,7 +85,7 @@ export function placeBid(
   amount: number,
 ): Promise<PlaceBidReply> {
   return new Promise((res, rej) => {
-    auctionAt(addr).PlaceBid({ roomId, boxId, playerId, amount }, (err: any, reply: PlaceBidReply) =>
+    auctionAt(addr).PlaceBid({ roomId, boxId, playerId, amount }, callOpts(), (err: any, reply: PlaceBidReply) =>
       err ? rej(err) : res(reply),
     );
   });
@@ -89,7 +93,7 @@ export function placeBid(
 
 export function getRoomState(addr: string, roomId: string): Promise<RoomState> {
   return new Promise((res, rej) => {
-    auctionAt(addr).GetRoomState({ roomId }, (err: any, reply: RoomState) =>
+    auctionAt(addr).GetRoomState({ roomId }, callOpts(), (err: any, reply: RoomState) =>
       err ? rej(err) : res(reply),
     );
   });
@@ -117,7 +121,7 @@ export interface PlayerState {
 // Leitura do estado do jogador (saldo, reservas, inventário) na sua wallet shard.
 export function getPlayer(addr: string, playerId: string): Promise<PlayerState> {
   return new Promise((res, rej) => {
-    walletAt(addr).GetPlayer({ playerId }, (err: any, reply: PlayerState) =>
+    walletAt(addr).GetPlayer({ playerId }, callOpts(), (err: any, reply: PlayerState) =>
       err ? rej(err) : res(reply),
     );
   });
@@ -131,7 +135,7 @@ export function openBox(
   playerId: string,
 ): Promise<OpenBoxReply> {
   return new Promise((res, rej) => {
-    auctionAt(addr).OpenBox({ roomId, boxId, playerId }, (err: any, reply: OpenBoxReply) =>
+    auctionAt(addr).OpenBox({ roomId, boxId, playerId }, callOpts(), (err: any, reply: OpenBoxReply) =>
       err ? rej(err) : res(reply),
     );
   });
