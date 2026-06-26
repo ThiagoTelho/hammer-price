@@ -37,6 +37,14 @@ public final class BoxOpener {
     }
 
     /**
+     * Odds base (públicas) de um tipo de caixa — as probabilidades exibidas aos jogadores.
+     * Sem afinidade, são iguais às efetivamente aplicadas no sorteio (ver {@link #draw}).
+     */
+    public Map<String, Integer> oddsFor(String boxType) {
+        return odds.forType(boxType);
+    }
+
+    /**
      * Distribuição efetiva: {@code max(0, base + afinidade)} renormalizada para somar 1.
      * Mantida visível no pacote para teste das invariantes.
      */

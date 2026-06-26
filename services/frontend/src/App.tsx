@@ -1,5 +1,6 @@
-// Mesa de leilão do Hammer Price (fatia vertical).
-// Conecta ao gateway por WebSocket, mostra as caixas e permite dar lances.
+// Mesa de leilão do Hammer Price (modelo round-based).
+// Conecta ao gateway por WebSocket; a cada RODADA aparece UMA caixa (tipo sorteado),
+// com as odds públicas, e os jogadores disputam por lances.
 import { useEffect, useRef, useState, useCallback } from "react";
 
 const GATEWAY_URL = import.meta.env.VITE_GATEWAY_URL ?? "ws://localhost:8080";
@@ -10,14 +11,15 @@ interface Box {
   currentBid: number;
   leader: string;
   timerMs: number;
+  odds: Record<string, number>;
   deadlineAt?: number; // instante absoluto (ms) em que o cronômetro zera, p/ contagem local
 }
 
 // Converte o timerMs (relativo, do servidor) em um instante absoluto local, para
-// a contagem regressiva andar suavemente entre as atualizações de STATE.
-function withDeadlines(boxes: Box[]): Box[] {
-  const now = Date.now();
-  return boxes.map((b) => ({ ...b, deadlineAt: b.timerMs > 0 ? now + b.timerMs : 0 }));
+// a contagem regressiva andar suavemente entre as atualizações de estado.
+function withDeadline(box: Box | null): Box | null {
+  if (!box) return null;
+  return { ...box, deadlineAt: box.timerMs > 0 ? Date.now() + box.timerMs : 0 };
 }
 
 const BOX_EMOJI: Record<string, string> = {
@@ -27,11 +29,22 @@ const BOX_EMOJI: Record<string, string> = {
   VAULT: "💎",
 };
 
+// Ordem e ícones dos itens, para exibir as odds públicas da caixa.
+const ITEM_ORDER = ["COPPER", "SILVER", "GOLD", "DIAMOND", "MIMIC"];
+const ITEM_EMOJI: Record<string, string> = {
+  COPPER: "🪙",
+  SILVER: "🥈",
+  GOLD: "🥇",
+  DIAMOND: "💎",
+  MIMIC: "💀",
+};
+
 export function App() {
   const [name, setName] = useState("");
   const [connected, setConnected] = useState(false);
   const [playerId, setPlayerId] = useState("");
-  const [boxes, setBoxes] = useState<Box[]>([]);
+  const [round, setRound] = useState(0);
+  const [box, setBox] = useState<Box | null>(null);
   const [log, setLog] = useState<string[]>([]);
   const [wonBoxes, setWonBoxes] = useState<{ boxId: string; boxType: string }[]>([]);
   const wsRef = useRef<WebSocket | null>(null);
@@ -62,10 +75,20 @@ export function App() {
         case "WELCOME":
           setPlayerId(msg.playerId);
           playerIdRef.current = msg.playerId;
-          setBoxes(withDeadlines(msg.boxes ?? []));
+          setRound(msg.round ?? 0);
+          setBox(withDeadline(msg.box ?? null));
           break;
-        case "STATE":
-          setBoxes(withDeadlines(msg.boxes ?? []));
+        case "ROOM_STATE":
+          setRound(msg.round ?? 0);
+          setBox(withDeadline(msg.box ?? null));
+          break;
+        case "ROUND_STARTED":
+          setRound(msg.round ?? 0);
+          setBox(withDeadline(msg.box ?? null));
+          addLog(`🆕 Rodada ${msg.round}: caixa ${msg.box?.boxType ?? "?"} em leilão`);
+          break;
+        case "ROUND_ENDED":
+          if (!msg.winner) addLog(`⌛ Rodada ${msg.round} encerrada sem lances`);
           break;
         case "BID_PLACED":
           addLog(`🔨 ${msg.leader} deu lance de ${msg.amount} em ${msg.boxId}`);
@@ -108,7 +131,7 @@ export function App() {
 
   useEffect(() => () => wsRef.current?.close(), []);
 
-  // Pulso de re-render p/ a contagem regressiva andar entre atualizações de STATE.
+  // Pulso de re-render p/ a contagem regressiva andar entre atualizações de estado.
   const [, setTick] = useState(0);
   useEffect(() => {
     const id = setInterval(() => setTick((t) => t + 1), 250);
@@ -116,7 +139,7 @@ export function App() {
   }, []);
 
   const countdown = (b: Box): string => {
-    if (!b.leader || !b.deadlineAt) return "—";
+    if (!b.deadlineAt) return "—";
     return `${Math.max(0, Math.ceil((b.deadlineAt - Date.now()) / 1000))}s`;
   };
 
@@ -129,10 +152,15 @@ export function App() {
     wsRef.current?.send(JSON.stringify({ type: "OPEN_BOX", boxId }));
   };
 
+  const oddsLine = (odds: Record<string, number>): string =>
+    ITEM_ORDER.filter((k) => odds?.[k] != null)
+      .map((k) => `${ITEM_EMOJI[k]} ${odds[k]}%`)
+      .join("   ");
+
   return (
     <div style={S.page}>
       <h1 style={{ margin: 0 }}>🔨 Hammer Price</h1>
-      <p style={{ color: "#888", marginTop: 4 }}>Leilão de caixas misteriosas — fatia vertical</p>
+      <p style={{ color: "#888", marginTop: 4 }}>Leilão de caixas misteriosas — uma caixa por rodada</p>
 
       {!connected ? (
         <div style={S.connectBox}>
@@ -149,28 +177,29 @@ export function App() {
         </div>
       ) : (
         <p>
-          Jogando como <b>{playerId}</b>
+          Jogando como <b>{playerId}</b> · <b>Rodada {round || "—"}</b>
         </p>
       )}
 
-      <div style={S.grid}>
-        {boxes.map((b) => (
-          <div key={b.boxId} style={S.card}>
-            <div style={{ fontSize: 40 }}>{BOX_EMOJI[b.boxType] ?? "📦"}</div>
-            <div style={{ fontWeight: 700 }}>{b.boxType}</div>
-            <div style={{ fontSize: 12, color: "#888" }}>{b.boxId}</div>
-            <div style={S.bid}>{b.currentBid > 0 ? `💰 ${b.currentBid}` : "sem lances"}</div>
-            <div style={{ fontSize: 12 }}>
-              líder: <b>{b.leader || "—"}</b>
+      <div style={S.stage}>
+        {box ? (
+          <div style={S.card}>
+            <div style={{ fontSize: 48 }}>{BOX_EMOJI[box.boxType] ?? "📦"}</div>
+            <div style={{ fontWeight: 700, fontSize: 18 }}>Caixa {box.boxType}</div>
+            <div style={{ fontSize: 12, color: "#888" }}>{box.boxId}</div>
+            <div style={S.odds}>{oddsLine(box.odds)}</div>
+            <div style={S.bid}>{box.currentBid > 0 ? `💰 ${box.currentBid}` : "sem lances"}</div>
+            <div style={{ fontSize: 13 }}>
+              líder: <b>{box.leader || "—"}</b>
             </div>
-            <div style={{ fontSize: 12, color: countdown(b) !== "—" ? "#c0392b" : "#888" }}>
-              ⏱ {countdown(b)}
-            </div>
-            <button style={S.btn} disabled={!connected} onClick={() => sendBid(b.boxId, b.currentBid)}>
+            <div style={{ fontSize: 14, color: "#c0392b" }}>⏱ {countdown(box)}</div>
+            <button style={S.btn} disabled={!connected} onClick={() => sendBid(box.boxId, box.currentBid)}>
               Dar lance
             </button>
           </div>
-        ))}
+        ) : (
+          <div style={S.intermission}>⏳ Aguardando a próxima rodada…</div>
+        )}
       </div>
 
       {wonBoxes.length > 0 && (
@@ -209,18 +238,22 @@ const S: Record<string, React.CSSProperties> = {
     color: "#fff",
     cursor: "pointer",
   },
-  grid: { display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(150px, 1fr))", gap: 12, margin: "16px 0" },
+  stage: { display: "flex", justifyContent: "center", margin: "16px 0" },
   card: {
     border: "1px solid #e3e3e3",
-    borderRadius: 10,
-    padding: 14,
+    borderRadius: 12,
+    padding: 20,
     textAlign: "center",
     display: "flex",
     flexDirection: "column",
-    gap: 6,
+    gap: 8,
     alignItems: "center",
+    minWidth: 240,
+    boxShadow: "0 2px 12px rgba(0,0,0,0.06)",
   },
-  bid: { fontSize: 18, fontWeight: 700, color: "#5b3df5" },
+  odds: { fontSize: 13, color: "#444", letterSpacing: 0.2 },
+  bid: { fontSize: 20, fontWeight: 700, color: "#5b3df5" },
+  intermission: { fontSize: 16, color: "#888", padding: 32 },
   log: { fontSize: 13, fontFamily: "ui-monospace, monospace", maxHeight: 220, overflowY: "auto" },
   won: {
     background: "#fff8e1",

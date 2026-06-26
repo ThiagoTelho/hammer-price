@@ -1,8 +1,8 @@
 package br.ufg.hammerprice.auction;
 
-import java.util.ArrayList;
-import java.util.List;
+import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.Random;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executors;
@@ -10,25 +10,27 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.concurrent.atomic.AtomicReferenceArray;
 import java.util.concurrent.locks.ReentrantLock;
 
 /**
- * Estado das caixas em leilão + ciclo de vida completo do lance.
+ * Núcleo do leilão no modelo ROUND-BASED: uma caixa por rodada.
  *
- * <p>Concorrência: um {@link ReentrantLock} POR CAIXA serializa os lances e o
- * fechamento daquela caixa (lances em caixas diferentes correm em paralelo). O
- * vencedor é o ÚLTIMO lance válido antes do cronômetro zerar — o lock dá a ordem
- * autoritativa pelo timestamp do servidor. Um cronômetro por caixa fecha o leilão
- * automaticamente; lances nos segundos finais ESTENDEM o prazo (anti-sniping).
- * Ao fechar, o vencedor é debitado (Settle) e a caixa é REPOSTA por uma nova no
- * mesmo slot, mantendo a oferta.
+ * <p>A cada rodada, o servidor SORTEIA o tipo de uma única caixa (pesos do {@code
+ * balance.yaml}), expõe as odds públicas e abre o leilão. Toda a sala disputa a MESMA
+ * caixa: um único {@link ReentrantLock} serializa os lances concorrentes e as transições
+ * de rodada — a invariante que ele protege é o estado da rodada corrente (caixa, líder,
+ * cronômetro). O vencedor é o ÚLTIMO lance válido antes do cronômetro zerar (ordem dada
+ * pelo lock = timestamp do servidor). A rodada tem vida própria: o cronômetro é armado já
+ * no início (fecha mesmo sem lances); lances nos segundos finais ESTENDEM o prazo
+ * (anti-sniping). Ao fechar, o vencedor é debitado (Settle) e pode ABRIR a caixa; após uma
+ * pausa curta (intermission) a próxima rodada começa com uma nova caixa aleatória. Se
+ * ninguém der lance, a rodada encerra sem vencedor e a próxima começa.
  */
 public final class BoxStore {
 
     /** Parâmetros do leilão (do balance.yaml), injetados para facilitar testes. */
     public record Settings(long timerBaseMs, long antiSnipeWindowMs, long antiSnipeResetMs,
-                           long incrementPct, long incrementAbs) {}
+                           long incrementPct, long incrementAbs, long intermissionMs) {}
 
     /** Dependência da Carteira: reservar, devolver e debitar (arremate). */
     public interface Wallet {
@@ -37,7 +39,7 @@ public final class BoxStore {
         void settle(String playerId, String boxId, long amount);
     }
 
-    /** Notificação de caixa arrematada (publicação de eventos é wired pelo servidor). */
+    /** Notificação de caixa arrematada (publicação de eventos é wired pelo servidor/gateway). */
     public interface CloseListener {
         void onSold(String boxId, String winner, long price);
     }
@@ -47,71 +49,125 @@ public final class BoxStore {
         Map<String, Integer> forPlayer(String playerId);
     }
 
-    private static final String[] TYPES = {"BRONZE", "SILVER", "GOLD", "VAULT"};
-
-    private static final class Box {
-        final ReentrantLock lock = new ReentrantLock();
-        final int slot;
-        final String id;
-        final String type;
-        long curBid = 0;
-        String leader = "";
-        long deadlineMs = 0;        // 0 = cronômetro não armado (sem lances ainda)
-        boolean sold = false;
-        ScheduledFuture<?> closeTask;
-
-        Box(int slot, String id, String type) {
-            this.slot = slot;
-            this.id = id;
-            this.type = type;
-        }
-    }
-
     /** Resultado de um lance. */
     public record BidResult(boolean accepted, String reason, long currentBid, String leader, long timerMs) {}
 
-    /** Visão de uma caixa para o estado do vault. */
-    public record Snapshot(String boxId, String boxType, String leader, long currentBid, long timerMs) {}
-
-    /** Caixa arrematada à espera de abertura pelo vencedor. */
-    private record PendingOpen(String winner, String boxType, long price) {}
+    /** Estado da sala: rodada atual + caixa em leilão (com odds públicas). */
+    public record RoomState(int round, boolean active, String boxId, String boxType,
+                            long currentBid, String leader, long timerMs,
+                            Map<String, Integer> odds) {}
 
     /** Resultado de uma abertura de caixa (sorteio do item). */
     public record OpenResult(boolean ok, String reason, String item, boolean isMimic) {}
 
+    /** Caixa arrematada à espera de abertura pelo vencedor. */
+    private record PendingOpen(String winner, String boxType, long price) {}
+
+    /** Pesos default do sorteio de tipo (fallback se o balance.yaml não trouxer). */
+    private static final LinkedHashMap<String, Integer> DEFAULT_WEIGHTS = new LinkedHashMap<>();
+    static {
+        DEFAULT_WEIGHTS.put("BRONZE", 50);
+        DEFAULT_WEIGHTS.put("SILVER", 30);
+        DEFAULT_WEIGHTS.put("GOLD", 15);
+        DEFAULT_WEIGHTS.put("VAULT", 5);
+    }
+
     private final Wallet wallet;
     private final Settings cfg;
     private final BoxOpener opener;
+
+    // Sorteio do tipo de caixa (pesos cumulativos), acessado só sob `lock`.
+    private final String[] types;
+    private final int[] cumWeights;
+    private final int totalWeight;
+    private final Random typeRng;
+
     private final ScheduledExecutorService scheduler =
             Executors.newSingleThreadScheduledExecutor(r -> {
-                Thread t = new Thread(r, "box-timer");
+                Thread t = new Thread(r, "round-timer");
                 t.setDaemon(true);
                 return t;
             });
-    private final ConcurrentHashMap<String, Box> byId = new ConcurrentHashMap<>();
-    private final AtomicReferenceArray<Box> slots;
+
+    // ---- estado da rodada corrente, protegido por `lock` ----
+    private final ReentrantLock lock = new ReentrantLock();
+    private int roundNo = 0;
+    private boolean active = false;   // false durante a pausa entre rodadas
+    private boolean ended = false;    // a rodada corrente já foi fechada?
+    private String boxId = "";
+    private String boxType = "";
+    private long curBid = 0;
+    private String leader = "";
+    private long deadlineMs = 0;
+    private ScheduledFuture<?> closeTask;
     private final AtomicInteger boxSeq = new AtomicInteger();
-    private volatile CloseListener closeListener = (id, w, p) -> {};
+
     // Caixas arrematadas aguardando abertura pelo vencedor + ids já abertos.
     private final ConcurrentHashMap<String, PendingOpen> pendingOpens = new ConcurrentHashMap<>();
     private final Set<String> opened = ConcurrentHashMap.newKeySet();
+    private volatile CloseListener closeListener = (id, w, p) -> {};
     private volatile AffinitySource affinitySource = p -> Map.of();
 
-    /** Cria o conjunto inicial de caixas (uma por tipo), com o cronômetro desarmado. */
-    public BoxStore(Wallet wallet, Settings cfg, BoxOpener opener) {
+    /** Cria o leilão e abre a rodada 1 imediatamente. */
+    public BoxStore(Wallet wallet, Settings cfg, BoxOpener opener,
+                    Map<String, Integer> typeWeights, Random typeRng) {
         this.wallet = wallet;
         this.cfg = cfg;
         this.opener = opener;
-        this.slots = new AtomicReferenceArray<>(TYPES.length);
-        for (int i = 0; i < TYPES.length; i++) {
-            Box b = new Box(i, "box-" + boxSeq.incrementAndGet(), TYPES[i]);
-            slots.set(i, b);
-            byId.put(b.id, b);
+        this.typeRng = typeRng;
+        Map<String, Integer> src = (typeWeights == null || typeWeights.isEmpty())
+                ? DEFAULT_WEIGHTS : typeWeights;
+        LinkedHashMap<String, Integer> w = new LinkedHashMap<>();
+        src.forEach((k, v) -> { if (v != null && v > 0) w.put(k, v); });
+        this.types = w.keySet().toArray(new String[0]);
+        this.cumWeights = new int[types.length];
+        int acc = 0;
+        int i = 0;
+        for (int v : w.values()) {
+            acc += v;
+            cumWeights[i++] = acc;
         }
+        this.totalWeight = acc;
+        startRound();
     }
 
     public void setCloseListener(CloseListener l) {
         this.closeListener = (l == null) ? (id, w, p) -> {} : l;
+    }
+
+    public void setAffinitySource(AffinitySource s) {
+        this.affinitySource = (s == null) ? p -> Map.of() : s;
+    }
+
+    /** Sorteia o tipo da caixa pelos pesos cumulativos (sob o lock). */
+    private String pickType() {
+        if (totalWeight <= 0) {
+            return "BRONZE";
+        }
+        int r = typeRng.nextInt(totalWeight); // [0, total)
+        for (int i = 0; i < cumWeights.length; i++) {
+            if (r < cumWeights[i]) {
+                return types[i];
+            }
+        }
+        return types[types.length - 1];
+    }
+
+    /** Abre uma nova rodada com uma caixa de tipo sorteado e arma o cronômetro. */
+    private void startRound() {
+        lock.lock();
+        try {
+            roundNo++;
+            boxId = "box-" + boxSeq.incrementAndGet();
+            boxType = pickType();
+            curBid = 0;
+            leader = "";
+            ended = false;
+            active = true;
+            armTimer(true); // a rodada começa com o cronômetro-base armado (fecha mesmo sem lances)
+        } finally {
+            lock.unlock();
+        }
     }
 
     /** Incremento mínimo: percentual do lance atual, com piso absoluto (balance.yaml). */
@@ -120,91 +176,97 @@ public final class BoxStore {
         return Math.max(inc, cfg.incrementAbs());
     }
 
-    /** Aplica um lance de forma atômica; arma/estende o cronômetro da caixa. */
-    public BidResult placeBid(String boxId, String playerId, long amount) {
-        Box b = byId.get(boxId);
-        if (b == null) {
-            return new BidResult(false, "UNKNOWN_BOX", 0, "", 0);
-        }
-        b.lock.lock();
+    /** Aplica um lance de forma atômica na caixa da rodada; estende o cronômetro. */
+    public BidResult placeBid(String reqBoxId, String playerId, long amount) {
+        lock.lock();
         try {
-            if (b.sold) {
-                return new BidResult(false, "BOX_CLOSED", b.curBid, b.leader, 0);
+            if (!boxId.equals(reqBoxId)) {
+                return new BidResult(false, "UNKNOWN_BOX", 0, "", 0);
             }
-            if (amount < b.curBid + minIncrement(b.curBid)) {
-                return new BidResult(false, "TOO_LOW", b.curBid, b.leader, remainingMs(b));
+            if (!active) {
+                return new BidResult(false, "BOX_CLOSED", curBid, leader, 0);
+            }
+            if (amount < curBid + minIncrement(curBid)) {
+                return new BidResult(false, "TOO_LOW", curBid, leader, remainingMs());
             }
             // Reserva o saldo do novo lance ANTES de aceitar (chamada síncrona à Carteira).
             if (!wallet.reserve(playerId, boxId, amount)) {
-                return new BidResult(false, "INSUFFICIENT_BALANCE", b.curBid, b.leader, remainingMs(b));
+                return new BidResult(false, "INSUFFICIENT_BALANCE", curBid, leader, remainingMs());
             }
             // Devolve a reserva do líder anterior (se for outro jogador).
-            if (!b.leader.isEmpty() && !b.leader.equals(playerId)) {
-                wallet.release(b.leader, boxId);
+            if (!leader.isEmpty() && !leader.equals(playerId)) {
+                wallet.release(leader, boxId);
             }
-            b.curBid = amount;
-            b.leader = playerId;
-            armTimer(b);   // reseta/estende o cronômetro (anti-sniping)
-            return new BidResult(true, "OK", b.curBid, b.leader, remainingMs(b));
+            curBid = amount;
+            leader = playerId;
+            armTimer(false); // reseta/estende o cronômetro (anti-sniping)
+            return new BidResult(true, "OK", curBid, leader, remainingMs());
         } finally {
-            b.lock.unlock();
+            lock.unlock();
         }
     }
 
-    /** Reseta o cronômetro (sob o lock da caixa). Nos segundos finais, estende menos (anti-sniping). */
-    private void armTimer(Box b) {
+    /** (Re)arma o cronômetro sob o lock. No início da rodada: base cheio. Em lances nos
+     *  segundos finais: estende menos (anti-sniping). */
+    private void armTimer(boolean roundStart) {
         long now = System.currentTimeMillis();
         long extend;
-        if (b.deadlineMs == 0) {
-            extend = cfg.timerBaseMs();   // primeiro lance: arma o cronômetro cheio
+        if (roundStart) {
+            extend = cfg.timerBaseMs();
         } else {
-            long remaining = b.deadlineMs - now;
+            long remaining = deadlineMs - now;
             extend = (remaining <= cfg.antiSnipeWindowMs()) ? cfg.antiSnipeResetMs() : cfg.timerBaseMs();
         }
-        b.deadlineMs = now + extend;
-        if (b.closeTask != null) {
-            b.closeTask.cancel(false);
+        deadlineMs = now + extend;
+        if (closeTask != null) {
+            closeTask.cancel(false);
         }
-        b.closeTask = scheduler.schedule(() -> closeBox(b), extend, TimeUnit.MILLISECONDS);
+        closeTask = scheduler.schedule(this::closeRound, extend, TimeUnit.MILLISECONDS);
     }
 
-    /** Fecha a caixa: debita o vencedor, marca como vendida e repõe a oferta. */
-    private void closeBox(Box b) {
+    /** Fecha a rodada: debita o vencedor (se houver) e agenda/dispara a próxima. */
+    private void closeRound() {
         String soldId = null;
         String soldWinner = null;
         String soldType = null;
         long soldPrice = 0;
-        b.lock.lock();
+        boolean startNext = false;
+        lock.lock();
         try {
-            if (b.sold) {
+            if (ended) {
                 return;
             }
             // Disparo obsoleto: um lance estendeu o prazo; o fechamento real virá depois.
-            if (System.currentTimeMillis() < b.deadlineMs) {
+            if (System.currentTimeMillis() < deadlineMs) {
                 return;
             }
-            if (b.leader.isEmpty()) {
-                return;   // ninguém deu lance: a caixa segue aberta
+            ended = true;
+            active = false;
+            if (!leader.isEmpty()) {
+                wallet.settle(leader, boxId, curBid); // o vencedor paga de fato
+                soldId = boxId;
+                soldWinner = leader;
+                soldType = boxType;
+                soldPrice = curBid;
             }
-            wallet.settle(b.leader, b.id, b.curBid);   // o vencedor paga de fato
-            b.sold = true;
-            soldId = b.id;
-            soldWinner = b.leader;
-            soldType = b.type;
-            soldPrice = b.curBid;
-            replace(b);
+            // Próxima rodada: imediata quando não há pausa (determinístico em teste);
+            // caso contrário, agendada após a intermission.
+            if (cfg.intermissionMs() <= 0) {
+                startNext = true;
+            } else {
+                scheduler.schedule(this::startRound, cfg.intermissionMs(), TimeUnit.MILLISECONDS);
+            }
         } finally {
-            b.lock.unlock();
+            lock.unlock();
         }
         if (soldWinner != null) {
             // O vencedor poderá ABRIR a caixa arrematada (sorteio do item).
             pendingOpens.put(soldId, new PendingOpen(soldWinner, soldType, soldPrice));
             closeListener.onSold(soldId, soldWinner, soldPrice);
         }
-    }
-
-    public void setAffinitySource(AffinitySource s) {
-        this.affinitySource = (s == null) ? p -> Map.of() : s;
+        if (startNext) {
+            startRound();
+        }
     }
 
     /**
@@ -212,51 +274,38 @@ public final class BoxStore {
      * o item (RNG server-side) pelas odds do tipo + afinidade do jogador. Idempotente por
      * remoção atômica do registro pendente.
      */
-    public OpenResult openBox(String boxId, String playerId) {
-        PendingOpen po = pendingOpens.get(boxId);
+    public OpenResult openBox(String reqBoxId, String playerId) {
+        PendingOpen po = pendingOpens.get(reqBoxId);
         if (po == null) {
-            return new OpenResult(false, opened.contains(boxId) ? "ALREADY_OPENED" : "UNKNOWN_BOX", "", false);
+            return new OpenResult(false, opened.contains(reqBoxId) ? "ALREADY_OPENED" : "UNKNOWN_BOX", "", false);
         }
         if (!po.winner().equals(playerId)) {
             return new OpenResult(false, "NOT_WINNER", "", false);
         }
-        if (!pendingOpens.remove(boxId, po)) {
+        if (!pendingOpens.remove(reqBoxId, po)) {
             return new OpenResult(false, "ALREADY_OPENED", "", false); // corrida: já aberta
         }
-        opened.add(boxId);
+        opened.add(reqBoxId);
         String item = opener.draw(po.boxType(), affinitySource.forPlayer(playerId));
         return new OpenResult(true, "OK", item, "MIMIC".equals(item));
     }
 
-    /** Substitui a caixa fechada por uma nova no mesmo slot (mantém a oferta). */
-    private void replace(Box old) {
-        String type = TYPES[boxSeq.get() % TYPES.length];
-        Box fresh = new Box(old.slot, "box-" + boxSeq.incrementAndGet(), type);
-        slots.set(old.slot, fresh);
-        byId.put(fresh.id, fresh);
-        byId.remove(old.id);
-    }
-
-    /** Snapshot das caixas, por slot. */
-    public List<Snapshot> snapshot() {
-        List<Snapshot> out = new ArrayList<>(slots.length());
-        for (int i = 0; i < slots.length(); i++) {
-            Box b = slots.get(i);
-            b.lock.lock();
-            try {
-                out.add(new Snapshot(b.id, b.type, b.leader, b.curBid, remainingMs(b)));
-            } finally {
-                b.lock.unlock();
-            }
+    /** Estado da sala: rodada atual + a caixa em leilão (odds públicas quando ativa). */
+    public RoomState roomState() {
+        lock.lock();
+        try {
+            Map<String, Integer> odds = active ? opener.oddsFor(boxType) : Map.of();
+            return new RoomState(roundNo, active, boxId, boxType, curBid, leader, remainingMs(), odds);
+        } finally {
+            lock.unlock();
         }
-        return out;
     }
 
-    private static long remainingMs(Box b) {
-        if (b.deadlineMs == 0) {
+    private long remainingMs() {
+        if (!active || deadlineMs == 0) {
             return 0;
         }
-        return Math.max(b.deadlineMs - System.currentTimeMillis(), 0);
+        return Math.max(deadlineMs - System.currentTimeMillis(), 0);
     }
 
     /** Encerra o agendador de cronômetros (chamado no shutdown do servidor). */
@@ -266,32 +315,24 @@ public final class BoxStore {
 
     // ---- Apoio a testes (visível no mesmo pacote) ----
 
-    /** Força o fechamento imediato da caixa (determinístico em teste). */
-    void closeNow(String boxId) {
-        Box b = byId.get(boxId);
-        if (b == null) {
-            return;
-        }
-        b.lock.lock();
+    /** Força o fechamento imediato da rodada corrente (determinístico em teste). */
+    void closeNow() {
+        lock.lock();
         try {
-            b.deadlineMs = System.currentTimeMillis() - 1;
+            deadlineMs = System.currentTimeMillis() - 1;
         } finally {
-            b.lock.unlock();
+            lock.unlock();
         }
-        closeBox(b);
+        closeRound();
     }
 
-    /** Ajusta o tempo restante da caixa para simular cenários de anti-sniping. */
-    void setRemainingForTest(String boxId, long ms) {
-        Box b = byId.get(boxId);
-        if (b == null) {
-            return;
-        }
-        b.lock.lock();
+    /** Ajusta o tempo restante da rodada para simular cenários de anti-sniping. */
+    void setRemainingForTest(long ms) {
+        lock.lock();
         try {
-            b.deadlineMs = System.currentTimeMillis() + ms;
+            deadlineMs = System.currentTimeMillis() + ms;
         } finally {
-            b.lock.unlock();
+            lock.unlock();
         }
     }
 }

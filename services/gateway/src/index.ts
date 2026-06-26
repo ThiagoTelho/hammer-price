@@ -7,7 +7,7 @@
 // Próxima etapa: o fan-out passa a usar Redis Pub/Sub (para múltiplas
 // instâncias de gateway) e entra uma fila RabbitMQ para o worker.
 import { WebSocketServer, WebSocket } from "ws";
-import { placeBid, getVaultState, openBox, AUCTION_GRPC } from "./grpcClients.js";
+import { placeBid, getRoomState, openBox, AUCTION_GRPC, type Box } from "./grpcClients.js";
 
 const PORT = Number(process.env.GATEWAY_PORT ?? 8080);
 const ROOM = "room-1"; // sala única na fatia vertical
@@ -26,27 +26,45 @@ function broadcast(msg: unknown): void {
   }
 }
 
-// Última visão conhecida de cada caixa, para detectar arremates (uma caixa some
-// quando é arrematada e reposta por outra com novo id).
-let lastBoxes = new Map<string, { leader: string; currentBid: number; boxType: string }>();
+function boxView(b: Box) {
+  return {
+    boxId: b.boxId,
+    boxType: b.boxType,
+    currentBid: b.currentBid,
+    leader: b.leader,
+    timerMs: b.timerMs,
+    odds: b.odds,
+  };
+}
+
+// Última visão da rodada, para derivar início/fim de rodada via polling. (Interim: na
+// Fase 4/5 isso vira eventos round.started/box.sold/round.ended via Redis Pub/Sub.)
+let lastRound: { round: number; active: boolean; boxId: string; leader: string; currentBid: number; boxType: string } | null = null;
 
 async function broadcastState(): Promise<void> {
   try {
-    const state = await getVaultState(ROOM);
-    const current = new Map(
-      state.boxes.map((b) => [b.boxId, { leader: b.leader, currentBid: b.currentBid, boxType: b.boxType }]),
-    );
-    // Caixa que sumiu e tinha líder => foi arrematada. (Interim: na Fase 4 isso vira
-    // evento box.sold via Redis Pub/Sub, sem polling.)
-    for (const [boxId, prev] of lastBoxes) {
-      if (!current.has(boxId) && prev.leader) {
-        broadcast({ type: "BOX_SOLD", boxId, boxType: prev.boxType, winner: prev.leader, price: prev.currentBid });
+    const s = await getRoomState(ROOM);
+    const box = s.box;
+
+    // Fim da rodada anterior: estava ativa e agora trocou de rodada ou entrou em pausa.
+    if (lastRound && lastRound.active && (s.round !== lastRound.round || !s.active)) {
+      if (lastRound.leader) {
+        broadcast({ type: "BOX_SOLD", boxId: lastRound.boxId, boxType: lastRound.boxType, winner: lastRound.leader, price: lastRound.currentBid });
+        broadcast({ type: "ROUND_ENDED", round: lastRound.round, boxId: lastRound.boxId, winner: lastRound.leader, price: lastRound.currentBid });
+      } else {
+        broadcast({ type: "ROUND_ENDED", round: lastRound.round, boxId: lastRound.boxId, winner: null, price: 0 });
       }
     }
-    lastBoxes = current;
-    broadcast({ type: "STATE", boxes: state.boxes });
+
+    // Início de uma nova rodada (inclui a primeira observação).
+    if (s.active && (!lastRound || s.round !== lastRound.round)) {
+      broadcast({ type: "ROUND_STARTED", round: s.round, box: boxView(box), endsAt: s.endsAt });
+    }
+
+    lastRound = { round: s.round, active: s.active, boxId: box.boxId, leader: box.leader, currentBid: box.currentBid, boxType: box.boxType };
+    broadcast({ type: "ROOM_STATE", round: s.round, active: s.active, box: s.active ? boxView(box) : null, endsAt: s.endsAt });
   } catch (err) {
-    console.error("gateway: falha ao obter estado do vault:", err);
+    console.error("gateway: falha ao obter estado da sala:", err);
   }
 }
 
@@ -64,10 +82,19 @@ wss.on("connection", async (ws, req) => {
   clients.add(client);
   console.log(`gateway: ${playerId} conectou (${clients.size} online)`);
 
-  // Snapshot inicial só para quem conectou.
+  // Snapshot inicial só para quem conectou: a rodada e a caixa atuais.
   try {
-    const state = await getVaultState(ROOM);
-    ws.send(JSON.stringify({ type: "WELCOME", playerId, boxes: state.boxes }));
+    const s = await getRoomState(ROOM);
+    ws.send(
+      JSON.stringify({
+        type: "WELCOME",
+        playerId,
+        round: s.round,
+        active: s.active,
+        box: s.active ? boxView(s.box) : null,
+        endsAt: s.endsAt,
+      }),
+    );
   } catch (err) {
     ws.send(JSON.stringify({ type: "ERROR", reason: "AUCTION_UNAVAILABLE" }));
   }

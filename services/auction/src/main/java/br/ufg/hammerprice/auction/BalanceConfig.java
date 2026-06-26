@@ -53,6 +53,31 @@ public final class BalanceConfig {
         return v instanceof Number ? ((Number) v).longValue() : def;
     }
 
+    /** Valor inteiro de {@code round.<key>}, ou {@code def} se ausente/ inválido. */
+    public long roundLong(String key, long def) {
+        Object v = section("round").get(key);
+        return v instanceof Number ? ((Number) v).longValue() : def;
+    }
+
+    /**
+     * Pesos do sorteio do TIPO de caixa por rodada, de {@code round.box_type_weights}
+     * (ex.: {@code {BRONZE=50, SILVER=30, GOLD=15, VAULT=5}}). Ordem preservada (YAML).
+     * Retorna mapa vazio se ausente — o chamador deve ter um fallback.
+     */
+    public Map<String, Integer> boxTypeWeights() {
+        Object w = section("round").get("box_type_weights");
+        if (!(w instanceof Map<?, ?> m)) {
+            return Collections.emptyMap();
+        }
+        Map<String, Integer> out = new LinkedHashMap<>();
+        for (Map.Entry<?, ?> e : m.entrySet()) {
+            if (e.getValue() instanceof Number n) {
+                out.put(String.valueOf(e.getKey()), n.intValue());
+            }
+        }
+        return out;
+    }
+
     /**
      * Distribuição de drop (odds, em pontos percentuais) de um tipo de caixa, lida de
      * {@code box_odds.<tipo>}. Ex.: {@code {COPPER=60, SILVER=30, GOLD=9, DIAMOND=1, MIMIC=0}}.

@@ -122,23 +122,22 @@ Legenda: 🟢 satisfeito · 🟡 parcial · 🔴 ainda não.
 > Transforma o cronômetro informativo da fatia em leilão de verdade, com fechamento,
 > sorteio e particionamento. Ver [doc 03](../docs/03-regras-de-negocio.md) e [doc 04](../docs/04-arquitetura.md).
 >
-> **Increments 1 (ciclo de vida) e 2 (abertura/RNG) concluídos.** Decidido o modelo
-> **round-based** (uma caixa por rodada, tipo sorteado, odds públicas — ver docs 02–05/07/09):
-> faltam o increment 3 (rodadas + odds públicas) e o increment 4 (**particionamento por
-> sala**). A publicação de eventos em Redis/RabbitMQ é da Fase 4/5; por ora o gateway expõe
-> fechamento/abertura por polling + broadcast.
+> **Increments 1 (ciclo de vida), 2 (abertura/RNG) e 3 (modelo de rodadas + odds públicas)
+> concluídos.** Falta o increment 4 (**particionamento por sala**). A publicação de eventos
+> em Redis/RabbitMQ é da Fase 4/5; por ora o gateway deriva início/fim de rodada por polling
+> + broadcast.
 
 - [x] Timer por caixa com **fechamento automático** ao zerar (`ScheduledExecutorService` + guarda contra disparo obsoleto) *(R4)*
 - [x] **Anti-sniping:** lance nos últimos 5 s estende o cronômetro (volta a 8 s) *(R4)*
 - [x] Fechamento da caixa: **debita** o vencedor (`Settle`) e **devolve** aos perdedores (release no outbid) *(R3,R7)*
 - [x] Desempate do vencedor por **timestamp do servidor**: lock por caixa serializa; último lance válido vence *(R3)*
-- [x] **Reposição** de oferta: nova caixa (novo id) entra no mesmo slot ao arrematar — _será substituída pelo ciclo de rodadas (increment 3)_
+- [x] ~~**Reposição** de oferta: nova caixa entra no mesmo slot ao arrematar~~ — substituída pelo **ciclo de rodadas** (increment 3)
 - [x] Tipos de caixa + **odds do `balance.yaml`** dirigem o sorteio (`BoxOpener`)
 - [x] **RNG de abertura** server-side com **seed injetável** (`RNG_SEED`); `OpenBox` RPC + fluxo do vencedor *(R4)*
 - [x] Afinidade somada às odds + **renormalização** (Σ P = 1, P ≥ 0) — mecanismo + teste; valores virão do *burn* (Fase 3)
-- [ ] **Modelo de rodadas (increment 3):** uma caixa por rodada, **tipo sorteado** (pesos `balance.yaml`); ciclo rodada → arremate/expiração → pausa → próxima rodada *(R4)*
-- [ ] **Odds públicas:** enviar as probabilidades no estado da caixa (`Box.odds` no proto) e **exibi-las no frontend** (eram "polish"; agora são núcleo)
-- [ ] Eventos `round.started`/`round.ended` (além de `bid.placed`/`box.sold`/`box.opened`)
+- [x] **Modelo de rodadas (increment 3):** uma caixa por rodada, **tipo sorteado** (pesos `balance.yaml`, seed reproduzível); ciclo rodada → arremate/expiração → pausa → próxima rodada *(R4)*
+- [x] **Odds públicas:** probabilidades no estado da caixa (`Box.odds` no proto/`GetRoomState`) e **exibidas no frontend** (uma caixa por rodada + contador)
+- [x] Eventos `ROUND_STARTED`/`ROUND_ENDED`/`BOX_SOLD` (derivados por polling no gateway; Pub/Sub real é Fase 4/5)
 - [ ] **Particionamento por sala (room) (increment 4):** cada instância de Leilão dona das rodadas de um subconjunto de salas *(R6)*
 - [ ] Publicação de eventos `bid.placed`/`box.sold`/`box.opened` (Redis Pub/Sub + RabbitMQ) — **Fase 4/5** *(R5)*
 - [x] **Teste de concorrência:** corrida de lances na mesma caixa (`BoxStoreTest`, 8×200 lances) *(R3)*
@@ -264,4 +263,5 @@ As **fases** são por escopo; os **marcos**, por tempo — ajuste conforme a dat
 - 2026-06-15 — _(este commit)_ — **Fase 2, increment 1 (ciclo de vida da caixa).** Auto-close por cronômetro + anti-sniping; `Settle` na carteira (debita o vencedor) + release dos perdedores; reposição por slot; desempate por lock/timestamp do servidor. Gateway expõe fechamento por polling (`BOX_SOLD`); frontend com contagem regressiva. Teste de concorrência `BoxStoreTest` (4 testes, 8×200 lances). Verificado: `mvn test` verde; no stack, lance → auto-close → `arrematada` → `BOX_SOLD`; regressão do `test-slice` ok.
 - 2026-06-15 — _(este commit)_ — **Fase 2, increment 2 (abertura/RNG).** `OpenBox` RPC; `BoxOpener` com RNG de seed injetável (`RNG_SEED`), odds do `balance.yaml`, afinidade somada + renormalização (Σ P = 1). Caixas arrematadas ficam disponíveis para o vencedor abrir; gateway trata `OPEN_BOX` (reply síncrono + broadcast `BOX_OPENED`); frontend abre a caixa e mostra o item. Testes: `BoxOpenerTest` (determinismo/renormalização/afinidade) + `openBox` no `BoxStore` (10 testes no total). Verificado: `mvn test` verde; no stack, lance → auto-close → `OPEN_BOX` → item sorteado (COPPER) → `BOX_OPENED`.
 - 2026-06-25 — _(este commit)_ — **Fase 8 (de-risk R9): smoke test em AWS EC2 verde.** Scripts versionados em `infra/deploy/` (`provision.sh`, `user-data.sh`, `start.sh` + `DEPLOY.md`) sobem o stack completo numa EC2 (AL2023, t3.medium) via Docker Compose; correção do `VITE_GATEWAY_URL` para o DNS público e install do buildx no bootstrap (compose `--build` exige buildx ≥ 0.17). Verificado: jogo acessível em `http://<dns-público>:5173`. Pendentes: validar multi-cliente (R1), topologia 2–3 instâncias (R6) e demo gravada (Fase 10).
+- 2026-06-25 — _(este commit)_ — **Fase 2, increment 3 (modelo de rodadas + odds públicas).** `BoxStore` reescrito para o ciclo round-based: **uma caixa por rodada** com tipo **sorteado** (pesos do `balance.yaml`, seed reproduzível), cronômetro armado no início (a rodada fecha mesmo sem lances) + anti-sniping, pausa entre rodadas e abertura pelo vencedor. Contrato: `GetVaultState`→`GetRoomState`, `Box.odds`, `RoomState{round,active,box,ends_at}` (proto regenera; `AuctionServer` atualizado). Gateway deriva `ROUND_STARTED`/`ROUND_ENDED`/`BOX_SOLD` por polling e repassa as odds; frontend mostra **uma caixa por rodada com odds públicas** + contador de rodada. Testes: `BoxStoreTest` reescrito (8 testes — corrida 8×200, ciclo de rodada, rodada sem lances, anti-snipe, sorteio determinístico) → `mvn test` verde (12 no total); `tsc --noEmit` limpo no gateway e no frontend; `test-slice.mjs` adaptado. Falta o **increment 4 (partição por sala)**.
 - 2026-06-25 — _(este commit)_ — **Decisão de modelo: jogo round-based + partição por sala.** O leilão deixa de ser "várias caixas simultâneas em vaults" e passa a **rodadas sequenciais com UMA caixa por rodada** (tipo sorteado, odds públicas exibidas). Confirmado contra a especificação oficial (`docs/SCD-2026-1-…pdf`) que isso **atende a todos os requisitos** (R3 vira contenção de toda a sala numa caixa; R6 passa a particionar o Leilão **por sala** + Carteira por jogador). Docs sincronizados: 02, 03, 04, 05, 07, 09 + `balance.yaml` (bloco `round`) + `schema.sql` (`rooms.current_round`, `boxes.round_no`). Implementação (rodadas/odds no auction + frontend) é a próxima tarefa (Fase 2, increments 3/4).

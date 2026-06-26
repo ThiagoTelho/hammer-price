@@ -6,9 +6,10 @@ import br.ufg.hammerprice.auction.grpc.OpenBoxReply;
 import br.ufg.hammerprice.auction.grpc.OpenBoxRequest;
 import br.ufg.hammerprice.auction.grpc.PlaceBidReply;
 import br.ufg.hammerprice.auction.grpc.PlaceBidRequest;
-import br.ufg.hammerprice.auction.grpc.VaultQuery;
-import br.ufg.hammerprice.auction.grpc.VaultState;
+import br.ufg.hammerprice.auction.grpc.RoomQuery;
+import br.ufg.hammerprice.auction.grpc.RoomState;
 import java.util.Map;
+import java.util.Random;
 import br.ufg.hammerprice.wallet.grpc.ReleaseRequest;
 import br.ufg.hammerprice.wallet.grpc.ReserveRequest;
 import br.ufg.hammerprice.wallet.grpc.SettleRequest;
@@ -88,18 +89,22 @@ public final class AuctionServer {
         }
 
         @Override
-        public void getVaultState(VaultQuery req, StreamObserver<VaultState> obs) {
-            VaultState.Builder vs = VaultState.newBuilder();
-            for (BoxStore.Snapshot s : store.snapshot()) {
-                vs.addBoxes(Box.newBuilder()
-                        .setBoxId(s.boxId())
-                        .setBoxType(s.boxType())
-                        .setCurrentBid(s.currentBid())
-                        .setLeader(s.leader())
-                        .setTimerMs(s.timerMs())
-                        .build());
-            }
-            obs.onNext(vs.build());
+        public void getRoomState(RoomQuery req, StreamObserver<RoomState> obs) {
+            BoxStore.RoomState st = store.roomState();
+            Box box = Box.newBuilder()
+                    .setBoxId(st.boxId())
+                    .setBoxType(st.boxType())
+                    .setCurrentBid(st.currentBid())
+                    .setLeader(st.leader())
+                    .setTimerMs(st.timerMs())
+                    .putAllOdds(st.odds())
+                    .build();
+            obs.onNext(RoomState.newBuilder()
+                    .setRound(st.round())
+                    .setActive(st.active())
+                    .setBox(box)
+                    .setEndsAt(st.active() ? System.currentTimeMillis() + st.timerMs() : 0)
+                    .build());
             obs.onCompleted();
         }
 
@@ -138,7 +143,8 @@ public final class AuctionServer {
                 cfg.matchLong("antisnipe_window_seconds", 5) * 1000,
                 cfg.matchLong("antisnipe_reset_seconds", 8) * 1000,
                 cfg.matchLong("min_bid_increment_pct", 5),
-                cfg.matchLong("min_bid_increment_abs", 5));
+                cfg.matchLong("min_bid_increment_abs", 5),
+                cfg.roundLong("intermission_seconds", 3) * 1000);
 
         // RNG de abertura: usa odds do balance.yaml (com fallback) e seed injetável.
         BoxOpener.Odds oddsSource = type -> {
@@ -152,7 +158,14 @@ public final class AuctionServer {
         System.out.println("auction: RNG de abertura " + (seedEnv == null || seedEnv.isBlank()
                 ? "aleatório" : "com seed " + seedEnv.trim()));
 
-        BoxStore store = new BoxStore(gw, settings, opener);
+        // Sorteio do tipo de caixa por rodada: pesos do balance.yaml; seed derivada do
+        // RNG_SEED (distinta da seed de abertura) para rodadas reproduzíveis em teste.
+        Map<String, Integer> typeWeights = cfg.boxTypeWeights();
+        Random typeRng = (seedEnv == null || seedEnv.isBlank())
+                ? new Random()
+                : new Random(Long.parseLong(seedEnv.trim()) ^ 0x9E3779B97F4A7C15L);
+
+        BoxStore store = new BoxStore(gw, settings, opener, typeWeights, typeRng);
         store.setCloseListener((boxId, winner, price) ->
                 System.out.println("auction: caixa " + boxId + " arrematada por " + winner + " (" + price + ")"));
 

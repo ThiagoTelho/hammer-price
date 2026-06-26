@@ -36,6 +36,15 @@ export interface Box {
   currentBid: number;
   leader: string;
   timerMs: number;
+  odds: Record<string, number>; // P pública por item (= a aplicada na abertura)
+}
+
+// Estado da sala = rodada atual + a caixa em leilão. `active` é false na pausa entre rodadas.
+export interface RoomState {
+  round: number;
+  active: boolean;
+  box: Box;
+  endsAt: number;
 }
 
 export function placeBid(
@@ -51,9 +60,9 @@ export function placeBid(
   });
 }
 
-export function getVaultState(roomId: string): Promise<{ boxes: Box[] }> {
+export function getRoomState(roomId: string): Promise<RoomState> {
   return new Promise((res, rej) => {
-    auction.GetVaultState({ roomId }, (err: any, reply: { boxes: Box[] }) =>
+    auction.GetRoomState({ roomId }, (err: any, reply: RoomState) =>
       err ? rej(err) : res(reply),
     );
   });

@@ -5,14 +5,15 @@ option java_multiple_files = true;
 option java_package = "br.ufg.hammerprice.auction.grpc";
 option java_outer_classname = "AuctionProto";
 
-// Serviço de Leilão — núcleo concorrente.
-// PlaceBid (lance atômico), GetVaultState (snapshot) e OpenBox (sorteio do item
-// pelo RNG do servidor, ajustado pela afinidade do jogador). Estado em memória;
-// particionamento por vault entra numa etapa posterior.
+// Serviço de Leilão — núcleo concorrente (modelo round-based).
+// PlaceBid (lance atômico na caixa da rodada), GetRoomState (rodada atual + caixa +
+// odds públicas) e OpenBox (sorteio do item pelo RNG do servidor, ajustado pela
+// afinidade do jogador). Estado em memória; particionamento por sala entra numa etapa
+// posterior.
 service Auction {
-  rpc PlaceBid      (PlaceBidRequest) returns (PlaceBidReply);
-  rpc GetVaultState (VaultQuery)      returns (VaultState);
-  rpc OpenBox       (OpenBoxRequest)  returns (OpenBoxReply);   // sorteio server-side
+  rpc PlaceBid     (PlaceBidRequest) returns (PlaceBidReply);
+  rpc GetRoomState (RoomQuery)       returns (RoomState);    // rodada atual + caixa + odds
+  rpc OpenBox      (OpenBoxRequest)  returns (OpenBoxReply); // sorteio server-side
 }
 
 message PlaceBidRequest {
@@ -44,16 +45,21 @@ message OpenBoxReply {
   bool   is_mimic = 4;   // armadilha (penalidade aplicada numa etapa posterior)
 }
 
-message VaultQuery { string room_id = 1; }
+message RoomQuery { string room_id = 1; }
 
 message Box {
   string box_id      = 1;
-  string box_type    = 2;   // BRONZE | SILVER | GOLD | VAULT
+  string box_type    = 2;            // BRONZE | SILVER | GOLD | VAULT (sorteado por rodada)
   int64  current_bid = 3;
   string leader      = 4;
   int64  timer_ms    = 5;
+  map<string, int32> odds = 6;       // P pública por item (= a aplicada na abertura); soma 100
 }
 
-message VaultState {
-  repeated Box boxes = 1;
+// Estado da sala = rodada atual + a caixa em leilão. `active` é false na pausa entre rodadas.
+message RoomState {
+  int32 round   = 1;
+  bool  active  = 2;
+  Box   box     = 3;
+  int64 ends_at = 4;   // epoch ms em que o cronômetro da caixa zera
 }
