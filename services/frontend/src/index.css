@@ -1,0 +1,38 @@
+@import "tailwindcss";
+
+/* Tema "casa de leilão": fundo escuro quente + dourado. Tokens viram utilitários
+   (ex.: bg-ink, text-gold, border-line, font-display). */
+@theme {
+  --color-ink: #0c0a09;        /* fundo base */
+  --color-surface: #1c1917;    /* cards (stone-900) */
+  --color-surface-2: #292524;  /* superfícies elevadas (stone-800) */
+  --color-line: #44403c;       /* bordas (stone-700) */
+  --color-line-soft: #57534e;  /* bordas claras (stone-600) */
+  --color-muted: #a8a29e;      /* texto secundário (stone-400) */
+  --color-gold: #e8b923;       /* dourado principal */
+  --color-gold-soft: #f5d77a;  /* dourado claro */
+  --color-gold-dim: #8a6a1f;   /* dourado escuro (bordas/disabled) */
+  --font-display: Georgia, "Times New Roman", serif;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  color: #e7e5e4; /* stone-200 */
+  font-family: system-ui, -apple-system, sans-serif;
+  background:
+    radial-gradient(1100px 560px at 50% -8%, rgba(232, 185, 35, 0.1), transparent 60%),
+    var(--color-ink);
+}
+
+/* Brilho sutil de "lote em destaque" para a caixa da rodada. */
+.box-glow {
+  box-shadow:
+    0 0 0 1px rgba(232, 185, 35, 0.35),
+    0 10px 40px -12px rgba(232, 185, 35, 0.25);
+}
