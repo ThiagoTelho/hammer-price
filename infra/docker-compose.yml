@@ -23,6 +23,21 @@ services:
       timeout: 3s
       retries: 5
 
+  # Réplica (read-only) do Redis: replicação do estado quente. As escritas vão ao primário
+  # (`redis`) e são propagadas para cá; o gateway lê o snapshot de mercado DESTA réplica.
+  redis-replica:
+    image: redis:7-alpine
+    profiles: ["local", "node-b"]
+    command: ["redis-server", "--replicaof", "redis", "6379"]
+    depends_on:
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
   rabbitmq:
     image: rabbitmq:3-management
     profiles: ["local", "node-a"]
@@ -74,6 +89,8 @@ services:
     restart: unless-stopped
     environment:
       REDIS_URL: redis://redis:6379
+      # Leituras do snapshot de mercado vão à RÉPLICA (replicação do estado quente).
+      REDIS_REPLICA_URL: redis://redis-replica:6379
       # Particionamento por sala: cada sala é servida por uma instância de Leilão própria.
       # O gateway roteia as ações (gRPC) e o fan-out de eventos para a instância dona da sala.
       ROOM_ROUTES: "room-1=auction-vault1:50051,room-2=auction-vault2:50051"
@@ -83,6 +100,8 @@ services:
     depends_on:
       redis:
         condition: service_healthy
+      redis-replica:
+        condition: service_started
       auction-vault1:
         condition: service_started
       auction-vault2:

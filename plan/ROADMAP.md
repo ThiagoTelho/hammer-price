@@ -8,10 +8,11 @@
 - **Disciplina:** Software Concorrente e Distribuído (SCD) — UFG, 2026.1
 - **Entrega:** 28/06/2026
 - **Última atualização deste arquivo:** 2026-06-25
-- **Marco atual:** **Reta final (entrega 28/06)** — ✅ AWS EC2 (R9), rodadas+odds,
-  async/messaging (R4/R5/R8 🟢) e ✅ **particionamento por sala** (2 instâncias de Leilão,
-  isolamento de queda verificado → R6 partição). **Falta para fechar R6:** a **replicação**
-  (Postgres primary+réplica, Fase 7). Depois: demo gravada (Fase 10).
+- **Marco atual:** **Reta final (entrega 28/06)** — **os 9 requisitos estão cobertos**
+  (R1–R6, R8, R9 🟢; **R7 🟡**: invariante de saldo + isolamento de partição demonstrados,
+  consistência forte/Postgres pendente). Núcleo distribuído completo: AWS, rodadas+odds,
+  async/messaging, **partição por sala + replicação Redis**. A seguir: **demo gravada
+  (Fase 10)** + polish. Stretch: Postgres streaming (R6 durável) e ciclo de partida (Fase 6).
 
 ---
 
@@ -79,7 +80,7 @@ cada um é satisfeito. Atualize a coluna **Status** conforme as fases avançam.
 | R3 | Acessos concorrentes a recursos compartilhados | 🟢 ok | Lock por caixa + wallet `synchronized`; → Redlock+SQL (Fase 3) |
 | R4 | Processamento servidor concorrente com clientes | 🟢 ok | Lances/RNG/rodadas + **worker de mercado** (Python) recalculando durante a partida |
 | R5 | Interação síncrona **e** assíncrona | 🟢 ok | gRPC síncrono (lance/abertura) + **Redis Pub/Sub** + **RabbitMQ** assíncronos |
-| R6 | Replicação **e** particionamento | 🟡 parcial | **Partição ✓**: 2 instâncias de Leilão (por sala) + 2 wallet shards, gateway roteia. **Falta replicação** (Postgres réplica, Fase 7) |
+| R6 | Replicação **e** particionamento | 🟢 ok | **Partição ✓** (2 instâncias de Leilão por sala + 2 wallet shards) + **Replicação ✓** (Redis primary→réplica; gateway lê o mercado da réplica). Postgres streaming = stretch opcional |
 | R7 | Consistência **e** disponibilidade | 🟡 parcial | Saldo nunca negativo (em memória) + **isolamento de partição** (queda de instância só afeta uma sala) ✓; → consistência forte (Fase 3) + failover (Fase 7) |
 | R8 | >1 linguagem **e** >1 paradigma | 🟢 ok | TS+Java+**Python**; cliente-servidor (REST/gRPC) + **pub-sub** (Redis) + **messaging** (RabbitMQ) |
 | R9 | Demonstração em AWS EC2 | 🟢 ok | Stack roda numa EC2 (smoke test verde 25/06); pendentes: demo gravada (Fase 10) e topologia 2–3 instâncias p/ R6 |
@@ -195,9 +196,9 @@ Legenda: 🟢 satisfeito · 🟡 parcial · 🔴 ainda não.
 
 > Demonstra explicitamente os mecanismos de tolerância a falha (R6/R7).
 
-- [ ] **Postgres primary + read replica;** leituras de ranking/histórico vão à réplica *(R6)*
-- [ ] **Redis replicado** (estado quente + Pub/Sub) *(R6)*
-- [ ] Cenário de falha: queda de uma instância de **vault** isola só aquele grupo de caixas *(R7)*
+- [x] **Redis replicado** (primary→réplica): worker escreve `market:prices` no primário, gateway lê o snapshot da **réplica** no WELCOME (read/write split). Verificado: `master_link_status:up` + propagação primário→réplica *(R6)*
+- [x] Cenário de falha: queda de uma instância de **Leilão** isola só aquela sala (room-1 segue quando vault2 cai) *(R7)*
+- [ ] **Postgres primary + read replica** (streaming) — leituras de ranking/histórico na réplica — *stretch opcional (variante durável mais forte)* *(R6)*
 - [ ] **Failover** demonstrável (estado autoritativo sobrevive em Redis/Postgres) *(R7)*
 
 ## 📍 Fase 8 — Deploy AWS EC2
@@ -266,3 +267,4 @@ As **fases** são por escopo; os **marcos**, por tempo — ajuste conforme a dat
 - 2026-06-25 — _(este commit)_ — **Fase 2, increment 3 (modelo de rodadas + odds públicas).** `BoxStore` reescrito para o ciclo round-based: **uma caixa por rodada** com tipo **sorteado** (pesos do `balance.yaml`, seed reproduzível), cronômetro armado no início (a rodada fecha mesmo sem lances) + anti-sniping, pausa entre rodadas e abertura pelo vencedor. Contrato: `GetVaultState`→`GetRoomState`, `Box.odds`, `RoomState{round,active,box,ends_at}` (proto regenera; `AuctionServer` atualizado). Gateway deriva `ROUND_STARTED`/`ROUND_ENDED`/`BOX_SOLD` por polling e repassa as odds; frontend mostra **uma caixa por rodada com odds públicas** + contador de rodada. Testes: `BoxStoreTest` reescrito (8 testes — corrida 8×200, ciclo de rodada, rodada sem lances, anti-snipe, sorteio determinístico) → `mvn test` verde (12 no total); `tsc --noEmit` limpo no gateway e no frontend; `test-slice.mjs` adaptado. Falta o **increment 4 (partição por sala)**.
 - 2026-06-25 — _(este commit)_ — **Decisão de modelo: jogo round-based + partição por sala.** O leilão deixa de ser "várias caixas simultâneas em vaults" e passa a **rodadas sequenciais com UMA caixa por rodada** (tipo sorteado, odds públicas exibidas). Confirmado contra a especificação oficial (`docs/SCD-2026-1-…pdf`) que isso **atende a todos os requisitos** (R3 vira contenção de toda a sala numa caixa; R6 passa a particionar o Leilão **por sala** + Carteira por jogador). Docs sincronizados: 02, 03, 04, 05, 07, 09 + `balance.yaml` (bloco `round`) + `schema.sql` (`rooms.current_round`, `boxes.round_no`). Implementação (rodadas/odds no auction + frontend) é a próxima tarefa (Fase 2, increments 3/4).
 - 2026-06-26 — _(este commit)_ — **Fase 2, increment 4 (particionamento por sala).** Duas instâncias de Leilão (`auction-vault1`=room-1, `auction-vault2`=room-2) no profile `local`, cada uma com sua wallet shard; o **gateway** roteia ações (gRPC) e fan-out (Redis) por sala via `ROOM_ROUTES`, assinando o canal de cada sala e difundindo só aos clientes dela; frontend ganhou seletor de sala. Correção: `EventPublisher` agora **re-tenta** a conexão RabbitMQ (corrige corrida de boot que desativava o messaging). Verificado no stack: salas **isoladas** (lance da room-1 não vaza p/ room-2), loop de mercado intacto, e **queda da `auction-vault2` derruba só a room-2** (room-1 segue: `WELCOME`), restaurando depois. **R6 → 🟡** (partição ✓; falta replicação — Postgres réplica, Fase 7).
+- 2026-06-26 — _(este commit)_ — **Fase 7 (replicação Redis): primary→réplica.** Compose ganhou `redis-replica` (`--replicaof redis 6379`). O **worker** escreve `market:prices` no **primário** a cada recálculo; o Redis replica para a réplica; o **gateway** lê o snapshot de mercado da **réplica** no `WELCOME` (read/write split — escrita no primário, leitura na réplica). Verificado no stack: réplica `role:slave` + `master_link_status:up`; `market:prices` idêntico em primário e réplica; propagação ao vivo (`SET` no primário → `GET` na réplica); `WELCOME` traz o mercado vindo da réplica. **R6 → 🟢** (partição + replicação demonstradas). Postgres streaming replication fica como stretch (variante durável). `tsc` limpo + `py_compile` ok.

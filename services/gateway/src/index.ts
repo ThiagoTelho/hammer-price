@@ -11,6 +11,7 @@ import { placeBid, getRoomState, openBox, type Box } from "./grpcClients.js";
 
 const PORT = Number(process.env.GATEWAY_PORT ?? 8080);
 const REDIS_URL = process.env.REDIS_URL ?? "redis://localhost:6379";
+const REDIS_REPLICA_URL = process.env.REDIS_REPLICA_URL ?? REDIS_URL;
 
 // Mapa sala -> endereço da instância de Leilão dona da sala (a partição).
 // Ex.: ROOM_ROUTES="room-1=auction-vault1:50051,room-2=auction-vault2:50051"
@@ -65,6 +66,11 @@ sub.on("message", (channel, message) => {
 });
 console.log(`gateway: salas particionadas → ${JSON.stringify(ROUTES)}`);
 
+// Leituras do snapshot de mercado vão à RÉPLICA do Redis (replicação do estado quente):
+// o worker escreve no primário, a réplica espelha, e o gateway lê daqui no WELCOME.
+const replica = new Redis(REDIS_REPLICA_URL);
+replica.on("error", (e) => console.error("gateway: erro na réplica Redis:", e.message));
+
 const wss = new WebSocketServer({ port: PORT });
 console.log(`gateway: WebSocket ouvindo em ws://localhost:${PORT}`);
 
@@ -81,6 +87,14 @@ wss.on("connection", async (ws, req) => {
   // Snapshot inicial só para quem conectou: a rodada e a caixa atuais da SUA sala.
   try {
     const s = await getRoomState(addr, room);
+    // Snapshot de mercado lido da RÉPLICA (não do primário) — leitura eventual.
+    let market: Record<string, number> | null = null;
+    try {
+      const raw = await replica.get("market:prices");
+      if (raw) market = JSON.parse(raw);
+    } catch {
+      /* réplica indisponível → segue sem snapshot de mercado */
+    }
     ws.send(
       JSON.stringify({
         type: "WELCOME",
@@ -90,6 +104,7 @@ wss.on("connection", async (ws, req) => {
         active: s.active,
         box: s.active ? boxView(s.box) : null,
         endsAt: s.endsAt,
+        market,
       }),
     );
   } catch (err) {

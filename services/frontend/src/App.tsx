@@ -81,6 +81,7 @@ export function App() {
           playerIdRef.current = msg.playerId;
           setRound(msg.round ?? 0);
           setBox(withDeadline(msg.box ?? null));
+          if (msg.market) setPrices(msg.market); // snapshot lido da réplica do Redis
           break;
         case "ROOM_STATE":
           setRound(msg.round ?? 0);

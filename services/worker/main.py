@@ -101,9 +101,12 @@ def main() -> int:
         prices = compute_prices(cfg, supply)
         if rds is not None:
             try:
+                # Snapshot do mercado escrito no PRIMÁRIO; o Redis replica para a réplica,
+                # de onde o gateway lê (read/write split — ver docs/04-arquitetura.md).
+                rds.set("market:prices", json.dumps(prices))
                 rds.publish(EVENTS_CHANNEL, json.dumps({"type": "MARKET_UPDATED", "prices": prices}))
             except Exception as exc:  # noqa: BLE001
-                print(f"worker: falha ao publicar MARKET_UPDATED ({exc})", flush=True)
+                print(f"worker: falha ao escrever/publicar mercado ({exc})", flush=True)
         print(f"worker: MARKET_UPDATED {prices}", flush=True)
 
     # Mercado inicial (oferta zero → itens "caros").
