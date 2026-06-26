@@ -220,7 +220,8 @@ public final class AuctionServer {
                 cfg.matchLong("antisnipe_reset_seconds", 8) * 1000,
                 cfg.matchLong("min_bid_increment_pct", 5),
                 cfg.matchLong("min_bid_increment_abs", 5),
-                cfg.roundLong("intermission_max_seconds", 120) * 1000);
+                cfg.roundLong("intermission_max_seconds", 120) * 1000,
+                cfg.matchLong("no_bid_timeout_seconds", 45) * 1000);
 
         // RNG de abertura: usa odds do balance.yaml (com fallback) e seed injetável.
         BoxOpener.Odds oddsSource = type -> {

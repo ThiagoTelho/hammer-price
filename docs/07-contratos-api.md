@@ -36,7 +36,7 @@ Conexão: `wss://<gateway>/ws?room={id}&token=...`
 { "type": "PLAYER_JOINED", "player": "player-2", "displayName": "bob", "count": 2 }
 { "type": "MATCH_STARTED", "endsAt": 1750000000000 }
 // Início de rodada: UMA caixa, tipo sorteado, com as ODDS PÚBLICAS (= as aplicadas na abertura).
-{ "type": "ROUND_STARTED", "round": 7, "box": { "boxId": "box-12", "boxType": "GOLD",
+{ "type": "ROUND_STARTED", "round": 7, "box": { "boxId": "box-12", "boxType": "ROYAL",
   "odds": { "COPPER": 15, "SILVER": 30, "GOLD": 40, "DIAMOND": 12, "MIMIC": 3 }, "endsAt": 1750000000000 } }
 { "type": "BID_PLACED", "boxId": "box-12", "amount": 65, "leader": "player-3", "timerMs": 8000 }
 { "type": "BOX_SOLD", "boxId": "box-12", "winner": "player-3", "price": 65 }
@@ -95,7 +95,7 @@ message RoomState {
 }
 message Box {
   string box_id      = 1;
-  string box_type    = 2;            // BRONZE | SILVER | GOLD | VAULT
+  string box_type    = 2;            // WOODEN | IRON | ROYAL | VAULT
   int64  current_bid = 3;
   string leader      = 4;
   int64  timer_ms    = 5;

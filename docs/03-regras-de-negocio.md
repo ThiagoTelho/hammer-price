@@ -28,7 +28,8 @@ O **valor base** é a referência; o **preço de mercado** (seção 6) flutua em
 | Caixas por rodada | **1** (uma caixa por vez; tipo sorteado aleatoriamente) |
 | Pausa entre rodadas | 3 s (abertura do vencedor + anúncio da próxima) |
 | Incremento mínimo de lance | 5% do lance atual (mín. 5) |
-| Cronômetro base da caixa | 20 s |
+| Cronômetro do leilão | 20 s — **começa só no 1º lance** (antes disso o lote aguarda interesse) |
+| Janela sem lances | 45 s — sem nenhum lance até aqui, o lote fecha **sem vencedor** e a partida segue |
 | Janela anti-sniping | lance nos últimos 5 s → cronômetro volta a 8 s |
 
 ## 3. Caixas e probabilidades (odds)
@@ -38,12 +39,14 @@ Cada **tipo de caixa** define uma distribuição de drop. A soma é sempre 100%.
 `balance.yaml`); as odds do tipo sorteado são **públicas** — exibidas aos jogadores antes
 e durante o leilão, e devem ser **iguais** às realmente aplicadas na abertura (ver §4).
 
-| Tipo de caixa | Cobre | Prata | Ouro | Diamante | Mímico |
+Os nomes dos baús são **distintos dos materiais** (Cobre/Prata/Ouro/Diamante) para evitar confusão:
+
+| Baú (código) | Cobre | Prata | Ouro | Diamante | Mímico |
 |---|---:|---:|---:|---:|---:|
-| Bronze | 60% | 30% | 9% | 1% | 0% |
-| Prateada | 35% | 40% | 20% | 4% | 1% |
-| Dourada | 15% | 30% | 40% | 12% | 3% |
-| Cofre | 5% | 15% | 35% | 40% | 5% |
+| Madeira (`WOODEN`) | 60% | 30% | 9% | 1% | 0% |
+| Ferro (`IRON`) | 35% | 40% | 20% | 4% | 1% |
+| Real (`ROYAL`) | 15% | 30% | 40% | 12% | 3% |
+| Cofre (`VAULT`) | 5% | 15% | 35% | 40% | 5% |
 
 > Caixas mais ricas concentram mais valor **e** mais risco de Mímico — o EV alto vem
 > acompanhado de perigo (decisão de risco estilo "fold equity").
@@ -53,7 +56,7 @@ e durante o leilão, e devem ser **iguais** às realmente aplicadas na abertura 
 EV(caixa) = Σ  P(item) × preço_mercado(item)   −  P(Mímico) × penalidade_média_mímico
         para item ∈ {Cobre, Prata, Ouro, Diamante}
 ```
-Exemplo (caixa Bronze, preços = valores base, penalidade do Mímico = 0 aqui):
+Exemplo (Baú de Madeira, preços = valores base, penalidade do Mímico = 0 aqui):
 ```
 EV = 0,60·10 + 0,30·50 + 0,09·200 + 0,01·2000 = 6 + 15 + 18 + 20 = 59
 ```

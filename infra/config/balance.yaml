@@ -9,7 +9,9 @@ match:
   max_players: 6
   min_bid_increment_pct: 5
   min_bid_increment_abs: 5
-  box_timer_seconds: 20
+  box_timer_seconds: 20         # cronômetro do leilão — começa SÓ no 1º lance
+  no_bid_timeout_seconds: 45    # janela de abertura sem lances; sem lance até aqui, o lote
+                                # fecha sem vencedor e a partida segue (não trava)
   antisnipe_window_seconds: 5
   antisnipe_reset_seconds: 8
 
@@ -17,11 +19,11 @@ round:                          # modelo round-based: UMA caixa por rodada
   boxes_per_round: 1
   intermission_max_seconds: 120 # TETO do intervalo entre rodadas; o gateway abre antes
                                 # se todos os jogadores marcarem "pronto"
-  box_type_weights:             # sorteio aleatório do tipo da caixa a cada rodada
-    BRONZE: 50
-    SILVER: 30
-    GOLD:   15
-    VAULT:  5
+  box_type_weights:             # sorteio aleatório do baú a cada rodada (raridade crescente)
+    WOODEN: 50                  # Baú de Madeira
+    IRON:   30                  # Baú de Ferro
+    ROYAL:  15                  # Baú Real
+    VAULT:  5                   # Cofre
 
 items:                          # valor base (preço de mercado flutua em torno disto)
   COPPER: 10
@@ -30,10 +32,10 @@ items:                          # valor base (preço de mercado flutua em torno 
   DIAMOND: 2000
   # MIMIC: penalidade, não valor positivo
 
-box_odds:                       # soma de cada caixa = 100
-  BRONZE:  { COPPER: 60, SILVER: 30, GOLD: 9,  DIAMOND: 1,  MIMIC: 0 }
-  SILVER:  { COPPER: 35, SILVER: 40, GOLD: 20, DIAMOND: 4,  MIMIC: 1 }
-  GOLD:    { COPPER: 15, SILVER: 30, GOLD: 40, DIAMOND: 12, MIMIC: 3 }
+box_odds:                       # soma de cada baú = 100
+  WOODEN:  { COPPER: 60, SILVER: 30, GOLD: 9,  DIAMOND: 1,  MIMIC: 0 }
+  IRON:    { COPPER: 35, SILVER: 40, GOLD: 20, DIAMOND: 4,  MIMIC: 1 }
+  ROYAL:   { COPPER: 15, SILVER: 30, GOLD: 40, DIAMOND: 12, MIMIC: 3 }
   VAULT:   { COPPER: 5,  SILVER: 15, GOLD: 35, DIAMOND: 40, MIMIC: 5 }
 
 collections:

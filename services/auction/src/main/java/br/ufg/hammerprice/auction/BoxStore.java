@@ -20,17 +20,20 @@ import java.util.concurrent.locks.ReentrantLock;
  * caixa: um único {@link ReentrantLock} serializa os lances concorrentes e as transições
  * de rodada — a invariante que ele protege é o estado da rodada corrente (caixa, líder,
  * cronômetro). O vencedor é o ÚLTIMO lance válido antes do cronômetro zerar (ordem dada
- * pelo lock = timestamp do servidor). A rodada tem vida própria: o cronômetro é armado já
- * no início (fecha mesmo sem lances); lances nos segundos finais ESTENDEM o prazo
- * (anti-sniping). Ao fechar, o vencedor é debitado (Settle) e pode ABRIR a caixa; após uma
- * pausa curta (intermission) a próxima rodada começa com uma nova caixa aleatória. Se
- * ninguém der lance, a rodada encerra sem vencedor e a próxima começa.
+ * pelo lock = timestamp do servidor). A rodada tem vida própria: o cronômetro de leilão
+ * (timerBaseMs, ~20s) começa SÓ no 1º lance — antes disso a rodada fica aberta esperando
+ * interesse; lances nos segundos finais ESTENDEM o prazo (anti-sniping). Uma janela de
+ * abertura mais longa (noBidTimeoutMs) é a rede de segurança: se ninguém der lance até lá,
+ * o lote fecha SEM vencedor e a partida segue (não trava). Ao fechar, o vencedor é debitado
+ * (Settle) e pode ABRIR a caixa; após uma pausa (intermission) a próxima rodada começa com
+ * uma nova caixa aleatória.
  */
 public final class BoxStore {
 
     /** Parâmetros do leilão (do balance.yaml), injetados para facilitar testes. */
     public record Settings(long timerBaseMs, long antiSnipeWindowMs, long antiSnipeResetMs,
-                           long incrementPct, long incrementAbs, long intermissionMs) {}
+                           long incrementPct, long incrementAbs, long intermissionMs,
+                           long noBidTimeoutMs) {}
 
     /** Dependência da Carteira: reservar, devolver e debitar (arremate). */
     public interface Wallet {
@@ -71,9 +74,9 @@ public final class BoxStore {
     /** Pesos default do sorteio de tipo (fallback se o balance.yaml não trouxer). */
     private static final LinkedHashMap<String, Integer> DEFAULT_WEIGHTS = new LinkedHashMap<>();
     static {
-        DEFAULT_WEIGHTS.put("BRONZE", 50);
-        DEFAULT_WEIGHTS.put("SILVER", 30);
-        DEFAULT_WEIGHTS.put("GOLD", 15);
+        DEFAULT_WEIGHTS.put("WOODEN", 50);
+        DEFAULT_WEIGHTS.put("IRON", 30);
+        DEFAULT_WEIGHTS.put("ROYAL", 15);
         DEFAULT_WEIGHTS.put("VAULT", 5);
     }
 
@@ -153,7 +156,7 @@ public final class BoxStore {
     /** Sorteia o tipo da caixa pelos pesos cumulativos (sob o lock). */
     private String pickType() {
         if (totalWeight <= 0) {
-            return "BRONZE";
+            return "WOODEN";
         }
         int r = typeRng.nextInt(totalWeight); // [0, total)
         for (int i = 0; i < cumWeights.length; i++) {
@@ -176,7 +179,7 @@ public final class BoxStore {
             leader = "";
             ended = false;
             active = true;
-            armTimer(true); // a rodada começa com o cronômetro-base armado (fecha mesmo sem lances)
+            armOpening(); // janela de abertura SEM lances; o cronômetro de leilão só arma no 1º lance
             snap = stateLocked();
         } finally {
             lock.unlock();
@@ -207,35 +210,46 @@ public final class BoxStore {
             if (!wallet.reserve(playerId, boxId, amount)) {
                 return new BidResult(false, "INSUFFICIENT_BALANCE", curBid, leader, remainingMs());
             }
+            boolean firstBid = leader.isEmpty(); // 1º lance da rodada → inicia o cronômetro de leilão
             // Devolve a reserva do líder anterior (se for outro jogador).
             if (!leader.isEmpty() && !leader.equals(playerId)) {
                 wallet.release(leader, boxId);
             }
             curBid = amount;
             leader = playerId;
-            armTimer(false); // reseta/estende o cronômetro (anti-sniping)
+            armBid(firstBid); // 1º lance: tempo-base cheio; demais: reseta/estende (anti-sniping)
             return new BidResult(true, "OK", curBid, leader, remainingMs());
         } finally {
             lock.unlock();
         }
     }
 
-    /** (Re)arma o cronômetro sob o lock. No início da rodada: base cheio. Em lances nos
-     *  segundos finais: estende menos (anti-sniping). */
-    private void armTimer(boolean roundStart) {
-        long now = System.currentTimeMillis();
-        long extend;
-        if (roundStart) {
-            extend = cfg.timerBaseMs();
-        } else {
-            long remaining = deadlineMs - now;
-            extend = (remaining <= cfg.antiSnipeWindowMs()) ? cfg.antiSnipeResetMs() : cfg.timerBaseMs();
-        }
-        deadlineMs = now + extend;
+    /** (Re)agenda o fechamento da rodada para daqui a {@code extendMs} (sob o lock). */
+    private void scheduleClose(long extendMs) {
+        deadlineMs = System.currentTimeMillis() + extendMs;
         if (closeTask != null) {
             closeTask.cancel(false);
         }
-        closeTask = scheduler.schedule(this::closeRound, extend, TimeUnit.MILLISECONDS);
+        closeTask = scheduler.schedule(this::closeRound, extendMs, TimeUnit.MILLISECONDS);
+    }
+
+    /** Janela de abertura SEM lances: a rodada espera o 1º lance. Se ninguém der lance dentro
+     *  de {@code noBidTimeoutMs}, fecha sem vencedor (não trava a partida). */
+    private void armOpening() {
+        scheduleClose(cfg.noBidTimeoutMs());
+    }
+
+    /** Cronômetro de leilão a cada lance. O 1º lance dá o tempo-base cheio; lances nos
+     *  segundos finais estendem menos (anti-sniping). */
+    private void armBid(boolean firstBid) {
+        long extend;
+        if (firstBid) {
+            extend = cfg.timerBaseMs();
+        } else {
+            long remaining = deadlineMs - System.currentTimeMillis();
+            extend = (remaining <= cfg.antiSnipeWindowMs()) ? cfg.antiSnipeResetMs() : cfg.timerBaseMs();
+        }
+        scheduleClose(extend);
     }
 
     /** Fecha a rodada: debita o vencedor (se houver) e agenda/dispara a próxima. */

@@ -78,7 +78,7 @@ do worker valida isso).
 | `id` | text PK | `box-...` |
 | `room_id` | text FK | **partição**: a instância de Leilão dona da sala cuida das suas rodadas |
 | `round_no` | int | número da rodada em que a caixa foi ofertada |
-| `box_type` | text | `BRONZE` \| `SILVER` \| `GOLD` \| `VAULT` (sorteado; define as odds) |
+| `box_type` | text | `WOODEN` \| `IRON` \| `ROYAL` \| `VAULT` (sorteado; define as odds) |
 | `winner_id` | text | preenchido ao arrematar (nulo se a rodada expirou sem lances) |
 | `final_price` | bigint | |
 | `opened_item` | text | resultado do sorteio |
@@ -90,7 +90,7 @@ do worker valida isso).
 current_bid      : 65
 leader           : player-3
 timer_expires_at : <epoch ms>   # fonte da verdade do cronômetro
-box_type         : BRONZE
+box_type         : WOODEN
 room_id          : room-1
 round_no         : 7
 version          : 7            # optimistic concurrency

@@ -67,6 +67,9 @@ esperado (EV)** da caixa e decide quanto vale apostar.
 - O valor é **reservado** do seu saldo (não pode reservar além do que tem, somando todas
   as caixas em que está ganhando).
 - A resposta é imediata: **aceito** ou **rejeitado** (saldo insuficiente / já superado).
+- O **cronômetro do leilão (20 s) começa só no 1º lance** — antes disso o lote fica aberto
+  aguardando interesse. Se ninguém der lance dentro de uma janela maior (45 s), o lote fecha
+  **sem vencedor** e a partida segue (não trava).
 - Cada lance **reseta o cronômetro** da caixa (mecânica "dou-lhe uma, dou-lhe duas").
 - **Anti-sniping:** lances nos segundos finais estendem levemente o cronômetro, para
   evitar vitória puramente por latência de rede.

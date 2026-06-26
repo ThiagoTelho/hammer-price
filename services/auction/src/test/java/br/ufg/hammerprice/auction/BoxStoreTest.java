@@ -49,15 +49,16 @@ class BoxStoreTest {
     }
 
     // base 20s, janela anti-snipe 5s, reset 8s, incremento 5% / mín. 5, intermission 0
-    // (pausa zero = a próxima rodada começa imediatamente → determinístico em teste).
+    // (pausa zero = a próxima rodada começa imediatamente → determinístico em teste),
+    // janela de abertura sem lances 45s.
     private static final BoxStore.Settings SETTINGS =
-            new BoxStore.Settings(20_000, 5_000, 8_000, 5, 5, 0);
+            new BoxStore.Settings(20_000, 5_000, 8_000, 5, 5, 0, 45_000);
 
     private static Map<String, Integer> weights() {
         LinkedHashMap<String, Integer> w = new LinkedHashMap<>();
-        w.put("BRONZE", 50);
-        w.put("SILVER", 30);
-        w.put("GOLD", 15);
+        w.put("WOODEN", 50);
+        w.put("IRON", 30);
+        w.put("ROYAL", 15);
         w.put("VAULT", 5);
         return w;
     }
@@ -158,6 +159,26 @@ class BoxStoreTest {
             assertEquals(round0 + 1, next.round(), "a rodada avança mesmo sem lances");
             assertTrue(next.active());
             assertEquals("", next.leader());
+        } finally {
+            store.shutdown();
+        }
+    }
+
+    @Test
+    void auctionTimerStartsOnlyAfterFirstBid() {
+        StubWallet w = new StubWallet();
+        BoxStore store = newStore(w);
+        try {
+            // Sem lances, a rodada usa a janela de abertura longa (no_bid_timeout, ~45s),
+            // e NÃO o cronômetro de leilão (20s) — prova que o relógio não arma no início.
+            assertTrue(store.roomState().timerMs() > 30_000,
+                    "rodada recém-aberta usa a janela longa (~45s), veio " + store.roomState().timerMs());
+            // O 1º lance inicia o cronômetro de leilão (~20s).
+            String b = store.roomState().boxId();
+            BoxStore.BidResult first = store.placeBid(b, "ana", 50);
+            assertTrue(first.accepted());
+            assertTrue(first.timerMs() > 15_000 && first.timerMs() <= 20_000,
+                    "o 1º lance arma o cronômetro de leilão (~20s), veio " + first.timerMs());
         } finally {
             store.shutdown();
         }
