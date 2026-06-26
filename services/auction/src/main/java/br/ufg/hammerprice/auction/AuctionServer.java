@@ -70,14 +70,17 @@ public final class AuctionServer {
 
     static final class AuctionService extends AuctionGrpc.AuctionImplBase {
         private final BoxStore store;
+        private final EventPublisher events;
 
-        AuctionService(BoxStore store) {
+        AuctionService(BoxStore store, EventPublisher events) {
             this.store = store;
+            this.events = events;
         }
 
         @Override
         public void placeBid(PlaceBidRequest req, StreamObserver<PlaceBidReply> obs) {
             BoxStore.BidResult r = store.placeBid(req.getBoxId(), req.getPlayerId(), req.getAmount());
+            // SÍNCRONO: confirmação bloqueante (aceito/rejeitado) volta a quem deu o lance.
             obs.onNext(PlaceBidReply.newBuilder()
                     .setAccepted(r.accepted())
                     .setReason(r.reason())
@@ -86,6 +89,10 @@ public final class AuctionServer {
                     .setTimerMs(r.timerMs())
                     .build());
             obs.onCompleted();
+            // ASSÍNCRONO: o evento é difundido a todos via Redis Pub/Sub (sem o emissor esperar).
+            if (r.accepted()) {
+                events.bidPlaced(req.getBoxId(), req.getPlayerId(), r.currentBid(), r.timerMs());
+            }
         }
 
         @Override
@@ -118,6 +125,10 @@ public final class AuctionServer {
                     .setIsMimic(r.isMimic())
                     .build());
             obs.onCompleted();
+            // Difunde o resultado e enfileira box.opened (RabbitMQ) para o worker de mercado.
+            if (r.ok()) {
+                events.boxOpened(req.getBoxId(), req.getPlayerId(), r.item(), r.isMimic());
+            }
         }
     }
 
@@ -165,18 +176,38 @@ public final class AuctionServer {
                 ? new Random()
                 : new Random(Long.parseLong(seedEnv.trim()) ^ 0x9E3779B97F4A7C15L);
 
+        // Publicador assíncrono: Redis Pub/Sub (broadcast) + RabbitMQ (messaging durável).
+        String roomId = System.getenv().getOrDefault("ROOM_ID", "room-1");
+        EventPublisher events = new EventPublisher(roomId,
+                System.getenv("REDIS_URL"), System.getenv("RABBITMQ_URL"));
+
         BoxStore store = new BoxStore(gw, settings, opener, typeWeights, typeRng);
-        store.setCloseListener((boxId, winner, price) ->
-                System.out.println("auction: caixa " + boxId + " arrematada por " + winner + " (" + price + ")"));
+        // A cada início/fim de rodada (thread do cronômetro), difunde os eventos do jogo.
+        store.setRoundListener(new BoxStore.RoundListener() {
+            @Override
+            public void onRoundStarted(BoxStore.RoomState s) {
+                events.roundStarted(s.round(), s.boxId(), s.boxType(), s.currentBid(),
+                        s.leader(), s.timerMs(), s.odds(), System.currentTimeMillis() + s.timerMs());
+            }
+
+            @Override
+            public void onRoundEnded(int round, String boxId, String boxType, String winner, long price) {
+                if (!winner.isEmpty()) {
+                    events.boxSold(boxId, boxType, winner, price);
+                }
+                events.roundEnded(round, boxId, winner, price);
+            }
+        });
 
         Server server = ServerBuilder.forPort(port)
-                .addService(new AuctionService(store))
+                .addService(new AuctionService(store, events))
                 .build()
                 .start();
         System.out.println("auction: ouvindo em :" + port + " (carteira em " + walletAddr + ")");
         Runtime.getRuntime().addShutdownHook(new Thread(() -> {
             server.shutdown();
             store.shutdown();
+            events.close();
             channel.shutdown();
         }));
         server.awaitTermination();

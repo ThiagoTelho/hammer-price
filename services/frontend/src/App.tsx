@@ -47,6 +47,7 @@ export function App() {
   const [box, setBox] = useState<Box | null>(null);
   const [log, setLog] = useState<string[]>([]);
   const [wonBoxes, setWonBoxes] = useState<{ boxId: string; boxType: string }[]>([]);
+  const [prices, setPrices] = useState<Record<string, number>>({});
   const wsRef = useRef<WebSocket | null>(null);
   // playerId via ref: o handler de mensagens é criado uma vez e precisa do id atual.
   const playerIdRef = useRef("");
@@ -122,6 +123,9 @@ export function App() {
         case "BID_REJECTED":
           addLog(`❌ Lance rejeitado em ${msg.boxId}: ${msg.reason}`);
           break;
+        case "MARKET_UPDATED":
+          setPrices(msg.prices ?? {});
+          break;
         case "ERROR":
           addLog(`⚠️ ${msg.reason}`);
           break;
@@ -181,6 +185,15 @@ export function App() {
         </p>
       )}
 
+      {Object.keys(prices).length > 0 && (
+        <div style={S.market}>
+          <b>📈 Mercado:</b>{" "}
+          {ITEM_ORDER.filter((k) => prices[k] != null)
+            .map((k) => `${ITEM_EMOJI[k]} ${prices[k]}`)
+            .join(" ")}
+        </div>
+      )}
+
       <div style={S.stage}>
         {box ? (
           <div style={S.card}>
@@ -237,6 +250,14 @@ const S: Record<string, React.CSSProperties> = {
     background: "#5b3df5",
     color: "#fff",
     cursor: "pointer",
+  },
+  market: {
+    background: "#eef6ff",
+    border: "1px solid #cfe3ff",
+    borderRadius: 8,
+    padding: "6px 12px",
+    fontSize: 14,
+    margin: "6px 0",
   },
   stage: { display: "flex", justifyContent: "center", margin: "16px 0" },
   card: {

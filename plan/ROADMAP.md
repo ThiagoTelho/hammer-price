@@ -8,11 +8,10 @@
 - **Disciplina:** Software Concorrente e Distribuído (SCD) — UFG, 2026.1
 - **Entrega:** 28/06/2026
 - **Última atualização deste arquivo:** 2026-06-25
-- **Marco atual:** **Reta final (entrega 28/06)** — ✅ **smoke test em AWS EC2 verde (25/06)**
-  (R9 de-risked). **Modelo de jogo decidido: round-based** (uma caixa por rodada, tipo
-  sorteado, odds públicas) com **particionamento por sala (room)** — docs 02–09 sincronizados.
-  A seguir: implementar rodadas + odds públicas (Fase 2, increments 3/4) e async real
-  (Pub/Sub + RabbitMQ, Fases 4/5).
+- **Marco atual:** **Reta final (entrega 28/06)** — ✅ AWS EC2 (R9), ✅ rodadas + odds
+  públicas (Fase 2 inc. 3), ✅ **async/messaging real** (Redis Pub/Sub + RabbitMQ + worker
+  de mercado em Python → R4/R5/R8 🟢). **Falta o núcleo distribuído:** particionamento por
+  sala + replicação (R6, Fase 2 inc. 4 / Fases 7/8). Depois: demo gravada (Fase 10).
 
 ---
 
@@ -78,11 +77,11 @@ cada um é satisfeito. Atualize a coluna **Status** conforme as fases avançam.
 | R1 | Acessível a múltiplos clientes na Internet | 🟡 parcial | Local (WS+REST) → AWS EC2 (Fase 8) |
 | R2 | Vários componentes distribuídos coordenados | 🟢 ok | frontend/gateway/auction/wallet; + worker (Fase 5) |
 | R3 | Acessos concorrentes a recursos compartilhados | 🟢 ok | Lock por caixa + wallet `synchronized`; → Redlock+SQL (Fase 3) |
-| R4 | Processamento servidor concorrente com clientes | 🟡 parcial | Lances concorrentes; → timers/RNG/mercado (Fases 2,5) |
-| R5 | Interação síncrona **e** assíncrona | 🟡 parcial | gRPC síncrono + broadcast em processo; → Pub/Sub+MQ (Fases 4,5) |
+| R4 | Processamento servidor concorrente com clientes | 🟢 ok | Lances/RNG/rodadas + **worker de mercado** (Python) recalculando durante a partida |
+| R5 | Interação síncrona **e** assíncrona | 🟢 ok | gRPC síncrono (lance/abertura) + **Redis Pub/Sub** + **RabbitMQ** assíncronos |
 | R6 | Replicação **e** particionamento | 🔴 falta | → sala/jogador + Postgres réplica + Redis (Fases 2,3,7) |
 | R7 | Consistência **e** disponibilidade | 🟡 parcial | Saldo nunca negativo (em memória); → forte (Fase 3) + failover (Fase 7) |
-| R8 | >1 linguagem **e** >1 paradigma | 🟡 parcial | TS+Java; cliente-servidor+pub-sub; → +Python +messaging (Fase 5) |
+| R8 | >1 linguagem **e** >1 paradigma | 🟢 ok | TS+Java+**Python**; cliente-servidor (REST/gRPC) + **pub-sub** (Redis) + **messaging** (RabbitMQ) |
 | R9 | Demonstração em AWS EC2 | 🟢 ok | Stack roda numa EC2 (smoke test verde 25/06); pendentes: demo gravada (Fase 10) e topologia 2–3 instâncias p/ R6 |
 
 Legenda: 🟢 satisfeito · 🟡 parcial · 🔴 ainda não.
@@ -137,9 +136,9 @@ Legenda: 🟢 satisfeito · 🟡 parcial · 🔴 ainda não.
 - [x] Afinidade somada às odds + **renormalização** (Σ P = 1, P ≥ 0) — mecanismo + teste; valores virão do *burn* (Fase 3)
 - [x] **Modelo de rodadas (increment 3):** uma caixa por rodada, **tipo sorteado** (pesos `balance.yaml`, seed reproduzível); ciclo rodada → arremate/expiração → pausa → próxima rodada *(R4)*
 - [x] **Odds públicas:** probabilidades no estado da caixa (`Box.odds` no proto/`GetRoomState`) e **exibidas no frontend** (uma caixa por rodada + contador)
-- [x] Eventos `ROUND_STARTED`/`ROUND_ENDED`/`BOX_SOLD` (derivados por polling no gateway; Pub/Sub real é Fase 4/5)
+- [x] Eventos `ROUND_STARTED`/`ROUND_ENDED`/`BOX_SOLD` (agora via **Redis Pub/Sub** publicado pelo Leilão — Fase 4)
 - [ ] **Particionamento por sala (room) (increment 4):** cada instância de Leilão dona das rodadas de um subconjunto de salas *(R6)*
-- [ ] Publicação de eventos `bid.placed`/`box.sold`/`box.opened` (Redis Pub/Sub + RabbitMQ) — **Fase 4/5** *(R5)*
+- [x] Publicação de eventos via **Redis Pub/Sub** (broadcast) + **RabbitMQ** (durável) — Fases 4/5 *(R5)*
 - [x] **Teste de concorrência:** corrida de lances na mesma caixa (`BoxStoreTest`, 8×200 lances) *(R3)*
 
 ## 📍 Fase 3 — Carteira/Inventário com consistência forte (Java · wallet)
@@ -155,25 +154,25 @@ Legenda: 🟢 satisfeito · 🟡 parcial · 🔴 ainda não.
 - [ ] Operações de inventário: **guardar**, **vender** (mercado), **queimar** (afinidade)
 - [ ] **Teste de concorrência:** lances simultâneos em vaults diferentes nunca deixam saldo negativo *(R3,R7)*
 
-## 📍 Fase 4 — Tempo real distribuído (gateway + Redis Pub/Sub + REST)
+## 📍 Fase 4 — Tempo real distribuído (gateway + Redis Pub/Sub + REST) · **EM ANDAMENTO**
 
 > Substitui o broadcast em processo por fan-out distribuído e formaliza o REST.
 
-- [ ] **Redis Pub/Sub** para fan-out de eventos (substitui o broadcast em processo) *(R5)*
-- [ ] Gateway **stateless** e **replicável** (várias instâncias assinam os canais) *(R1,R6,R7)*
+- [x] **Redis Pub/Sub** para fan-out de eventos (substitui o polling em processo) *(R5)*
+- [x] Gateway **stateless**: assina o canal Redis e difunde; sem estado de jogo (replicável) *(R1,R6,R7)*
 - [ ] Endpoints **REST** para ações pontuais — **criar sala** (retorna `code`), **entrar por código**, iniciar, snapshot, ranking — ver [doc 07](../docs/07-contratos-api.md) *(R1,R5)*
-- [ ] Auction publica em Redis; gateway assina e empurra aos clientes certos *(R5)*
-- [ ] Reconexão de cliente recebe **snapshot** atualizado do estado
+- [x] Auction publica em Redis (`room:{id}:events`); gateway assina e empurra aos clientes *(R5)*
+- [x] Reconexão de cliente recebe **snapshot** atualizado (WELCOME via `GetRoomState`)
 
-## 📍 Fase 5 — Mensageria + Worker de background (Python)
+## 📍 Fase 5 — Mensageria + Worker de background (Python) · **EM ANDAMENTO**
 
 > Acrescenta a 3ª linguagem, o paradigma **messaging** e o processamento concorrente
 > de fundo. Ver [doc 04](../docs/04-arquitetura.md).
 
-- [ ] **RabbitMQ:** filas de eventos/trabalho (paradigma messaging) *(R5,R8)*
-- [ ] Auction publica eventos **duráveis** no RabbitMQ *(R5)*
-- [ ] **Worker (Python)** consome as filas — esqueleto + conexão *(R4,R8)*
-- [ ] **Engine de mercado:** recalcula preços periodicamente por escassez relativa *(R4)*
+- [x] **RabbitMQ:** exchange `hammerprice` (topic) + fila `worker.events` (paradigma messaging) *(R5,R8)*
+- [x] Auction publica eventos **duráveis** no RabbitMQ (`box.opened`, `round.started`) *(R5)*
+- [x] **Worker (Python)** consome as filas e processa eventos *(R4,R8)*
+- [x] **Engine de mercado:** recalcula preços por escassez relativa em `box.opened` → `MARKET_UPDATED` *(R4)*
 - [ ] **Avaliação de coleções:** detecta sets formados e aplica bônus
 - [ ] **Reconciliação:** confere ledger × saldos e corrige divergências (consistência eventual) *(R7)*
 - [ ] Manutenção das regras: expiração de caixas, reposição, efeitos do Mímico
@@ -263,5 +262,6 @@ As **fases** são por escopo; os **marcos**, por tempo — ajuste conforme a dat
 - 2026-06-15 — _(este commit)_ — **Fase 2, increment 1 (ciclo de vida da caixa).** Auto-close por cronômetro + anti-sniping; `Settle` na carteira (debita o vencedor) + release dos perdedores; reposição por slot; desempate por lock/timestamp do servidor. Gateway expõe fechamento por polling (`BOX_SOLD`); frontend com contagem regressiva. Teste de concorrência `BoxStoreTest` (4 testes, 8×200 lances). Verificado: `mvn test` verde; no stack, lance → auto-close → `arrematada` → `BOX_SOLD`; regressão do `test-slice` ok.
 - 2026-06-15 — _(este commit)_ — **Fase 2, increment 2 (abertura/RNG).** `OpenBox` RPC; `BoxOpener` com RNG de seed injetável (`RNG_SEED`), odds do `balance.yaml`, afinidade somada + renormalização (Σ P = 1). Caixas arrematadas ficam disponíveis para o vencedor abrir; gateway trata `OPEN_BOX` (reply síncrono + broadcast `BOX_OPENED`); frontend abre a caixa e mostra o item. Testes: `BoxOpenerTest` (determinismo/renormalização/afinidade) + `openBox` no `BoxStore` (10 testes no total). Verificado: `mvn test` verde; no stack, lance → auto-close → `OPEN_BOX` → item sorteado (COPPER) → `BOX_OPENED`.
 - 2026-06-25 — _(este commit)_ — **Fase 8 (de-risk R9): smoke test em AWS EC2 verde.** Scripts versionados em `infra/deploy/` (`provision.sh`, `user-data.sh`, `start.sh` + `DEPLOY.md`) sobem o stack completo numa EC2 (AL2023, t3.medium) via Docker Compose; correção do `VITE_GATEWAY_URL` para o DNS público e install do buildx no bootstrap (compose `--build` exige buildx ≥ 0.17). Verificado: jogo acessível em `http://<dns-público>:5173`. Pendentes: validar multi-cliente (R1), topologia 2–3 instâncias (R6) e demo gravada (Fase 10).
+- 2026-06-25 — _(este commit)_ — **Fases 4/5 (async/messaging real).** O Leilão passa a **publicar eventos** em vez de o gateway fazer polling: `EventPublisher` (Java) emite em **Redis Pub/Sub** (`room:{id}:events`: ROUND_STARTED/BID_PLACED/BOX_SOLD/ROUND_ENDED/BOX_OPENED) e em **RabbitMQ** (durável: `box.opened`, `round.started`). `BoxStore` ganhou um `RoundListener` (chamado fora do lock). O **gateway** virou relay stateless: assina o canal Redis (ioredis) e difunde; o sync continua via gRPC (lance/abertura). O **worker (Python)** consome `box.opened`, recalcula o **mercado** por escassez relativa e publica `MARKET_UPDATED` (gateway → clientes); frontend mostra os preços. Deps novas: jedis+amqp-client+jackson (auction), ioredis (gateway). Verificado: `mvn test` 12 verde + fat jar empacota; `tsc` limpo (gateway+frontend); `py_compile` ok + curva de preço conferida. Resultado: **R4/R5/R8 → 🟢**. Live (Redis/RabbitMQ) exige subir o stack (`./dev.sh up`). Falta R6 (partição/replicação).
 - 2026-06-25 — _(este commit)_ — **Fase 2, increment 3 (modelo de rodadas + odds públicas).** `BoxStore` reescrito para o ciclo round-based: **uma caixa por rodada** com tipo **sorteado** (pesos do `balance.yaml`, seed reproduzível), cronômetro armado no início (a rodada fecha mesmo sem lances) + anti-sniping, pausa entre rodadas e abertura pelo vencedor. Contrato: `GetVaultState`→`GetRoomState`, `Box.odds`, `RoomState{round,active,box,ends_at}` (proto regenera; `AuctionServer` atualizado). Gateway deriva `ROUND_STARTED`/`ROUND_ENDED`/`BOX_SOLD` por polling e repassa as odds; frontend mostra **uma caixa por rodada com odds públicas** + contador de rodada. Testes: `BoxStoreTest` reescrito (8 testes — corrida 8×200, ciclo de rodada, rodada sem lances, anti-snipe, sorteio determinístico) → `mvn test` verde (12 no total); `tsc --noEmit` limpo no gateway e no frontend; `test-slice.mjs` adaptado. Falta o **increment 4 (partição por sala)**.
 - 2026-06-25 — _(este commit)_ — **Decisão de modelo: jogo round-based + partição por sala.** O leilão deixa de ser "várias caixas simultâneas em vaults" e passa a **rodadas sequenciais com UMA caixa por rodada** (tipo sorteado, odds públicas exibidas). Confirmado contra a especificação oficial (`docs/SCD-2026-1-…pdf`) que isso **atende a todos os requisitos** (R3 vira contenção de toda a sala numa caixa; R6 passa a particionar o Leilão **por sala** + Carteira por jogador). Docs sincronizados: 02, 03, 04, 05, 07, 09 + `balance.yaml` (bloco `round`) + `schema.sql` (`rooms.current_round`, `boxes.round_no`). Implementação (rodadas/odds no auction + frontend) é a próxima tarefa (Fase 2, increments 3/4).

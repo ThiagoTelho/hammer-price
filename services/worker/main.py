@@ -1,15 +1,18 @@
-"""Worker de background do Hammer Price (esqueleto da Fase 1).
+"""Worker de background do Hammer Price — engine de mercado (Fase 5).
 
-Nesta fase o worker apenas: carrega o balance.yaml, conecta a RabbitMQ e Redis,
-declara o exchange/fila de eventos e fica vivo consumindo (sem lógica de negócio).
-A engine de mercado, avaliação de coleções e reconciliação entram na Fase 5
-(ver docs/04-arquitetura.md e docs/07-contratos-api.md).
+Consome eventos do RabbitMQ (paradigma messaging, durável) e, a cada item que entra em
+circulação (`box.opened`), recalcula os preços de mercado por **escassez relativa** e
+publica `MARKET_UPDATED` no canal Redis Pub/Sub da sala — o gateway difunde aos clientes.
+É a 3ª linguagem (Python) fazendo processamento concorrente com os acessos dos clientes.
+Ver docs/03-regras-de-negocio.md §6 e docs/04-arquitetura.md.
 """
 from __future__ import annotations
 
+import json
 import os
 import sys
 import time
+from collections import defaultdict
 
 import pika
 import redis
@@ -17,8 +20,10 @@ import yaml
 
 EXCHANGE = "hammerprice"          # topic exchange (ver docs/07-contratos-api.md §3)
 QUEUE = "worker.events"
-# Tópicos que o worker passará a tratar na Fase 5.
-ROUTING_KEYS = ["box.opened", "item.sold", "item.burned", "ledger.entry", "match.tick"]
+ROUTING_KEYS = ["box.opened", "item.sold", "item.burned", "ledger.entry", "match.tick", "round.started"]
+ROOM_ID = os.environ.get("ROOM_ID", "room-1")
+EVENTS_CHANNEL = f"room:{ROOM_ID}:events"   # mesmo canal que o gateway assina
+PRICED_ITEMS = ["COPPER", "SILVER", "GOLD", "DIAMOND"]  # MIMIC é penalidade, não tem preço
 
 
 def load_balance() -> dict:
@@ -33,7 +38,31 @@ def load_balance() -> dict:
         return {}
 
 
-def connect_redis() -> redis.Redis | None:
+def compute_prices(cfg: dict, supply: dict) -> dict:
+    """Preço por escassez relativa: base * clamp(1 + k*(alvo - oferta)/alvo, piso, teto).
+
+    Quanto mais itens de um tipo entram em circulação (oferta sobe), mais o preço cai —
+    recompensa o contrarianismo (ver docs/03 §6).
+    """
+    items = cfg.get("items", {})
+    market = cfg.get("market", {})
+    k = float(market.get("sensitivity_k", 0.5))
+    floor = float(market.get("floor_multiplier", 0.4))
+    ceil = float(market.get("ceil_multiplier", 1.8))
+    target = float(market.get("target_supply", 5)) or 1.0
+    prices = {}
+    for item in PRICED_ITEMS:
+        base = items.get(item)
+        if base is None:
+            continue
+        s = supply.get(item, 0)
+        factor = 1.0 + k * (target - s) / target
+        factor = max(floor, min(ceil, factor))
+        prices[item] = round(base * factor)
+    return prices
+
+
+def connect_redis():
     url = os.environ.get("REDIS_URL", "redis://redis:6379")
     try:
         client = redis.Redis.from_url(url)
@@ -63,9 +92,22 @@ def connect_rabbit() -> pika.BlockingConnection:
 
 
 def main() -> int:
-    print("worker: iniciando (esqueleto da Fase 1)", flush=True)
-    load_balance()
-    connect_redis()
+    print("worker: iniciando (engine de mercado — Fase 5)", flush=True)
+    cfg = load_balance()
+    rds = connect_redis()
+    supply: dict = defaultdict(int)
+
+    def publish_market() -> None:
+        prices = compute_prices(cfg, supply)
+        if rds is not None:
+            try:
+                rds.publish(EVENTS_CHANNEL, json.dumps({"type": "MARKET_UPDATED", "prices": prices}))
+            except Exception as exc:  # noqa: BLE001
+                print(f"worker: falha ao publicar MARKET_UPDATED ({exc})", flush=True)
+        print(f"worker: MARKET_UPDATED {prices}", flush=True)
+
+    # Mercado inicial (oferta zero → itens "caros").
+    publish_market()
 
     conn = connect_rabbit()
     channel = conn.channel()
@@ -75,8 +117,17 @@ def main() -> int:
         channel.queue_bind(exchange=EXCHANGE, queue=QUEUE, routing_key=key)
 
     def on_message(ch, method, _props, body):
-        # Fase 5: despachar por routing_key para market/collections/reconcile.
-        print(f"worker: evento {method.routing_key}: {body!r}", flush=True)
+        try:
+            payload = json.loads(body)
+        except Exception:  # noqa: BLE001
+            payload = {}
+        # Item entrou em circulação → atualiza a oferta e recalcula o mercado.
+        if method.routing_key == "box.opened":
+            item = payload.get("item")
+            if item in PRICED_ITEMS:
+                supply[item] += 1
+                print(f"worker: box.opened {item} (oferta={supply[item]})", flush=True)
+                publish_market()
         ch.basic_ack(delivery_tag=method.delivery_tag)
 
     channel.basic_consume(queue=QUEUE, on_message_callback=on_message)

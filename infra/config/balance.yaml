@@ -52,6 +52,7 @@ market:
   sensitivity_k: 0.5
   floor_multiplier: 0.4
   ceil_multiplier: 1.8
+  target_supply: 5              # oferta-alvo por item; acima dela o preço cai (escassez relativa)
 
 mimic:
   steal_money_pct: 10           # uma das penalidades possíveis

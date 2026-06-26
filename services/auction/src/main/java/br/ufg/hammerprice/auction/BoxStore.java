@@ -39,9 +39,14 @@ public final class BoxStore {
         void settle(String playerId, String boxId, long amount);
     }
 
-    /** Notificação de caixa arrematada (publicação de eventos é wired pelo servidor/gateway). */
-    public interface CloseListener {
-        void onSold(String boxId, String winner, long price);
+    /**
+     * Notificação do ciclo de rodada (a publicação de eventos é wired pelo servidor).
+     * Chamada SEMPRE fora do lock — o ouvinte pode fazer I/O (publicar em Redis/RabbitMQ).
+     * {@code onRoundEnded} traz {@code winner == ""} quando a rodada fecha sem lances.
+     */
+    public interface RoundListener {
+        void onRoundStarted(RoomState state);
+        void onRoundEnded(int round, String boxId, String boxType, String winner, long price);
     }
 
     /** Fonte da afinidade do jogador (item → pontos percentuais). Default: sem afinidade. */
@@ -105,7 +110,11 @@ public final class BoxStore {
     // Caixas arrematadas aguardando abertura pelo vencedor + ids já abertos.
     private final ConcurrentHashMap<String, PendingOpen> pendingOpens = new ConcurrentHashMap<>();
     private final Set<String> opened = ConcurrentHashMap.newKeySet();
-    private volatile CloseListener closeListener = (id, w, p) -> {};
+    private static final RoundListener NO_OP = new RoundListener() {
+        public void onRoundStarted(RoomState s) {}
+        public void onRoundEnded(int r, String b, String t, String w, long p) {}
+    };
+    private volatile RoundListener roundListener = NO_OP;
     private volatile AffinitySource affinitySource = p -> Map.of();
 
     /** Cria o leilão e abre a rodada 1 imediatamente. */
@@ -131,8 +140,8 @@ public final class BoxStore {
         startRound();
     }
 
-    public void setCloseListener(CloseListener l) {
-        this.closeListener = (l == null) ? (id, w, p) -> {} : l;
+    public void setRoundListener(RoundListener l) {
+        this.roundListener = (l == null) ? NO_OP : l;
     }
 
     public void setAffinitySource(AffinitySource s) {
@@ -155,6 +164,7 @@ public final class BoxStore {
 
     /** Abre uma nova rodada com uma caixa de tipo sorteado e arma o cronômetro. */
     private void startRound() {
+        RoomState snap;
         lock.lock();
         try {
             roundNo++;
@@ -165,9 +175,11 @@ public final class BoxStore {
             ended = false;
             active = true;
             armTimer(true); // a rodada começa com o cronômetro-base armado (fecha mesmo sem lances)
+            snap = stateLocked();
         } finally {
             lock.unlock();
         }
+        roundListener.onRoundStarted(snap); // fora do lock (pode publicar em Redis/RabbitMQ)
     }
 
     /** Incremento mínimo: percentual do lance atual, com piso absoluto (balance.yaml). */
@@ -226,10 +238,11 @@ public final class BoxStore {
 
     /** Fecha a rodada: debita o vencedor (se houver) e agenda/dispara a próxima. */
     private void closeRound() {
-        String soldId = null;
-        String soldWinner = null;
-        String soldType = null;
-        long soldPrice = 0;
+        int endedRound;
+        String endedBoxId;
+        String endedType;
+        String winner;
+        long price;
         boolean startNext = false;
         lock.lock();
         try {
@@ -242,12 +255,13 @@ public final class BoxStore {
             }
             ended = true;
             active = false;
-            if (!leader.isEmpty()) {
-                wallet.settle(leader, boxId, curBid); // o vencedor paga de fato
-                soldId = boxId;
-                soldWinner = leader;
-                soldType = boxType;
-                soldPrice = curBid;
+            endedRound = roundNo;
+            endedBoxId = boxId;
+            endedType = boxType;
+            winner = leader; // "" se ninguém deu lance
+            price = curBid;
+            if (!winner.isEmpty()) {
+                wallet.settle(winner, endedBoxId, price); // o vencedor paga de fato
             }
             // Próxima rodada: imediata quando não há pausa (determinístico em teste);
             // caso contrário, agendada após a intermission.
@@ -259,11 +273,11 @@ public final class BoxStore {
         } finally {
             lock.unlock();
         }
-        if (soldWinner != null) {
+        if (!winner.isEmpty()) {
             // O vencedor poderá ABRIR a caixa arrematada (sorteio do item).
-            pendingOpens.put(soldId, new PendingOpen(soldWinner, soldType, soldPrice));
-            closeListener.onSold(soldId, soldWinner, soldPrice);
+            pendingOpens.put(endedBoxId, new PendingOpen(winner, endedType, price));
         }
+        roundListener.onRoundEnded(endedRound, endedBoxId, endedType, winner, price); // fora do lock
         if (startNext) {
             startRound();
         }
@@ -294,11 +308,16 @@ public final class BoxStore {
     public RoomState roomState() {
         lock.lock();
         try {
-            Map<String, Integer> odds = active ? opener.oddsFor(boxType) : Map.of();
-            return new RoomState(roundNo, active, boxId, boxType, curBid, leader, remainingMs(), odds);
+            return stateLocked();
         } finally {
             lock.unlock();
         }
+    }
+
+    /** Constrói o estado da sala assumindo que o lock já é mantido pelo chamador. */
+    private RoomState stateLocked() {
+        Map<String, Integer> odds = active ? opener.oddsFor(boxType) : Map.of();
+        return new RoomState(roundNo, active, boxId, boxType, curBid, leader, remainingMs(), odds);
     }
 
     private long remainingMs() {

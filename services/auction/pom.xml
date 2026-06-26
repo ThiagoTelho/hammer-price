@@ -52,6 +52,22 @@
       <artifactId>snakeyaml</artifactId>
       <version>2.2</version>
     </dependency>
+    <!-- Eventos assíncronos: Redis Pub/Sub (broadcast) + RabbitMQ (messaging durável) + JSON -->
+    <dependency>
+      <groupId>redis.clients</groupId>
+      <artifactId>jedis</artifactId>
+      <version>5.1.5</version>
+    </dependency>
+    <dependency>
+      <groupId>com.rabbitmq</groupId>
+      <artifactId>amqp-client</artifactId>
+      <version>5.21.0</version>
+    </dependency>
+    <dependency>
+      <groupId>com.fasterxml.jackson.core</groupId>
+      <artifactId>jackson-databind</artifactId>
+      <version>2.17.2</version>
+    </dependency>
     <!-- Testes (incl. teste de concorrência da corrida de lances) -->
     <dependency>
       <groupId>org.junit.jupiter</groupId>

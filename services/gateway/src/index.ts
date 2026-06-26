@@ -1,16 +1,19 @@
-// Gateway de tempo-real do Hammer Price (fatia vertical).
+// Gateway de tempo-real do Hammer Price.
 //
-// - Mantém conexões WebSocket dos jogadores.
-// - Traduz a ação PLACE_BID em uma chamada gRPC SÍNCRONA ao Leilão.
-// - Faz fan-out dos eventos a todos os clientes (broadcast em processo).
-//
-// Próxima etapa: o fan-out passa a usar Redis Pub/Sub (para múltiplas
-// instâncias de gateway) e entra uma fila RabbitMQ para o worker.
+// - Mantém as conexões WebSocket dos jogadores.
+// - Traduz ações (PLACE_BID, OPEN_BOX) em chamadas gRPC SÍNCRONAS ao Leilão — a
+//   confirmação (aceito/rejeitado, item sorteado) volta bloqueante a quem pediu.
+// - Faz fan-out ASSÍNCRONO: assina o canal Redis Pub/Sub do Leilão e difunde os
+//   eventos do jogo a todos os clientes (substitui o polling em processo). Assim o
+//   gateway é stateless e replicável (várias instâncias assinam o mesmo canal).
 import { WebSocketServer, WebSocket } from "ws";
+import Redis from "ioredis";
 import { placeBid, getRoomState, openBox, AUCTION_GRPC, type Box } from "./grpcClients.js";
 
 const PORT = Number(process.env.GATEWAY_PORT ?? 8080);
-const ROOM = "room-1"; // sala única na fatia vertical
+const ROOM = process.env.ROOM_ID ?? "room-1";
+const REDIS_URL = process.env.REDIS_URL ?? "redis://localhost:6379";
+const EVENTS_CHANNEL = `room:${ROOM}:events`;
 
 interface Client {
   ws: WebSocket;
@@ -20,7 +23,7 @@ interface Client {
 const clients = new Set<Client>();
 
 function broadcast(msg: unknown): void {
-  const data = JSON.stringify(msg);
+  const data = typeof msg === "string" ? msg : JSON.stringify(msg);
   for (const c of clients) {
     if (c.ws.readyState === WebSocket.OPEN) c.ws.send(data);
   }
@@ -37,40 +40,17 @@ function boxView(b: Box) {
   };
 }
 
-// Última visão da rodada, para derivar início/fim de rodada via polling. (Interim: na
-// Fase 4/5 isso vira eventos round.started/box.sold/round.ended via Redis Pub/Sub.)
-let lastRound: { round: number; active: boolean; boxId: string; leader: string; currentBid: number; boxType: string } | null = null;
-
-async function broadcastState(): Promise<void> {
-  try {
-    const s = await getRoomState(ROOM);
-    const box = s.box;
-
-    // Fim da rodada anterior: estava ativa e agora trocou de rodada ou entrou em pausa.
-    if (lastRound && lastRound.active && (s.round !== lastRound.round || !s.active)) {
-      if (lastRound.leader) {
-        broadcast({ type: "BOX_SOLD", boxId: lastRound.boxId, boxType: lastRound.boxType, winner: lastRound.leader, price: lastRound.currentBid });
-        broadcast({ type: "ROUND_ENDED", round: lastRound.round, boxId: lastRound.boxId, winner: lastRound.leader, price: lastRound.currentBid });
-      } else {
-        broadcast({ type: "ROUND_ENDED", round: lastRound.round, boxId: lastRound.boxId, winner: null, price: 0 });
-      }
-    }
-
-    // Início de uma nova rodada (inclui a primeira observação).
-    if (s.active && (!lastRound || s.round !== lastRound.round)) {
-      broadcast({ type: "ROUND_STARTED", round: s.round, box: boxView(box), endsAt: s.endsAt });
-    }
-
-    lastRound = { round: s.round, active: s.active, boxId: box.boxId, leader: box.leader, currentBid: box.currentBid, boxType: box.boxType };
-    broadcast({ type: "ROOM_STATE", round: s.round, active: s.active, box: s.active ? boxView(box) : null, endsAt: s.endsAt });
-  } catch (err) {
-    console.error("gateway: falha ao obter estado da sala:", err);
-  }
-}
-
-// Poll periódico: surfacia cronômetros e arremates (fechamento é assíncrono no leilão).
-const STATE_POLL_MS = Number(process.env.STATE_POLL_MS ?? 1000);
-setInterval(broadcastState, STATE_POLL_MS);
+// Fan-out assíncrono (pub-sub): assina o canal de eventos do Leilão (e do worker, que
+// publica MARKET_UPDATED no mesmo canal) e repassa cada evento — já no formato das
+// mensagens WS — a todos os clientes conectados.
+const sub = new Redis(REDIS_URL);
+sub.on("connect", () => console.log(`gateway: assinando ${EVENTS_CHANNEL} em ${REDIS_URL}`));
+sub.on("error", (e) => console.error("gateway: erro no Redis:", e.message));
+sub.subscribe(EVENTS_CHANNEL).catch((e) => console.error("gateway: falha ao assinar:", e.message));
+sub.on("message", (_channel, message) => {
+  // O payload já é uma mensagem WS pronta ({ type, ... }); repassa verbatim.
+  broadcast(message);
+});
 
 const wss = new WebSocketServer({ port: PORT });
 console.log(`gateway: WebSocket ouvindo em ws://localhost:${PORT} (leilão em ${AUCTION_GRPC})`);
@@ -110,7 +90,8 @@ wss.on("connection", async (ws, req) => {
     if (msg.type === "PLACE_BID") {
       try {
         const reply = await placeBid(ROOM, msg.boxId, playerId, Number(msg.amount));
-        // Resposta SÍNCRONA a quem deu o lance (aceito/rejeitado).
+        // SÍNCRONO: confirmação só para quem deu o lance. O evento BID_PLACED chega a
+        // todos de forma ASSÍNCRONA via Redis Pub/Sub (publicado pelo Leilão).
         ws.send(
           JSON.stringify({
             type: reply.accepted ? "BID_ACCEPTED" : "BID_REJECTED",
@@ -121,17 +102,6 @@ wss.on("connection", async (ws, req) => {
             timerMs: reply.timerMs,
           }),
         );
-        // Evento ASSÍNCRONO difundido a todos quando o lance é aceito.
-        if (reply.accepted) {
-          broadcast({
-            type: "BID_PLACED",
-            boxId: msg.boxId,
-            leader: playerId,
-            amount: reply.currentBid,
-            timerMs: reply.timerMs,
-          });
-          await broadcastState();
-        }
       } catch (err) {
         console.error("gateway: erro no PLACE_BID:", err);
         ws.send(JSON.stringify({ type: "ERROR", reason: "BID_FAILED" }));
@@ -141,7 +111,7 @@ wss.on("connection", async (ws, req) => {
     if (msg.type === "OPEN_BOX") {
       try {
         const reply = await openBox(ROOM, msg.boxId, playerId);
-        // Resposta SÍNCRONA ao vencedor (resultado do sorteio).
+        // SÍNCRONO ao vencedor (resultado do sorteio); o BOX_OPENED chega a todos via Redis.
         ws.send(
           JSON.stringify({
             type: "OPEN_RESULT",
@@ -152,16 +122,6 @@ wss.on("connection", async (ws, req) => {
             isMimic: reply.isMimic,
           }),
         );
-        // Evento ASSÍNCRONO difundido a todos quando a abertura dá certo.
-        if (reply.ok) {
-          broadcast({
-            type: "BOX_OPENED",
-            boxId: msg.boxId,
-            player: playerId,
-            item: reply.item,
-            isMimic: reply.isMimic,
-          });
-        }
       } catch (err) {
         console.error("gateway: erro no OPEN_BOX:", err);
         ws.send(JSON.stringify({ type: "ERROR", reason: "OPEN_FAILED" }));
