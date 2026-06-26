@@ -4,6 +4,7 @@ import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import org.yaml.snakeyaml.Yaml;
 
@@ -62,5 +63,28 @@ public final class BalanceConfig {
     public long affinityLong(String key, long def) {
         Object v = section("affinity").get(key);
         return v instanceof Number ? ((Number) v).longValue() : def;
+    }
+
+    /** Itens exigidos por uma coleção, de {@code collections.<kind>.requires}. */
+    public Map<String, Integer> collectionRequires(String kind) {
+        Object c = section("collections").get(kind);
+        Object req = (c instanceof Map<?, ?> m) ? m.get("requires") : null;
+        if (!(req instanceof Map<?, ?> r)) {
+            return Collections.emptyMap();
+        }
+        Map<String, Integer> out = new LinkedHashMap<>();
+        for (Map.Entry<?, ?> e : r.entrySet()) {
+            if (e.getValue() instanceof Number n) {
+                out.put(String.valueOf(e.getKey()), n.intValue());
+            }
+        }
+        return out;
+    }
+
+    /** Bônus de uma coleção, de {@code collections.<kind>.bonus}. */
+    public long collectionBonus(String kind) {
+        Object c = section("collections").get(kind);
+        Object b = (c instanceof Map<?, ?> m) ? m.get("bonus") : null;
+        return b instanceof Number n ? n.longValue() : 0;
     }
 }

@@ -16,6 +16,7 @@ service Wallet {
   rpc AddItem   (AddItemRequest)  returns (Ack);   // credita o item ao inventário (abertura)
   rpc SellItem  (SellItemRequest) returns (SellReply);  // item livre -> dinheiro (preço de mercado)
   rpc BurnItem  (BurnItemRequest) returns (BurnReply);  // item livre -> +afinidade pelo tipo
+  rpc FormCollection (FormCollectionRequest) returns (FormReply);  // trava itens numa coleção -> bônus
   rpc GetPlayer (PlayerQuery)     returns (PlayerState);
 }
 
@@ -91,12 +92,28 @@ message BurnReply {
   int32  affinity = 4;   // afinidade resultante para o tipo
 }
 
+// Forma uma coleção: trava os itens LIVRES exigidos (state -> LOCKED_COLLECTION) e
+// registra o bônus. Itens travados não podem ser vendidos/queimados.
+message FormCollectionRequest { string player_id = 1; string kind = 2; }
+message FormReply {
+  bool   ok     = 1;
+  string reason = 2;   // OK | NOT_ENOUGH | UNKNOWN_KIND
+  int64  bonus  = 3;   // bônus da coleção formada
+}
+
+// Coleção formada por um jogador (bônus contabilizado no patrimônio final).
+message Collection {
+  string kind  = 1;   // COMMON_ALLOY | NOBLE_PAIR | RAINBOW | ROYAL_TRIO | LEGENDARY_VAULT
+  int64  bonus = 2;
+}
+
 message PlayerState {
   string player_id = 1;
   int64  balance   = 2;
   int64  reserved  = 3;             // saldo "gastável" = balance - reserved
-  repeated Item     inventory   = 4;   // itens obtidos ao abrir caixas
-  repeated Affinity affinities  = 5;   // afinidade por tipo (do "queimar")
+  repeated Item       inventory   = 4;   // itens obtidos ao abrir caixas
+  repeated Affinity   affinities  = 5;   // afinidade por tipo (do "queimar")
+  repeated Collection collections = 6;   // coleções formadas (bônus)
 }
 
 message Ack { bool ok = 1; }

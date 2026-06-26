@@ -39,6 +39,15 @@ const ITEM_EMOJI: Record<string, string> = {
   MIMIC: "💀",
 };
 
+// Receitas de coleção (constantes do jogo; espelham infra/config/balance.yaml).
+const COLLECTIONS: { kind: string; label: string; requires: Record<string, number>; bonus: number }[] = [
+  { kind: "COMMON_ALLOY", label: "Liga Comum", requires: { COPPER: 5 }, bonus: 150 },
+  { kind: "NOBLE_PAIR", label: "Dupla Nobre", requires: { GOLD: 3 }, bonus: 400 },
+  { kind: "RAINBOW", label: "Arco-íris", requires: { COPPER: 1, SILVER: 1, GOLD: 1, DIAMOND: 1 }, bonus: 900 },
+  { kind: "ROYAL_TRIO", label: "Trinca Real", requires: { DIAMOND: 3 }, bonus: 3000 },
+  { kind: "LEGENDARY_VAULT", label: "Cofre Lendário", requires: { DIAMOND: 5 }, bonus: 8000 },
+];
+
 export function App() {
   const [name, setName] = useState("");
   const [room, setRoom] = useState("room-1");
@@ -54,6 +63,7 @@ export function App() {
     reserved: number;
     inventory: { id: string; type: string; state: string }[];
     affinities: { type: string; points: number }[];
+    collections: { kind: string; bonus: number }[];
   } | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
   // playerId via ref: o handler de mensagens é criado uma vez e precisa do id atual.
@@ -154,7 +164,12 @@ export function App() {
             reserved: msg.reserved ?? 0,
             inventory: msg.inventory ?? [],
             affinities: msg.affinities ?? [],
+            collections: msg.collections ?? [],
           });
+          break;
+        case "FORM_RESULT":
+          if (msg.ok) addLog(`🏅 Coleção ${msg.kind} formada! +${msg.bonus} de bônus`);
+          else addLog(`⚠️ Não deu para formar ${msg.kind}: ${msg.reason}`);
           break;
         case "SELL_RESULT":
           if (msg.ok) addLog(`💸 Vendeu ${msg.itemType} por ${msg.price}`);
@@ -196,6 +211,12 @@ export function App() {
 
   const sell = (itemId: string) => wsRef.current?.send(JSON.stringify({ type: "SELL_ITEM", itemId }));
   const burn = (itemId: string) => wsRef.current?.send(JSON.stringify({ type: "BURN_ITEM", itemId }));
+  const form = (kind: string) => wsRef.current?.send(JSON.stringify({ type: "FORM_COLLECTION", kind }));
+
+  const freeCount = (type: string): number =>
+    wallet?.inventory.filter((i) => i.type === type && i.state === "FREE").length ?? 0;
+  const canForm = (requires: Record<string, number>): boolean =>
+    Object.entries(requires).every(([t, n]) => freeCount(t) >= n);
 
   const oddsLine = (odds: Record<string, number>): string =>
     ITEM_ORDER.filter((k) => odds?.[k] != null)
@@ -250,11 +271,13 @@ export function App() {
         <div style={S.inv}>
           {ITEM_ORDER.filter((t) => wallet.inventory.some((i) => i.type === t)).map((t) => {
             const count = wallet.inventory.filter((i) => i.type === t).length;
+            const locked = wallet.inventory.filter((i) => i.type === t && i.state !== "FREE").length;
             const firstFree = wallet.inventory.find((i) => i.type === t && i.state === "FREE");
             return (
               <div key={t} style={S.invRow}>
-                <span style={{ minWidth: 110 }}>
+                <span style={{ minWidth: 120 }}>
                   {ITEM_EMOJI[t]} {t} ×{count}
+                  {locked > 0 ? ` (${locked}🔒)` : ""}
                 </span>
                 <span style={{ fontSize: 12, color: "#888", minWidth: 64 }}>
                   {prices[t] != null ? `mkt ${prices[t]}` : ""}
@@ -274,6 +297,34 @@ export function App() {
         <div style={S.affinity}>
           ✨ Afinidade (chance extra ao abrir):{" "}
           {wallet.affinities.map((a) => `${ITEM_EMOJI[a.type]} +${a.points}`).join("   ")}
+        </div>
+      )}
+
+      {connected && wallet && (
+        <div style={S.coll}>
+          <b>🏅 Coleções</b>
+          {COLLECTIONS.map((c) => {
+            const formed = wallet.collections.filter((f) => f.kind === c.kind).length;
+            const reqStr = Object.entries(c.requires)
+              .map(([t, n]) => `${ITEM_EMOJI[t]}×${n}`)
+              .join(" ");
+            return (
+              <div key={c.kind} style={S.collRow}>
+                <span style={{ minWidth: 130 }}>{c.label}</span>
+                <span style={{ fontSize: 12, color: "#888", minWidth: 130 }}>{reqStr}</span>
+                <span style={{ fontSize: 12, minWidth: 56 }}>+{c.bonus}</span>
+                {formed > 0 && <span style={{ fontSize: 12, color: "#16a34a" }}>✓×{formed}</span>}
+                <button style={S.smallBtn} disabled={!canForm(c.requires)} onClick={() => form(c.kind)}>
+                  formar
+                </button>
+              </div>
+            );
+          })}
+          {wallet.collections.length > 0 && (
+            <div style={{ fontSize: 13, marginTop: 4 }}>
+              Bônus total de coleções: <b>{wallet.collections.reduce((s, f) => s + f.bonus, 0)}</b>
+            </div>
+          )}
         </div>
       )}
 
@@ -384,6 +435,17 @@ const S: Record<string, React.CSSProperties> = {
     cursor: "pointer",
   },
   affinity: { fontSize: 13, color: "#16a34a", margin: "4px 0" },
+  coll: {
+    border: "1px solid #fde68a",
+    background: "#fffbeb",
+    borderRadius: 8,
+    padding: "8px 12px",
+    margin: "6px 0",
+    display: "flex",
+    flexDirection: "column",
+    gap: 5,
+  },
+  collRow: { display: "flex", gap: 10, alignItems: "center", fontSize: 14 },
   stage: { display: "flex", justifyContent: "center", margin: "16px 0" },
   card: {
     border: "1px solid #e3e3e3",

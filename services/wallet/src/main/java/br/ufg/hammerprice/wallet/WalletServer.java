@@ -5,6 +5,9 @@ import br.ufg.hammerprice.wallet.grpc.AddItemRequest;
 import br.ufg.hammerprice.wallet.grpc.Affinity;
 import br.ufg.hammerprice.wallet.grpc.BurnItemRequest;
 import br.ufg.hammerprice.wallet.grpc.BurnReply;
+import br.ufg.hammerprice.wallet.grpc.Collection;
+import br.ufg.hammerprice.wallet.grpc.FormCollectionRequest;
+import br.ufg.hammerprice.wallet.grpc.FormReply;
 import br.ufg.hammerprice.wallet.grpc.Item;
 import br.ufg.hammerprice.wallet.grpc.PlayerQuery;
 import br.ufg.hammerprice.wallet.grpc.PlayerState;
@@ -93,6 +96,15 @@ public final class WalletServer {
         }
 
         @Override
+        public void formCollection(FormCollectionRequest req, StreamObserver<FormReply> obs) {
+            Map<String, Integer> requires = cfg.collectionRequires(req.getKind());
+            long bonus = cfg.collectionBonus(req.getKind());
+            WalletStore.FormResult r = store.formCollection(req.getPlayerId(), req.getKind(), requires, bonus);
+            obs.onNext(FormReply.newBuilder().setOk(r.ok()).setReason(r.reason()).setBonus(r.bonus()).build());
+            obs.onCompleted();
+        }
+
+        @Override
         public void getPlayer(PlayerQuery req, StreamObserver<PlayerState> obs) {
             WalletStore.PlayerView v = store.get(req.getPlayerId());
             PlayerState.Builder b = PlayerState.newBuilder()
@@ -108,6 +120,9 @@ public final class WalletServer {
             }
             for (Map.Entry<String, Integer> e : v.affinities().entrySet()) {
                 b.addAffinities(Affinity.newBuilder().setType(e.getKey()).setPoints(e.getValue()).build());
+            }
+            for (WalletStore.FormedCollection c : v.collections()) {
+                b.addCollections(Collection.newBuilder().setKind(c.kind()).setBonus(c.bonus()).build());
             }
             obs.onNext(b.build());
             obs.onCompleted();

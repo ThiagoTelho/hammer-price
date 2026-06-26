@@ -115,12 +115,17 @@ export interface Affinity {
   type: string;
   points: number;
 }
+export interface CollectionInfo {
+  kind: string;
+  bonus: number;
+}
 export interface PlayerState {
   playerId: string;
   balance: number;
   reserved: number;
   inventory: WalletItem[];
   affinities: Affinity[];
+  collections: CollectionInfo[];
 }
 
 // Leitura do estado do jogador (saldo, reservas, inventário, afinidades) na sua wallet shard.
@@ -164,6 +169,21 @@ export function sellItem(
 export function burnItem(addr: string, playerId: string, itemId: string): Promise<BurnReply> {
   return new Promise((res, rej) => {
     walletAt(addr).BurnItem({ playerId, itemId }, callOpts(), (err: any, reply: BurnReply) =>
+      err ? rej(err) : res(reply),
+    );
+  });
+}
+
+export interface FormReply {
+  ok: boolean;
+  reason: string;
+  bonus: number;
+}
+
+// Forma uma coleção: trava os itens exigidos e registra o bônus.
+export function formCollection(addr: string, playerId: string, kind: string): Promise<FormReply> {
+  return new Promise((res, rej) => {
+    walletAt(addr).FormCollection({ playerId, kind }, callOpts(), (err: any, reply: FormReply) =>
       err ? rej(err) : res(reply),
     );
   });

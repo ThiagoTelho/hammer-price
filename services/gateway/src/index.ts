@@ -7,7 +7,7 @@
 //   apenas aos clientes daquela sala. O gateway é stateless e replicável.
 import { WebSocketServer, WebSocket } from "ws";
 import Redis from "ioredis";
-import { placeBid, getRoomState, openBox, getPlayer, sellItem, burnItem, type Box } from "./grpcClients.js";
+import { placeBid, getRoomState, openBox, getPlayer, sellItem, burnItem, formCollection, type Box } from "./grpcClients.js";
 
 const PORT = Number(process.env.GATEWAY_PORT ?? 8080);
 const REDIS_URL = process.env.REDIS_URL ?? "redis://localhost:6379";
@@ -70,6 +70,7 @@ async function sendWallet(c: Client): Promise<void> {
           reserved: p.reserved,
           inventory: p.inventory,
           affinities: p.affinities,
+          collections: p.collections,
         }),
       );
     }
@@ -233,6 +234,19 @@ wss.on("connection", async (ws, req) => {
       } catch (err) {
         console.error("gateway: erro no BURN_ITEM:", err);
         ws.send(JSON.stringify({ type: "ERROR", reason: "BURN_FAILED" }));
+      }
+    }
+
+    if (msg.type === "FORM_COLLECTION") {
+      try {
+        const reply = await formCollection(WALLET_ROUTES[room], playerId, msg.kind);
+        ws.send(
+          JSON.stringify({ type: "FORM_RESULT", ok: reply.ok, reason: reply.reason, kind: msg.kind, bonus: reply.bonus }),
+        );
+        if (reply.ok) void sendWallet(client); // itens travados + coleção registrada
+      } catch (err) {
+        console.error("gateway: erro no FORM_COLLECTION:", err);
+        ws.send(JSON.stringify({ type: "ERROR", reason: "FORM_FAILED" }));
       }
     }
   });

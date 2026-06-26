@@ -32,6 +32,8 @@ public final class WalletStore {
         final List<Item> items = new ArrayList<>();
         /** Afinidade por tipo (pontos percentuais), aumentada ao "queimar" itens. */
         final Map<String, Integer> affinity = new HashMap<>();
+        /** Coleções formadas (itens travados + bônus). */
+        final List<FormedCollection> collections = new ArrayList<>();
 
         Player(long balance) {
             this.balance = balance;
@@ -50,8 +52,15 @@ public final class WalletStore {
     /** Resultado de uma queima de item (afinidade resultante). */
     public record BurnResult(boolean ok, String reason, String type, int affinity) {}
 
-    /** Estado consultável de um jogador (saldo, reservas, inventário e afinidades). */
-    public record PlayerView(long balance, long reserved, List<Item> items, Map<String, Integer> affinities) {}
+    /** Coleção formada por um jogador. */
+    public record FormedCollection(String kind, long bonus) {}
+
+    /** Resultado de uma tentativa de formar coleção. */
+    public record FormResult(boolean ok, String reason, long bonus) {}
+
+    /** Estado consultável de um jogador (saldo, reservas, inventário, afinidades e coleções). */
+    public record PlayerView(long balance, long reserved, List<Item> items,
+                             Map<String, Integer> affinities, List<FormedCollection> collections) {}
 
     private final Map<String, Player> players = new HashMap<>();
     private final AtomicLong itemSeq = new AtomicLong();
@@ -176,9 +185,50 @@ public final class WalletStore {
         return new BurnResult(true, "OK", it.type(), next);
     }
 
-    /** Retorna o estado atual do jogador (saldo, reservas, inventário e afinidades). */
+    private static int countFree(Player p, String type) {
+        int n = 0;
+        for (Item it : p.items) {
+            if (it.type().equals(type) && "FREE".equals(it.state())) {
+                n++;
+            }
+        }
+        return n;
+    }
+
+    /**
+     * Forma uma coleção: se o jogador tem os itens LIVRES exigidos, trava-os
+     * ({@code FREE -> LOCKED_COLLECTION}) e registra a coleção com seu bônus. Atômica.
+     * Itens excedentes continuam livres (podem formar outra coleção do mesmo tipo).
+     */
+    public synchronized FormResult formCollection(String playerId, String kind,
+                                                  Map<String, Integer> requires, long bonus) {
+        if (requires.isEmpty()) {
+            return new FormResult(false, "UNKNOWN_KIND", 0);
+        }
+        Player p = getOrCreate(playerId);
+        for (Map.Entry<String, Integer> e : requires.entrySet()) {
+            if (countFree(p, e.getKey()) < e.getValue()) {
+                return new FormResult(false, "NOT_ENOUGH", 0);
+            }
+        }
+        for (Map.Entry<String, Integer> e : requires.entrySet()) {
+            int toLock = e.getValue();
+            for (int i = 0; i < p.items.size() && toLock > 0; i++) {
+                Item it = p.items.get(i);
+                if (it.type().equals(e.getKey()) && "FREE".equals(it.state())) {
+                    p.items.set(i, new Item(it.id(), it.type(), "LOCKED_COLLECTION"));
+                    toLock--;
+                }
+            }
+        }
+        p.collections.add(new FormedCollection(kind, bonus));
+        return new FormResult(true, "OK", bonus);
+    }
+
+    /** Retorna o estado atual do jogador (saldo, reservas, inventário, afinidades e coleções). */
     public synchronized PlayerView get(String playerId) {
         Player p = getOrCreate(playerId);
-        return new PlayerView(p.balance, p.reserved, List.copyOf(p.items), Map.copyOf(p.affinity));
+        return new PlayerView(p.balance, p.reserved, List.copyOf(p.items),
+                Map.copyOf(p.affinity), List.copyOf(p.collections));
     }
 }
