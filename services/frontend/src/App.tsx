@@ -75,6 +75,7 @@ export function App() {
   const [wallet, setWallet] = useState<Wallet | null>(null);
   const [wonBoxes, setWonBoxes] = useState<{ boxId: string; boxType: string }[]>([]);
   const [log, setLog] = useState<string[]>([]);
+  const [bidAmount, setBidAmount] = useState("");
 
   const wsRef = useRef<WebSocket | null>(null);
   const playerIdRef = useRef("");
@@ -215,8 +216,7 @@ export function App() {
     return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
   };
 
-  const sendBid = (boxId: string, currentBid: number) =>
-    send({ type: "PLACE_BID", boxId, amount: currentBid + Math.max(5, Math.floor(currentBid * 0.05)) });
+  const placeBid = (boxId: string, amount: number) => send({ type: "PLACE_BID", boxId, amount });
   const sendOpen = (boxId: string) => send({ type: "OPEN_BOX", boxId });
   const sell = (itemId: string) => send({ type: "SELL_ITEM", itemId });
   const burn = (itemId: string) => send({ type: "BURN_ITEM", itemId });
@@ -247,7 +247,8 @@ export function App() {
             <label className="text-xs uppercase tracking-wide text-muted">Seu nome</label>
             <input className={`${C.input} mt-1`} placeholder="ex.: ana" value={name} onChange={(e) => setName(e.target.value)} />
           </div>
-          <button className={C.btnGold} onClick={() => connect({ kind: "create" })}>
+          {!name.trim() && <p className="text-xs text-muted -mt-2">Digite um nome para jogar.</p>}
+          <button className={C.btnGold} disabled={!name.trim()} onClick={() => connect({ kind: "create" })}>
             Criar sala
           </button>
           <div className="flex items-center gap-3 text-muted text-xs">
@@ -260,7 +261,11 @@ export function App() {
               value={joinCode}
               onChange={(e) => setJoinCode(e.target.value.toUpperCase())}
             />
-            <button className={C.btnSmall} disabled={!joinCode.trim()} onClick={() => connect({ kind: "join", code: joinCode.trim() })}>
+            <button
+              className={C.btnSmall}
+              disabled={!name.trim() || !joinCode.trim()}
+              onClick={() => connect({ kind: "join", code: joinCode.trim() })}
+            >
               Entrar
             </button>
           </div>
@@ -331,9 +336,43 @@ export function App() {
                 <div className="text-2xl font-bold text-gold mt-1">{box.currentBid > 0 ? `💰 ${box.currentBid}` : "sem lances"}</div>
                 <div className="text-sm">líder: <b className={box.leader === playerId ? "text-gold" : ""}>{box.leader || "—"}</b></div>
                 <div className="text-sm text-red-400 tabular-nums">⏱ {boxCountdown(box)}</div>
-                <button className={`${C.btnGold} w-full mt-1`} onClick={() => sendBid(box.boxId, box.currentBid)}>
-                  Dar lance
-                </button>
+                {(() => {
+                  const minInc = Math.max(5, Math.floor(box.currentBid * 0.05));
+                  const minNext = box.currentBid + minInc;
+                  const customVal = Number(bidAmount);
+                  const customOk = bidAmount === "" || customVal >= minNext;
+                  const bidValue = bidAmount === "" ? minNext : customVal;
+                  return (
+                    <div className="w-full flex flex-col gap-2 mt-1">
+                      <div className="text-xs text-muted">lance mínimo: <b className="text-gold">{minNext}</b></div>
+                      <div className="flex gap-1.5 justify-center">
+                        <button className={C.btnSmall} onClick={() => placeBid(box.boxId, minNext)}>Mín</button>
+                        {[10, 50, 100].map((n) => (
+                          <button
+                            key={n}
+                            className={C.btnSmall}
+                            disabled={box.currentBid + n < minNext}
+                            onClick={() => placeBid(box.boxId, box.currentBid + n)}
+                          >
+                            +{n}
+                          </button>
+                        ))}
+                      </div>
+                      <div className="flex gap-1.5">
+                        <input
+                          className={`${C.input} text-center`}
+                          type="number"
+                          placeholder={`${minNext}`}
+                          value={bidAmount}
+                          onChange={(e) => setBidAmount(e.target.value)}
+                        />
+                        <button className={C.btnGold} disabled={!customOk} onClick={() => placeBid(box.boxId, bidValue)}>
+                          Dar lance
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })()}
               </div>
             ) : (
               <div className="text-muted py-10">⏳ Aguardando a próxima rodada…</div>
