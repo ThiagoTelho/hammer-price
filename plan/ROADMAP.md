@@ -11,8 +11,10 @@
 - **Marco atual:** **Reta final (entrega 28/06)** — **os 9 requisitos estão cobertos**
   (R1–R6, R8, R9 🟢; **R7 🟡**: invariante de saldo + isolamento de partição demonstrados,
   consistência forte/Postgres pendente). Núcleo distribuído completo: AWS, rodadas+odds,
-  async/messaging, **partição por sala + replicação Redis**. A seguir: **demo gravada
-  (Fase 10)** + polish. Stretch: Postgres streaming (R6 durável) e ciclo de partida (Fase 6).
+  async/messaging, **partição por sala + replicação Redis**, e o **ciclo de jogo completo**:
+  inventário (vender/queimar/guardar) + coleções + **ciclo de partida** (lobby por código →
+  partida com tempo → patrimônio + ranking). A seguir: **demo gravada (Fase 10)** + polish
+  da UI. Stretch: Postgres streaming (R6 durável), desempates de ranking, REST formal.
 
 ---
 
@@ -162,7 +164,7 @@ Legenda: 🟢 satisfeito · 🟡 parcial · 🔴 ainda não.
 
 - [x] **Redis Pub/Sub** para fan-out de eventos (substitui o polling em processo) *(R5)*
 - [x] Gateway **stateless**: assina o canal Redis e difunde; sem estado de jogo (replicável) *(R1,R6,R7)*
-- [ ] Endpoints **REST** para ações pontuais — **criar sala** (retorna `code`), **entrar por código**, iniciar, snapshot, ranking — ver [doc 07](../docs/07-contratos-api.md) *(R1,R5)*
+- [~] Ações de sala (criar/retorna `code`, entrar por código, iniciar) — feitas via **WebSocket** (`CREATE_ROOM`/`JOIN_ROOM`/`START_MATCH`) no gateway; REST formal fica opcional *(R1,R5)*
 - [x] Auction publica em Redis (`room:{id}:events`); gateway assina e empurra aos clientes *(R5)*
 - [x] Reconexão de cliente recebe **snapshot** atualizado (WELCOME via `GetRoomState`)
 
@@ -184,14 +186,14 @@ Legenda: 🟢 satisfeito · 🟡 parcial · 🔴 ainda não.
 > Fecha o loop de jogo: sala com tempo fixo, coleções e cálculo de vencedor.
 > Ver [doc 02](../docs/02-regras-do-jogo.md) e [doc 03](../docs/03-regras-de-negocio.md).
 
-- [ ] **Criar sala:** qualquer jogador cria a partida e vira *host*; servidor gera um **código de sala** curto (ex.: `4F2K9`)
-- [ ] **Entrar por código:** os demais jogadores entram digitando o código (lobby de espera)
-- [ ] **Lobby:** todos veem quem já entrou; exige **mínimo 2 jogadores** (máx. 6) para iniciar
-- [ ] **Iniciar partida:** o host dá a largada (`WAITING` → `RUNNING`, ≥ 2 jogadores); cronômetro de tempo fixo (15 min) começa
-- [~] **Coleções** (Liga Comum → Cofre Lendário): **formar trava os itens** (`LOCKED_COLLECTION`) e registra o **bônus** ✓; falta somar o bônus no patrimônio final (abaixo)
-- [ ] **Patrimônio final:** devolve reservas, avalia coleções e itens pelo preço de mercado final
-- [ ] **Ranking** e condição de vitória com desempates (coleções → patrimônio em itens)
-- [ ] **Frontend:** inventário, mercado, coleções, ranking, cronômetro da partida
+- [x] **Criar sala:** o jogador cria a partida, vira *host* e recebe um **código** curto (slot livre = instância de Leilão livre) — via WS no gateway
+- [x] **Entrar por código:** os demais entram digitando o código (lobby de espera)
+- [x] **Lobby:** todos veem quem entrou (`ROOM_STATE`); exige **mínimo 2 jogadores** para iniciar
+- [x] **Iniciar partida:** o host dá a largada (`WAITING` → `RUNNING`, ≥ 2 jogadores); cronômetro de tempo fixo (`MATCH_DURATION_SECONDS`); o host pode encerrar antes
+- [x] **Coleções** (Liga Comum → Cofre Lendário): **formar trava os itens** (`LOCKED_COLLECTION`) e registra o **bônus**, que entra no **patrimônio final** ✓
+- [x] **Patrimônio final:** ao encerrar, patrimônio = dinheiro + itens LIVRES a preço de mercado + bônus de coleções (doc 03 §8)
+- [x] **Ranking** por patrimônio (maior vence) difundido em `MATCH_ENDED`; desempates finos (coleções → itens) ficam como polish
+- [x] **Frontend:** menu (criar/entrar por código) → lobby → partida (HUD, inventário, mercado, coleções, cronômetro) → tela de ranking
 
 ## 📍 Fase 7 — Replicação, disponibilidade e failover
 
@@ -269,6 +271,7 @@ As **fases** são por escopo; os **marcos**, por tempo — ajuste conforme a dat
 - 2026-06-25 — _(este commit)_ — **Decisão de modelo: jogo round-based + partição por sala.** O leilão deixa de ser "várias caixas simultâneas em vaults" e passa a **rodadas sequenciais com UMA caixa por rodada** (tipo sorteado, odds públicas exibidas). Confirmado contra a especificação oficial (`docs/SCD-2026-1-…pdf`) que isso **atende a todos os requisitos** (R3 vira contenção de toda a sala numa caixa; R6 passa a particionar o Leilão **por sala** + Carteira por jogador). Docs sincronizados: 02, 03, 04, 05, 07, 09 + `balance.yaml` (bloco `round`) + `schema.sql` (`rooms.current_round`, `boxes.round_no`). Implementação (rodadas/odds no auction + frontend) é a próxima tarefa (Fase 2, increments 3/4).
 - 2026-06-26 — _(este commit)_ — **Fase 2, increment 4 (particionamento por sala).** Duas instâncias de Leilão (`auction-vault1`=room-1, `auction-vault2`=room-2) no profile `local`, cada uma com sua wallet shard; o **gateway** roteia ações (gRPC) e fan-out (Redis) por sala via `ROOM_ROUTES`, assinando o canal de cada sala e difundindo só aos clientes dela; frontend ganhou seletor de sala. Correção: `EventPublisher` agora **re-tenta** a conexão RabbitMQ (corrige corrida de boot que desativava o messaging). Verificado no stack: salas **isoladas** (lance da room-1 não vaza p/ room-2), loop de mercado intacto, e **queda da `auction-vault2` derruba só a room-2** (room-1 segue: `WELCOME`), restaurando depois. **R6 → 🟡** (partição ✓; falta replicação — Postgres réplica, Fase 7).
 - 2026-06-26 — _(este commit)_ — **Fase 7 (replicação Redis): primary→réplica.** Compose ganhou `redis-replica` (`--replicaof redis 6379`). O **worker** escreve `market:prices` no **primário** a cada recálculo; o Redis replica para a réplica; o **gateway** lê o snapshot de mercado da **réplica** no `WELCOME` (read/write split — escrita no primário, leitura na réplica). Verificado no stack: réplica `role:slave` + `master_link_status:up`; `market:prices` idêntico em primário e réplica; propagação ao vivo (`SET` no primário → `GET` na réplica); `WELCOME` traz o mercado vindo da réplica. **R6 → 🟢** (partição + replicação demonstradas). Postgres streaming replication fica como stretch (variante durável). `tsc` limpo + `py_compile` ok.
+- 2026-06-26 — _(este commit)_ — **Ciclo de partida: lobby + tempo + patrimônio + ranking (Fase 6).** O gateway ganhou uma **máquina de estados de partida** (em memória) sobre os 2 slots de sala (preserva a partição → até 2 partidas simultâneas): `CREATE_ROOM` (vira host + **código**), `JOIN_ROOM {code}`, lobby (`ROOM_STATE` com a lista de jogadores), `START_MATCH` (host, ≥2 → `RUNNING` + cronômetro `MATCH_DURATION_SECONDS`; host pode `END_MATCH`). Ações de jogo são **gated** em `RUNNING`. No fim: `endMatch` calcula o **patrimônio** (dinheiro + itens LIVRES a preço de mercado + bônus de coleções) e difunde o **ranking** (`MATCH_ENDED`). Conexão agora é **lobby-first** (HELLO → criar/entrar → lobby → partida → ranking). **Frontend** reescrito em fases: menu, lobby (código + jogadores + iniciar), partida (cronômetro + HUD/inventário/mercado/coleções) e tela de ranking. Verificado por WS (13/13): criar→entrar→gating→iniciar→lance→encerrar→ranking ordenado por patrimônio; `tsc` limpo. Próximo: **polish da UI** e demo.
 - 2026-06-26 — _(este commit)_ — **Coleções (player-initiated).** `wallet.proto`: `FormCollection` + `Collection` + `PlayerState.collections`. A Carteira forma uma coleção se o jogador tem os itens LIVRES exigidos: **trava-os** (`FREE → LOCKED_COLLECTION`) e registra o bônus (receitas/bônus do `balance.yaml` via `BalanceConfig`). Itens travados não podem ser vendidos/queimados. Gateway: handler `FORM_COLLECTION` + `WALLET_UPDATED` com coleções; **frontend**: painel de coleções (receita, formável, formadas, bônus total) + botão "formar", e marca itens travados (🔒) no inventário. Verificado direto na Carteira (gRPC): 5 COPPER → forma `COMMON_ALLOY` (bônus 150) → 5 itens travados → 2ª formação `NOT_ENOUGH` → vender item travado `ITEM_LOCKED` (6/6). `mvn`/`tsc` limpos. Próximo: **ciclo de partida (lobby + tempo + fim → patrimônio + ranking)**, onde o bônus entra no patrimônio.
 - 2026-06-26 — _(este commit)_ — **Operações de inventário: vender + queimar (Fase 3).** `wallet.proto`: `SellItem` (preço de mercado, passado pelo gateway que lê a réplica; a Carteira escolhe pelo tipo REAL do item e cai no valor base se faltar), `BurnItem` (+afinidade pelo tipo, com teto) e `PlayerState.affinities`. `WalletStore` ganhou venda/queima/afinidade; `WalletServer` os RPCs. O **Leilão** agora lê a afinidade da Carteira na abertura (`AffinitySource = gw::getAffinity`), então **queimar realmente enviesa o RNG** (mecanismo já testado em `BoxOpenerTest`). Gateway: handlers `SELL_ITEM`/`BURN_ITEM` + `WALLET_UPDATED` com afinidades; **frontend**: inventário acionável (botões vender/queimar por tipo) + linha de afinidade. Verificado no stack: ganhou COPPER+GOLD → vendeu COPPER por 12 (mercado) → saldo subiu → queimou GOLD → afinidade GOLD +2. `mvn` auction 12 verde + wallet empacota; `tsc` limpo. Próximo: **coleções**.
 - 2026-06-26 — _(este commit)_ — **Inventário: a espinha da economia (Fase 3, parcial).** `wallet.proto` ganhou `AddItem` + `PlayerState.inventory` (`Item{id,type,state}`); `WalletStore` guarda itens por jogador; `WalletServer` implementa `AddItem` e `GetPlayer` com inventário. O **Leilão** credita o item ao vencedor na abertura (`OpenBox` → `AddItem`; MIMIC não vira item). O **gateway** virou cliente de leitura da Carteira (`WALLET_ROUTES` por sala) e envia `WALLET_UPDATED` **privado** (saldo+reservas+inventário) no WELCOME, após lance/abertura e em eventos de dinheiro; **frontend** mostra o **HUD** (saldo/reservado/gastável/inventário) + seletor de sala já existente. Verificado no stack: lance reserva 60 → arremate debita (940→880) → abrir credita o item (`inv=[SILVER]`). `mvn test` auction 12 verde; wallet empacota; `tsc` limpo. Próximo: operações de inventário (vender/guardar/queimar) + coleções; depois Postgres/ledger/Redlock.
