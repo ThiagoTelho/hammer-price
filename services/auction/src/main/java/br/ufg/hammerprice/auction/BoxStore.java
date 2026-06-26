@@ -320,13 +320,31 @@ public final class BoxStore {
         }
     }
 
-    /** Encerra o intervalo agora e abre a próxima rodada (ex.: todos os jogadores prontos). */
+    /**
+     * Encerra o intervalo agora e abre a próxima rodada (ex.: todos prontos). Se for chamado
+     * durante uma rodada SEM lances (ex.: início de partida herdando uma rodada já em
+     * andamento), REINICIA a rodada do zero — assim a partida sempre começa com a janela de
+     * abertura cheia, em vez de herdar uma janela quase vencida.
+     */
     public void advanceRound() {
         ScheduledFuture<?> t = nextRoundTask;
         if (t != null) {
             t.cancel(false);
         }
-        startNextRound();
+        boolean restartFresh = false;
+        lock.lock();
+        try {
+            if (active && leader.isEmpty() && !inIntermission) {
+                restartFresh = true;
+            }
+        } finally {
+            lock.unlock();
+        }
+        if (restartFresh) {
+            startRound(); // nova caixa + janela de abertura cheia (cancela o fechamento pendente)
+        } else {
+            startNextRound();
+        }
     }
 
     /**
