@@ -63,6 +63,24 @@ export function thud(): void {
 export function tick(): void {
   blip(950, 0.035, "square", 0.07);
 }
+/** Rangido da tampa do baú (abertura). */
+export function creak(): void {
+  const c = ac();
+  if (!c || muted) return;
+  const t0 = c.currentTime;
+  const osc = c.createOscillator();
+  const g = c.createGain();
+  osc.type = "sawtooth";
+  osc.frequency.setValueAtTime(140, t0);
+  osc.frequency.linearRampToValueAtTime(90, t0 + 0.18);
+  osc.frequency.linearRampToValueAtTime(165, t0 + 0.3);
+  g.gain.setValueAtTime(0.0001, t0);
+  g.gain.linearRampToValueAtTime(0.08, t0 + 0.04);
+  g.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.32);
+  osc.connect(g).connect(c.destination);
+  osc.start(t0);
+  osc.stop(t0 + 0.34);
+}
 /** Cortina abrindo (início da rodada): varredura grave → aguda. */
 export function whoosh(): void {
   const c = ac();

@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import * as sfx from "./sound";
+import { Chest, tierLabel, tierLight } from "./Chest";
 
 const GATEWAY_URL = import.meta.env.VITE_GATEWAY_URL ?? "ws://localhost:8080";
 
@@ -36,7 +37,9 @@ function withDeadline(box: Box | null): Box | null {
   return { ...box, deadlineAt: box.timerMs > 0 ? Date.now() + box.timerMs : 0 };
 }
 
-const BOX_EMOJI: Record<string, string> = { BRONZE: "🥉", SILVER: "🥈", GOLD: "🥇", VAULT: "💎" };
+const CHEST_GLYPH = "🧰";
+const BID_TIMER_MS = 20000; // espelha match.box_timer_seconds (escala do anel de contagem)
+const money = (n: number): string => `$${Math.round(n).toLocaleString("pt-BR")}`;
 const ITEM_ORDER = ["COPPER", "SILVER", "GOLD", "DIAMOND", "MIMIC"];
 const ITEM_EMOJI: Record<string, string> = { COPPER: "🪙", SILVER: "🥈", GOLD: "🥇", DIAMOND: "💎", MIMIC: "💀" };
 
@@ -86,6 +89,12 @@ export function App() {
   const [bidAmount, setBidAmount] = useState("");
   const [flash, setFlash] = useState<{ kind: "win" | "open" | "mimic"; emoji: string; title: string; sub: string } | null>(null);
   const [muted, setMutedState] = useState(false);
+  const [sold, setSold] = useState<string | null>(null); // baú arrematado → carimbo no palco
+  const [opening, setOpening] = useState<{ tier: string; item: string; isMimic: boolean; sub: string } | null>(null);
+  const [confettiKey, setConfettiKey] = useState(0); // bump → dispara uma rajada de confete
+  const fireConfetti = () => setConfettiKey((k) => k + 1);
+  const wonBoxesRef = useRef<{ boxId: string; boxType: string }[]>([]);
+  const lastTickRef = useRef(-1);
 
   const wsRef = useRef<WebSocket | null>(null);
   const playerIdRef = useRef("");
@@ -155,14 +164,16 @@ export function App() {
             setBox(withDeadline(msg.box ?? null));
             setIntermission(null);
             setIAmReady(false);
+            setSold(null);
             sfx.whoosh();
-            addLog(`🆕 Nova rodada: caixa ${msg.box?.boxType ?? "?"} em leilão`);
+            addLog(`🆕 Nova rodada: ${tierLabel(msg.box?.boxType ?? "WOODEN")} em leilão`);
             break;
           case "ROUND_ENDED":
             if (!msg.winner) addLog(`⌛ Rodada encerrada sem lances`);
             break;
           case "ROUND_INTERMISSION":
             setBox(null);
+            setSold(null);
             setIntermission({ endsAt: msg.endsAt ?? 0 });
             setMatchRounds({ played: msg.roundsPlayed ?? 0, total: msg.totalRounds ?? 0 });
             setIAmReady(false);
@@ -174,7 +185,7 @@ export function App() {
             setPlayers(msg.players ?? []);
             break;
           case "BID_PLACED":
-            addLog(`🔨 ${msg.leader} deu lance de ${msg.amount} em ${msg.boxId}`);
+            addLog(`🔨 ${msg.leader} deu lance de ${money(msg.amount)} em ${msg.boxId}`);
             sfx.gavel();
             setLastBids((prev) => ({ ...prev, [msg.leader]: msg.amount }));
             setBox((prev) =>
@@ -184,36 +195,46 @@ export function App() {
             );
             break;
           case "BOX_SOLD": {
-            addLog(`🏆 ${msg.boxId} arrematada por ${msg.winner} (${msg.price})`);
+            addLog(`🏆 ${msg.boxId} arrematada por ${msg.winner} (${money(msg.price)})`);
             sfx.gavel();
             const mine = msg.winner === playerIdRef.current;
             if (mine) {
               setWonBoxes((prev) => (prev.some((b) => b.boxId === msg.boxId) ? prev : [...prev, { boxId: msg.boxId, boxType: msg.boxType }]));
+              fireConfetti();
             }
-            setFlash({ kind: "win", emoji: "🏆", title: mine ? "Você arrematou!" : `${msg.winner} arrematou`, sub: `${BOX_EMOJI[msg.boxType] ?? "📦"} ${msg.boxType} por ${msg.price}` });
+            setSold(msg.boxId); // carimbo ARREMATADO no baú do palco
+            setFlash({ kind: "win", emoji: "🏆", title: mine ? "Você arrematou!" : `${msg.winner} arrematou`, sub: `${tierLabel(msg.boxType)} por ${money(msg.price)}` });
             break;
           }
           case "OPEN_RESULT":
             if (msg.ok) {
+              const tier = wonBoxesRef.current.find((b) => b.boxId === msg.boxId)?.boxType ?? "WOODEN";
               setWonBoxes((prev) => prev.filter((b) => b.boxId !== msg.boxId));
-              if (!msg.isMimic) {
+              // Abertura animada do baú (substitui o flash "open").
+              setOpening({ tier, item: msg.item, isMimic: msg.isMimic, sub: msg.isMimic ? "Cuidado…" : "Item para o inventário" });
+              sfx.creak();
+              if (msg.isMimic) sfx.thud();
+              else {
                 addLog(`🎁 Você abriu: ${msg.item}`); // mímico é narrado pelo BOX_OPENED
                 sfx.fanfare();
-                setFlash({ kind: "open", emoji: ITEM_EMOJI[msg.item] ?? "🎁", title: `Você abriu: ${msg.item}`, sub: "Item creditado ao inventário" });
+                fireConfetti();
               }
             } else addLog(`⚠️ Não foi possível abrir ${msg.boxId}: ${msg.reason}`);
             break;
           case "BOX_OPENED": {
-            const who = msg.player === playerIdRef.current ? "Você" : msg.player;
+            const mine = msg.player === playerIdRef.current;
             if (msg.isMimic) {
-              addLog(`💀 ${who} abriu um MÍMICO — perdeu ${msg.penaltyDetail || "—"}`);
-              sfx.thud();
-              setFlash({ kind: "mimic", emoji: "💀", title: `${who} pegou um MÍMICO!`, sub: `Perdeu ${msg.penaltyDetail || "—"}` });
-            } else if (msg.player !== playerIdRef.current) addLog(`📦 ${msg.player} abriu: ${msg.item}`);
+              addLog(`💀 ${mine ? "Você" : msg.player} abriu um MÍMICO — perdeu ${msg.penaltyDetail || "—"}`);
+              if (mine) setOpening((o) => (o ? { ...o, sub: `Perdeu ${msg.penaltyDetail || "—"}` } : o));
+              else {
+                sfx.thud();
+                setFlash({ kind: "mimic", emoji: "💀", title: `${msg.player} pegou um MÍMICO!`, sub: `Perdeu ${msg.penaltyDetail || "—"}` });
+              }
+            } else if (!mine) addLog(`📦 ${msg.player} abriu: ${msg.item}`);
             break;
           }
           case "BID_ACCEPTED":
-            addLog(`✅ Seu lance em ${msg.boxId} foi aceito (atual: ${msg.currentBid})`);
+            addLog(`✅ Seu lance em ${msg.boxId} foi aceito (atual: ${money(msg.currentBid)})`);
             setBox((prev) =>
               prev && prev.boxId === msg.boxId
                 ? { ...prev, currentBid: msg.currentBid, leader: msg.leader, timerMs: msg.timerMs, deadlineAt: Date.now() + msg.timerMs }
@@ -237,14 +258,17 @@ export function App() {
             break;
           case "SELL_RESULT":
             if (msg.ok) sfx.coin();
-            addLog(msg.ok ? `💸 Vendeu ${msg.itemType} por ${msg.price}` : `⚠️ Venda falhou: ${msg.reason}`);
+            addLog(msg.ok ? `💸 Vendeu ${msg.itemType} por ${money(msg.price)}` : `⚠️ Venda falhou: ${msg.reason}`);
             break;
           case "BURN_RESULT":
             addLog(msg.ok ? `🔥 Queimou ${msg.itemType} → afinidade +${msg.affinity}` : `⚠️ Queima falhou: ${msg.reason}`);
             break;
           case "FORM_RESULT":
-            if (msg.ok) sfx.fanfare();
-            addLog(msg.ok ? `🏅 Coleção ${msg.kind} formada! +${msg.bonus}` : `⚠️ Não deu para formar ${msg.kind}: ${msg.reason}`);
+            if (msg.ok) {
+              sfx.fanfare();
+              fireConfetti();
+            }
+            addLog(msg.ok ? `🏅 Coleção ${msg.kind} formada! +${money(msg.bonus)}` : `⚠️ Não deu para formar ${msg.kind}: ${msg.reason}`);
             break;
           case "ERROR":
             addLog(`⚠️ ${msg.reason}`);
@@ -258,17 +282,43 @@ export function App() {
   useEffect(() => () => wsRef.current?.close(), []);
 
   const [, setTick] = useState(0);
+  const boxRef = useRef<Box | null>(null);
+  boxRef.current = box; // espelho do box p/ o intervalo (tique nos segundos finais)
   useEffect(() => {
-    const id = setInterval(() => setTick((t) => t + 1), 250);
+    const id = setInterval(() => {
+      setTick((t) => t + 1);
+      const b = boxRef.current;
+      if (b?.leader && b.deadlineAt) {
+        const rem = b.deadlineAt - Date.now();
+        const sec = Math.ceil(rem / 1000);
+        if (rem > 0 && rem <= 5000 && sec !== lastTickRef.current) {
+          lastTickRef.current = sec;
+          sfx.tick();
+        }
+      } else {
+        lastTickRef.current = -1;
+      }
+    }, 250);
     return () => clearInterval(id);
   }, []);
 
-  // Overlay de destaque (vitória / abertura / mímico): some sozinho após alguns segundos.
+  // Overlay de destaque (vitória): some sozinho após alguns segundos.
   useEffect(() => {
     if (!flash) return;
     const id = setTimeout(() => setFlash(null), flash.kind === "mimic" ? 2600 : 2200);
     return () => clearTimeout(id);
   }, [flash]);
+
+  // Abertura animada do baú: some após a animação.
+  useEffect(() => {
+    if (!opening) return;
+    const id = setTimeout(() => setOpening(null), 2800);
+    return () => clearTimeout(id);
+  }, [opening]);
+
+  useEffect(() => {
+    wonBoxesRef.current = wonBoxes; // p/ resgatar o tier do baú aberto na abertura
+  }, [wonBoxes]);
 
   const toggleMute = () => {
     const m = !muted;
@@ -283,6 +333,16 @@ export function App() {
   const intermissionCountdown = (endsAt: number): string => {
     const s = Math.max(0, Math.ceil((endsAt - Date.now()) / 1000));
     return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+  };
+  // Pregão "dou-lhe uma, dou-lhe duas…" nos segundos finais (só com líder).
+  const goingCall = (b: Box): string | null => {
+    if (!b.leader || !b.deadlineAt) return null;
+    const rem = b.deadlineAt - Date.now();
+    if (rem <= 0) return null;
+    if (rem <= 2000) return "Dou-lhe três!";
+    if (rem <= 4000) return "Dou-lhe duas…";
+    if (rem <= 6500) return "Dou-lhe uma…";
+    return null;
   };
 
   const placeBid = (boxId: string, amount: number) => send({ type: "PLACE_BID", boxId, amount });
@@ -393,9 +453,9 @@ export function App() {
               <div className={`${C.card} p-4`}>
                 <div className="text-sm text-muted mb-2">💼 Você</div>
                 <div className="flex flex-col gap-1.5 text-sm">
-                  <div className="flex justify-between"><span className="text-muted">💰 Saldo</span><b className="text-gold">{wallet.balance}</b></div>
-                  <div className="flex justify-between"><span className="text-muted">🔒 Reservado</span><span>{wallet.reserved}</span></div>
-                  <div className="flex justify-between"><span className="text-muted">🟢 Gastável</span><b className="text-emerald-400">{wallet.balance - wallet.reserved}</b></div>
+                  <div className="flex justify-between"><span className="text-muted">💰 Saldo</span><b className="text-gold">{money(wallet.balance)}</b></div>
+                  <div className="flex justify-between"><span className="text-muted">🔒 Reservado</span><span>{money(wallet.reserved)}</span></div>
+                  <div className="flex justify-between"><span className="text-muted">🟢 Gastável</span><b className="text-emerald-400">{money(wallet.balance - wallet.reserved)}</b></div>
                 </div>
                 {wallet.affinities.length > 0 && (
                   <div className="text-xs text-emerald-400 pt-2">✨ {wallet.affinities.map((a) => `${ITEM_EMOJI[a.type]} +${a.points}`).join("  ")}</div>
@@ -414,9 +474,9 @@ export function App() {
                   {[...players].sort((a, b) => b.net - a.net).map((p) => (
                     <div key={p.id} className={`flex items-center gap-2 text-sm rounded-lg px-2 py-1 ${p.id === playerId ? "bg-gold/10" : ""}`}>
                       <span className={`flex-1 truncate ${p.id === playerId ? "text-gold font-semibold" : ""}`}>{p.id}{p.id === playerId ? " (você)" : ""}</span>
-                      <span className="whitespace-nowrap">💰 <b className="text-gold">{p.money}</b></span>
+                      <span className="whitespace-nowrap">💰 <b className="text-gold">{money(p.money)}</b></span>
                       <span className="whitespace-nowrap text-muted">🎒 {p.itemCount}</span>
-                      <span className="whitespace-nowrap text-xs text-stone-400 w-14 text-right">{lastBids[p.id] ? `🔨 ${lastBids[p.id]}` : "—"}</span>
+                      <span className="whitespace-nowrap text-xs text-stone-400 w-16 text-right">{lastBids[p.id] ? `🔨 ${money(lastBids[p.id])}` : "—"}</span>
                     </div>
                   ))}
                 </div>
@@ -426,7 +486,10 @@ export function App() {
 
           {/* ----- CENTRO: palco da casa de leilão ----- */}
           <main className="order-1 lg:order-2 flex flex-col gap-3">
-            <div className="stage min-h-[360px] flex items-center justify-center px-[16%] py-8">
+            <div
+              className="stage min-h-[360px] flex items-center justify-center px-[15%] py-8"
+              style={{ ["--rarity" as string]: tierLight(box?.boxType ?? "WOODEN") }}
+            >
               <div className="curtain curtain-l" />
               <div className="curtain curtain-r" />
               <div className="curtain-top" />
@@ -440,47 +503,64 @@ export function App() {
                     animate={{ scale: 1, opacity: 1, y: 0 }}
                     exit={{ scale: 0.6, opacity: 0 }}
                     transition={{ type: "spring", stiffness: 260, damping: 20 }}
-                    className="relative z-[4] w-full max-w-[300px] text-center flex flex-col items-center gap-2"
+                    className="relative z-[4] w-full max-w-[300px] text-center flex flex-col items-center gap-1.5"
                   >
-                    <motion.div
-                      className="text-7xl drop-shadow-[0_6px_22px_rgba(232,185,35,0.4)]"
-                      animate={{ y: [0, -7, 0] }}
-                      transition={{ repeat: Infinity, duration: 2.4, ease: "easeInOut" }}
-                    >
-                      {BOX_EMOJI[box.boxType] ?? "📦"}
-                    </motion.div>
-                    <div className="pedestal" />
-                    <div className="font-display text-xl text-gold">Caixa {box.boxType}</div>
+                    {/* baú flutuando + anel de contagem + carimbo ARREMATADO */}
+                    <div className="relative w-[150px] h-[150px] flex items-center justify-center">
+                      <motion.div animate={{ y: [0, -7, 0] }} transition={{ repeat: Infinity, duration: 2.4, ease: "easeInOut" }}>
+                        <Chest tier={box.boxType} size={138} />
+                      </motion.div>
+                      {box.leader && box.deadlineAt
+                        ? (() => {
+                            const rem = Math.max(0, box.deadlineAt - Date.now());
+                            const frac = Math.min(1, rem / BID_TIMER_MS);
+                            const R = 68;
+                            const circ = 2 * Math.PI * R;
+                            const danger = rem <= 5000;
+                            return (
+                              <svg className="absolute inset-0 -rotate-90" width="150" height="150" viewBox="0 0 150 150">
+                                <circle cx="75" cy="75" r={R} fill="none" stroke="rgba(255,255,255,0.07)" strokeWidth="3" />
+                                <circle
+                                  cx="75"
+                                  cy="75"
+                                  r={R}
+                                  fill="none"
+                                  stroke={danger ? "#ef4444" : "var(--rarity)"}
+                                  strokeWidth="4"
+                                  strokeLinecap="round"
+                                  strokeDasharray={circ}
+                                  strokeDashoffset={circ * (1 - frac)}
+                                />
+                              </svg>
+                            );
+                          })()
+                        : null}
+                      {sold === box.boxId && (
+                        <motion.div
+                          initial={{ scale: 2.2, rotate: -28, opacity: 0 }}
+                          animate={{ scale: 1, rotate: -13, opacity: 1 }}
+                          transition={{ type: "spring", stiffness: 300, damping: 11 }}
+                          className="absolute inset-0 flex items-center justify-center pointer-events-none"
+                        >
+                          <span className="stamp">ARREMATADO</span>
+                        </motion.div>
+                      )}
+                    </div>
+                    <div className="font-display text-xl text-gold">{tierLabel(box.boxType)}</div>
                     <div className="text-[11px] text-stone-400">
                       {ITEM_ORDER.filter((k) => box.odds?.[k] != null).map((k) => `${ITEM_EMOJI[k]} ${box.odds[k]}%`).join("  ")}
                     </div>
-                    <motion.div key={box.currentBid} initial={{ scale: 1.35 }} animate={{ scale: 1 }} className="text-2xl font-bold text-gold mt-1">
-                      {box.currentBid > 0 ? `💰 ${box.currentBid}` : "sem lances"}
+                    <motion.div key={box.currentBid} initial={{ scale: 1.35 }} animate={{ scale: 1 }} className="text-2xl font-bold text-gold mt-0.5">
+                      {box.currentBid > 0 ? `💰 ${money(box.currentBid)}` : "sem lances"}
                     </motion.div>
                     <div className="text-sm">líder: <b className={box.leader === playerId ? "text-gold" : ""}>{box.leader || "—"}</b></div>
-                    <div className="text-sm text-red-400 tabular-nums">⏱ {boxCountdown(box)}</div>
-                    {(() => {
-                      const minInc = Math.max(5, Math.floor(box.currentBid * 0.05));
-                      const minNext = box.currentBid + minInc;
-                      const customVal = Number(bidAmount);
-                      const customOk = bidAmount === "" || customVal >= minNext;
-                      const bidValue = bidAmount === "" ? minNext : customVal;
-                      return (
-                        <div className="w-full flex flex-col gap-2 mt-1">
-                          <div className="text-xs text-muted">lance mínimo: <b className="text-gold">{minNext}</b></div>
-                          <div className="flex gap-1.5 justify-center">
-                            <button className={C.btnSmall} onClick={() => placeBid(box.boxId, minNext)}>Mín</button>
-                            {[10, 50, 100].map((n) => (
-                              <button key={n} className={C.btnSmall} disabled={box.currentBid + n < minNext} onClick={() => placeBid(box.boxId, box.currentBid + n)}>+{n}</button>
-                            ))}
-                          </div>
-                          <div className="flex gap-1.5">
-                            <input className={`${C.input} text-center`} type="number" placeholder={`${minNext}`} value={bidAmount} onChange={(e) => setBidAmount(e.target.value)} />
-                            <button className={C.btnGold} disabled={!customOk} onClick={() => placeBid(box.boxId, bidValue)}>Dar lance</button>
-                          </div>
-                        </div>
-                      );
-                    })()}
+                    <div className="h-6 flex items-center">
+                      {(() => {
+                        const call = goingCall(box);
+                        if (call) return <motion.div key={call} initial={{ scale: 0.6, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="text-red-400 font-display font-bold">{call}</motion.div>;
+                        return <div className="text-sm text-muted tabular-nums">{box.leader ? `⏱ ${boxCountdown(box)}` : "aguardando o 1º lance…"}</div>;
+                      })()}
+                    </div>
                   </motion.div>
                 ) : (
                   <motion.div
@@ -501,11 +581,35 @@ export function App() {
               </AnimatePresence>
             </div>
 
+            {/* Controles de lance — abaixo do palco, largura cheia (alinhados, sem aperto das cortinas) */}
+            {box && (() => {
+              const minInc = Math.max(5, Math.floor(box.currentBid * 0.05));
+              const minNext = box.currentBid + minInc;
+              const customVal = Number(bidAmount);
+              const customOk = bidAmount === "" || customVal >= minNext;
+              const bidValue = bidAmount === "" ? minNext : customVal;
+              return (
+                <div className={`${C.card} p-3 flex flex-col gap-2`}>
+                  <div className="text-xs text-muted text-center">lance mínimo: <b className="text-gold">{money(minNext)}</b></div>
+                  <div className="grid grid-cols-4 gap-2">
+                    <button className={C.btnSmall} onClick={() => placeBid(box.boxId, minNext)}>Mín</button>
+                    {[10, 50, 100].map((n) => (
+                      <button key={n} className={C.btnSmall} disabled={box.currentBid + n < minNext} onClick={() => placeBid(box.boxId, box.currentBid + n)}>+{n}</button>
+                    ))}
+                  </div>
+                  <div className="flex gap-2">
+                    <input className={`${C.input} text-center`} type="number" placeholder={`${minNext}`} value={bidAmount} onChange={(e) => setBidAmount(e.target.value)} />
+                    <button className={`${C.btnGold} whitespace-nowrap`} disabled={!customOk} onClick={() => placeBid(box.boxId, bidValue)}>Dar lance</button>
+                  </div>
+                </div>
+              );
+            })()}
+
             {wonBoxes.length > 0 && (
               <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="bg-gold/10 border border-gold-dim rounded-xl px-4 py-3 flex flex-wrap items-center gap-2 justify-center">
                 <b className="text-gold">🎉 Você arrematou! Abra:</b>
                 {wonBoxes.map((b) => (
-                  <button key={b.boxId} className={C.btnGold} onClick={() => sendOpen(b.boxId)}>Abrir {BOX_EMOJI[b.boxType] ?? "📦"}</button>
+                  <button key={b.boxId} className={C.btnGold} onClick={() => sendOpen(b.boxId)}>Abrir {CHEST_GLYPH} {tierLabel(b.boxType)}</button>
                 ))}
               </motion.div>
             )}
@@ -517,7 +621,7 @@ export function App() {
               <div className="bg-surface-2 border border-line rounded-xl px-4 py-2 text-sm">
                 <span className="text-muted">📈 Mercado</span>
                 <div className="flex flex-wrap gap-x-3 gap-y-0.5 mt-1">
-                  {ITEM_ORDER.filter((k) => prices[k] != null).map((k) => (<span key={k}>{ITEM_EMOJI[k]} {prices[k]}</span>))}
+                  {ITEM_ORDER.filter((k) => prices[k] != null).map((k) => (<span key={k}>{ITEM_EMOJI[k]} {money(prices[k])}</span>))}
                 </div>
               </div>
             )}
@@ -551,14 +655,14 @@ export function App() {
                   return (
                     <div key={c.kind} className="flex items-center gap-2 text-xs">
                       <span className="flex-1">{c.label} <span className="text-muted">{reqStr}</span></span>
-                      <span className="text-gold">+{c.bonus}</span>
+                      <span className="text-gold">+{money(c.bonus)}</span>
                       {formed > 0 && <span className="text-emerald-400">✓×{formed}</span>}
                       <button className={C.btnSmall} disabled={!canForm(c.requires)} onClick={() => form(c.kind)}>formar</button>
                     </div>
                   );
                 })}
                 {wallet.collections.length > 0 && (
-                  <div className="text-sm pt-1">Bônus total: <b className="text-gold">{wallet.collections.reduce((s, f) => s + f.bonus, 0)}</b></div>
+                  <div className="text-sm pt-1">Bônus total: <b className="text-gold">{money(wallet.collections.reduce((s, f) => s + f.bonus, 0))}</b></div>
                 )}
               </div>
             )}
@@ -597,10 +701,10 @@ export function App() {
                     <td className={`px-3 py-2 ${r.playerId === playerId ? "text-gold font-semibold" : ""}`}>
                       {r.playerId} {r.playerId === playerId && <span className="text-xs text-muted">(você)</span>}
                     </td>
-                    <td className="px-3 py-2 text-right tabular-nums">{r.money}</td>
-                    <td className="px-3 py-2 text-right tabular-nums">{r.items}</td>
-                    <td className="px-3 py-2 text-right tabular-nums">{r.bonus}</td>
-                    <td className="px-3 py-2 text-right tabular-nums font-bold text-gold">{r.net}</td>
+                    <td className="px-3 py-2 text-right tabular-nums">{money(r.money)}</td>
+                    <td className="px-3 py-2 text-right tabular-nums">{money(r.items)}</td>
+                    <td className="px-3 py-2 text-right tabular-nums">{money(r.bonus)}</td>
+                    <td className="px-3 py-2 text-right tabular-nums font-bold text-gold">{money(r.net)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -642,6 +746,64 @@ export function App() {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* ---------- Abertura animada do baú ---------- */}
+      <AnimatePresence>
+        {opening && (
+          <motion.div
+            className="fixed inset-0 z-50 flex items-center justify-center pointer-events-none px-4"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+          >
+            <div className={`relative px-10 py-7 rounded-2xl text-center border overflow-hidden ${opening.isMimic ? "bg-red-950/90 border-red-700 shake" : "bg-surface/95 border-gold-dim box-glow"}`}>
+              {!opening.isMimic && <div className="rays" />}
+              <div className="relative flex flex-col items-center">
+                <Chest tier={opening.tier} size={150} open />
+                <motion.div
+                  className="absolute top-0 text-6xl"
+                  initial={{ y: 30, scale: 0.2, opacity: 0 }}
+                  animate={{ y: -42, scale: 1, opacity: 1 }}
+                  transition={{ delay: 0.22, type: "spring", stiffness: 200, damping: 13 }}
+                >
+                  {opening.isMimic ? "💀" : ITEM_EMOJI[opening.item] ?? "🎁"}
+                </motion.div>
+                <div className={`font-display text-2xl mt-1 ${opening.isMimic ? "text-red-300" : "text-gold"}`}>
+                  {opening.isMimic ? "MÍMICO!" : opening.item}
+                </div>
+                <div className="text-muted text-sm mt-1">{opening.sub}</div>
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* ---------- Confete (vitória / coleção) ---------- */}
+      {confettiKey > 0 && <Confetti key={confettiKey} />}
+    </div>
+  );
+}
+
+// Rajada de confete (Framer Motion, sem dependência extra). Remonta a cada `key`.
+function Confetti() {
+  const N = 24;
+  const colors = ["#e8b923", "#f5d77a", "#22d3ee", "#b06bf0", "#ef4444", "#34d399"];
+  return (
+    <div className="fixed inset-0 z-[60] pointer-events-none flex items-center justify-center overflow-hidden">
+      {Array.from({ length: N }).map((_, i) => {
+        const angle = (i / N) * Math.PI * 2 + Math.random() * 0.5;
+        const dist = 140 + Math.random() * 200;
+        return (
+          <motion.div
+            key={i}
+            className="absolute w-2 h-3 rounded-sm"
+            style={{ background: colors[i % colors.length] }}
+            initial={{ x: 0, y: 0, opacity: 1, rotate: 0 }}
+            animate={{ x: Math.cos(angle) * dist, y: Math.sin(angle) * dist - 50, opacity: 0, rotate: Math.random() * 720 - 360 }}
+            transition={{ duration: 1.1 + Math.random() * 0.5, ease: "easeOut" }}
+          />
+        );
+      })}
     </div>
   );
 }

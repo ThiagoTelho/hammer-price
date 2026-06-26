@@ -39,21 +39,23 @@ body {
 
 /* ---------- Palco da casa de leilão ---------- */
 
-/* Holofote atrás do pedestal: cone de luz quente subindo do centro. */
+/* Holofote atrás do pedestal — a cor (--rarity) acompanha o nível do baú em leilão. */
 .stage {
   position: relative;
   border-radius: 1rem;
   overflow: hidden;
   background:
-    radial-gradient(120% 80% at 50% 120%, rgba(232, 185, 35, 0.16), transparent 55%),
+    radial-gradient(120% 80% at 50% 120%, color-mix(in srgb, var(--rarity, #e8b923) 22%, transparent), transparent 55%),
     linear-gradient(180deg, #211a13 0%, #15110d 60%, #0c0a09 100%);
   border: 1px solid var(--color-line);
+  transition: background 0.6s ease;
 }
 .stage-spot {
   position: absolute;
   inset: 0;
-  background: radial-gradient(46% 70% at 50% 8%, rgba(245, 215, 122, 0.18), transparent 60%);
+  background: radial-gradient(46% 70% at 50% 8%, color-mix(in srgb, var(--rarity, #f5d77a) 26%, transparent), transparent 60%);
   pointer-events: none;
+  transition: background 0.6s ease;
 }
 /* Piso de madeira do palco. */
 .stage-floor {
@@ -122,4 +124,38 @@ body {
 }
 .shake {
   animation: hp-shake 0.55s cubic-bezier(0.36, 0.07, 0.19, 0.97) both;
+}
+
+/* Raios de luz girando atrás do baú na abertura. */
+.rays {
+  position: absolute;
+  inset: -45%;
+  pointer-events: none;
+  background: repeating-conic-gradient(
+    from 0deg,
+    rgba(245, 215, 122, 0) 0deg,
+    rgba(245, 215, 122, 0.16) 6deg,
+    rgba(245, 215, 122, 0) 12deg
+  );
+  animation: hp-spin 7s linear infinite;
+}
+@keyframes hp-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Carimbo "ARREMATADO" que bate no baú ao fechar a rodada. */
+.stamp {
+  border: 3px solid #ef4444;
+  color: #fca5a5;
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 1.05rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 0.2rem 0.6rem;
+  border-radius: 0.4rem;
+  background: rgba(0, 0, 0, 0.4);
+  box-shadow: 0 0 0 2px rgba(239, 68, 68, 0.25);
 }
