@@ -7,12 +7,20 @@ match:
   duration_seconds: 900        # 15 min
   min_players: 2
   max_players: 6
-  simultaneous_boxes: 4        # 2 vaults x 2 caixas
   min_bid_increment_pct: 5
   min_bid_increment_abs: 5
   box_timer_seconds: 20
   antisnipe_window_seconds: 5
   antisnipe_reset_seconds: 8
+
+round:                          # modelo round-based: UMA caixa por rodada
+  boxes_per_round: 1
+  intermission_seconds: 3       # pausa curta entre rodadas (abertura + anúncio)
+  box_type_weights:             # sorteio aleatório do tipo da caixa a cada rodada
+    BRONZE: 50
+    SILVER: 30
+    GOLD:   15
+    VAULT:  5
 
 items:                          # valor base (preço de mercado flutua em torno disto)
   COPPER: 10

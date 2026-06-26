@@ -26,6 +26,7 @@
 | `host_id` | text FK → players | jogador que criou a sala |
 | `status` | text | `WAITING` (lobby) \| `RUNNING` \| `ENDED` |
 | `started_at` / `ends_at` | timestamptz | partida com tempo fixo |
+| `current_round` | int | rodada atual (modelo round-based; uma caixa por rodada) |
 | `seed` | bigint | seed base do RNG (reprodutibilidade) |
 
 **Invariante:** sai de `WAITING` para `RUNNING` apenas com **≥ 2 jogadores** na sala
@@ -75,10 +76,10 @@ do worker valida isso).
 | Coluna | Tipo | Notas |
 |---|---|---|
 | `id` | text PK | `box-...` |
-| `room_id` | text FK | |
-| `vault_id` | text | **partição**: qual instância de Leilão é dona |
-| `box_type` | text | `BRONZE` \| `SILVER` \| `GOLD` \| `VAULT` (define as odds) |
-| `winner_id` | text | preenchido ao arrematar |
+| `room_id` | text FK | **partição**: a instância de Leilão dona da sala cuida das suas rodadas |
+| `round_no` | int | número da rodada em que a caixa foi ofertada |
+| `box_type` | text | `BRONZE` \| `SILVER` \| `GOLD` \| `VAULT` (sorteado; define as odds) |
+| `winner_id` | text | preenchido ao arrematar (nulo se a rodada expirou sem lances) |
 | `final_price` | bigint | |
 | `opened_item` | text | resultado do sorteio |
 
@@ -90,14 +91,15 @@ current_bid      : 65
 leader           : player-3
 timer_expires_at : <epoch ms>   # fonte da verdade do cronômetro
 box_type         : BRONZE
-vault_id         : vault-1
+room_id          : room-1
+round_no         : 7
 version          : 7            # optimistic concurrency
 ```
 
 ### Locks distribuídos (Redlock)
 - `lock:wallet:{playerId}` — serializa Reserve/Release/Settle/Sell/Burn do jogador.
 - `lock:box:{boxId}` — serializa lances/abertura da caixa (alternativa ao mutex em processo
-  quando o vault tem réplicas).
+  quando a sala tem réplicas de Leilão).
 
 ### Cache de mercado — `market:{roomId}` (hash)
 ```
@@ -115,7 +117,7 @@ Leitura **eventual** (replicada); a verdade do recálculo vem do worker e é per
 
 | Dado | Chave de partição | Dono |
 |---|---|---|
-| Caixas / leilões | `vault_id` | instância de Leilão correspondente |
+| Caixas / leilões / rodadas | `room_id` | instância de Leilão dona da sala |
 | Jogador / carteira / inventário | `player_id` (shard) | instância de Carteira correspondente |
 | Mercado | por `room_id` | worker |
 

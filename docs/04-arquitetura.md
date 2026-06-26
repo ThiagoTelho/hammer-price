@@ -26,7 +26,7 @@
               │  - timers/caixas   │   └─────────┬───────────┘
               │  - RNG de abertura │             │
               │  PARTICIONADO      │             │
-              │  por vault         │             │
+              │  por sala (room)   │             │
               └───┬────────┬───────┘             │
        gRPC (síncr)│        │ publica eventos     │
                    │        ▼ (RabbitMQ)          │
@@ -64,21 +64,24 @@ abrir caixa, vender/queimar item via mensagens que o gateway encaminha.
 
 ### Serviço de Leilão (core) — Java (Maven + gRPC)
 Coração concorrente do jogo:
-- **Lances atômicos:** cada caixa é protegida por um `ReentrantLock` (lock por caixa) que
-  serializa lances concorrentes e valida contra o lance atual.
+- **Rodadas sequenciais:** a cada rodada, o Leilão **sorteia o tipo** de **uma** caixa
+  (pesos no `balance.yaml`) e a coloca em leilão com odds públicas; ao arrematar (ou
+  expirar sem lances), abre a próxima rodada.
+- **Lances atômicos:** a caixa da rodada é protegida por um `ReentrantLock` (lock por
+  caixa) que serializa lances concorrentes e valida contra o lance atual.
 - **Timers por caixa** com anti-sniping (thread agendada por caixa ou roda de timers).
 - **RNG de abertura** server-side, com seed injetável.
-- **Particionado por vault:** cada instância é dona de um subconjunto de caixas. Isso
-  distribui a carga e demonstra particionamento de funcionalidade.
+- **Particionado por sala (room):** cada instância de Leilão é dona das **rodadas** de um
+  subconjunto de salas. Isso distribui a carga e demonstra particionamento de funcionalidade.
 - Reserva saldo chamando a **Carteira** (gRPC síncrono) antes de aceitar um lance.
-- Publica eventos (`bid.placed`, `box.sold`, `box.opened`) em Redis Pub/Sub (broadcast) e
-  RabbitMQ (processamento durável).
+- Publica eventos (`round.started`, `bid.placed`, `box.sold`, `box.opened`) em Redis
+  Pub/Sub (broadcast) e RabbitMQ (processamento durável).
 
 ### Serviço de Carteira / Inventário — Java (Maven + gRPC)
 Guardião da **consistência forte**:
 - Saldo, reservas e inventário de cada jogador.
-- **Reserva atômica** de saldo: garante `saldo ≥ 0` mesmo com lances simultâneos em vaults
-  diferentes (lock distribuído via **Redlock** + transação Postgres).
+- **Reserva atômica** de saldo: garante `saldo ≥ 0` mesmo com **lances concorrentes de
+  vários jogadores** (e em salas diferentes) — lock distribuído via **Redlock** + transação Postgres.
 - **Particionado por jogador** (shard por `playerId`).
 - Registra tudo no **ledger** (auditoria e reconciliação).
 
@@ -119,7 +122,7 @@ A mesma ação "dar lance" exercita os dois modos:
 
 | Dado/Função | Critério de partição |
 |---|---|
-| Caixas / leilões | por **vault** (cada instância de Leilão cuida de um grupo) |
+| Caixas / leilões / rodadas | por **sala (room)** (cada instância de Leilão cuida de um grupo de salas) |
 | Carteira / inventário | por **jogador** (shard por `playerId`) |
 | Mercado | serviço/worker dedicado (partição funcional) |
 
@@ -139,9 +142,9 @@ A mesma ação "dar lance" exercita os dois modos:
 - **Eventual** onde latência importa mais que exatidão instantânea: preços de mercado,
   ranking e inventário "parcial" dos adversários são lidos de caches/réplicas; a
   reconciliação do worker corrige divergências.
-- **Disponibilidade:** gateway e Leilão são replicáveis; a queda de uma instância de vault
-  afeta só aquele grupo de caixas, não a partida inteira (isolamento por partição). O
-  estado autoritativo persiste em Redis/Postgres, permitindo *failover*.
+- **Disponibilidade:** gateway e Leilão são replicáveis; a queda de uma instância de Leilão
+  afeta só aquele grupo de **salas**, não as demais (isolamento por partição). O estado
+  autoritativo persiste em Redis/Postgres, permitindo *failover*.
 
 ## Sequência: ciclo de vida de um lance
 

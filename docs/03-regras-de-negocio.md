@@ -24,14 +24,19 @@ O **valor base** é a referência; o **preço de mercado** (seção 6) flutua em
 | Duração da partida | 15 min |
 | Jogadores por sala | 2–6 |
 | Mínimo de jogadores para iniciar a partida | 2 |
-| Caixas simultâneas (vaults × caixas) | 4 (2 vaults × 2 caixas) |
+| Estrutura da partida | **rodadas** sequenciais até o tempo acabar |
+| Caixas por rodada | **1** (uma caixa por vez; tipo sorteado aleatoriamente) |
+| Pausa entre rodadas | 3 s (abertura do vencedor + anúncio da próxima) |
 | Incremento mínimo de lance | 5% do lance atual (mín. 5) |
 | Cronômetro base da caixa | 20 s |
 | Janela anti-sniping | lance nos últimos 5 s → cronômetro volta a 8 s |
 
 ## 3. Caixas e probabilidades (odds)
 
-Cada **tipo de caixa** define uma distribuição de drop. A soma é sempre 100%.
+Cada **tipo de caixa** define uma distribuição de drop. A soma é sempre 100%. A cada
+**rodada**, o servidor **sorteia o tipo** da caixa (pesos configuráveis em
+`balance.yaml`); as odds do tipo sorteado são **públicas** — exibidas aos jogadores antes
+e durante o leilão, e devem ser **iguais** às realmente aplicadas na abertura (ver §4).
 
 | Tipo de caixa | Cobre | Prata | Ouro | Diamante | Mímico |
 |---|---:|---:|---:|---:|---:|

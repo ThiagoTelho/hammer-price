@@ -13,7 +13,7 @@
 | 3 | Acessos concorrentes a recursos compartilhados | Caixas, **saldo**, **inventário**, **preços de mercado**, ranking | Dois jogadores dando lance na mesma caixa ao mesmo tempo |
 | 4 | Processamento server-side concorrente com os acessos | RNG de abertura, engine de mercado, avaliação de sets rodando enquanto há lances | Logs do worker recalculando mercado durante a partida |
 | 5 | Interação remota síncrona **e** assíncrona | Síncr.: gRPC do lance (aceito/rejeitado). Assíncr.: broadcast Pub/Sub + filas | Mostrar a confirmação bloqueante vs. o broadcast a todos |
-| 6 | Replicação **e** particionamento | Replic.: Postgres primary+réplica, Redis. Partic.: vaults (Leilão) e jogador (Carteira) | Derrubar uma instância de vault; partida segue |
+| 6 | Replicação **e** particionamento | Replic.: Postgres primary+réplica, Redis. Partic.: sala/room (Leilão) e jogador (Carteira) | Derrubar uma instância de Leilão (um grupo de salas); as demais salas seguem |
 | 7 | Consistência **e** disponibilidade | Forte (Redlock+tx) no dinheiro; eventual no mercado/ranking; failover | Teste de corrida sem saldo negativo; queda de réplica |
 | 8 | Múltiplas linguagens e paradigmas | TS + Java + Python; cliente-servidor + pub-sub + messaging | Apontar cada serviço e seu paradigma |
 | 9 | Demonstração em AWS EC2 | Deploy via Docker Compose em 2–3 EC2 | Vídeo gravado contra os endpoints da AWS |
@@ -32,12 +32,16 @@ mas a **coordenação** (reservas, locks, particionamento, eventos) é código n
 
 ### 3. Concorrência sobre recursos compartilhados
 Recursos disputados:
-- **Caixa** (lance atual / último lance) — vários jogadores simultâneos.
-- **Saldo** do jogador — disputado por **múltiplas caixas em vaults diferentes** ao mesmo
-  tempo (o caso mais interessante: contenção distribuída).
+- **Caixa da rodada** (lance atual / último lance) — **toda a sala** disputa a **mesma**
+  caixa ao mesmo tempo. É a contenção mais legível: muitos lances concorrentes em um único
+  recurso, serializados pelo lock por caixa, com o vencedor decidido por timestamp do servidor.
+- **Saldo** do jogador — acessado concorrentemente pelos lances (reserva no lance,
+  devolução ao ser superado, débito ao arrematar) e pelas operações de inventário/mercado.
 - **Inventário** — vender vs. usar em coleção vs. queimar.
 - **Mercado** — leituras/atualizações concorrentes.
-Mecanismos: `ReentrantLock` por caixa; **Redlock + transação** por jogador.
+Mecanismos: `ReentrantLock` por caixa; **Redlock + transação** por jogador. Como os lances
+de vários jogadores caem em **shards de Carteira diferentes** (partição por `playerId`), as
+reservas concorrentes exercitam a contenção **distribuída** mesmo com uma única caixa.
 
 ### 4. Processamento server-side concorrente
 Enquanto os clientes interagem, o servidor executa **em paralelo**:
@@ -54,8 +58,9 @@ Demonstra-se com logs/painel mostrando essas tarefas ativas durante os lances.
   **publicados** (Pub/Sub) e **enfileirados** (RabbitMQ) sem o emissor aguardar.
 
 ### 6. Replicação e particionamento
-- **Particionamento de funcionalidade:** Leilão dividido por **vault**; Carteira por
-  **jogador** (sharding). Cada instância é dona de sua fatia.
+- **Particionamento de funcionalidade:** Leilão dividido por **sala (room)** — cada
+  instância cuida das rodadas de um grupo de salas; Carteira por **jogador** (sharding).
+  Cada instância é dona de sua fatia.
 - **Replicação de dados:** PostgreSQL **primary + read replica** (leituras de
   ranking/histórico na réplica); estado quente replicado no Redis.
 
@@ -66,7 +71,7 @@ Demonstra-se com logs/painel mostrando essas tarefas ativas durante os lances.
 - **Consistência eventual** onde latência importa: preços de mercado e ranking são lidos
   de caches/réplicas; o **worker de reconciliação** corrige divergências contra o ledger.
 - **Disponibilidade:** componentes *stateless* (gateway, Leilão) são replicáveis; falha de
-  um vault isola-se àquele grupo de caixas; estado autoritativo sobrevive em Redis/Postgres.
+  uma instância de Leilão isola-se àquele grupo de **salas**; estado autoritativo sobrevive em Redis/Postgres.
 
 ### 8. Linguagens e paradigmas
 - **Linguagens:** TypeScript (frontend + gateway), Java (Leilão + Carteira), Python (worker).
@@ -80,15 +85,19 @@ Topologia e passo a passo em [08 — Deploy AWS](08-deploy-aws.md). A demonstra�
 ## Roteiro de demonstração sugerido (para o vídeo)
 
 1. **Abrir** 3–4 navegadores em máquinas/redes diferentes → mesma sala (req. 1).
-2. **Corrida de lances:** dois jogadores dão lance na mesma caixa quase ao mesmo tempo →
-   mostrar que só um vence, sem inconsistência, e o outro tem o saldo devolvido (req. 3, 5, 7).
-3. **Saldo compartilhado:** um jogador tenta reservar em duas caixas além do saldo →
-   segunda reserva é rejeitada (req. 3, 7).
+2. **Corrida de lances:** na caixa da rodada, dois jogadores dão lance quase ao mesmo tempo
+   → mostrar que só um vence, sem inconsistência, e o anterior tem o saldo devolvido
+   (req. 3, 5, 7).
+3. **Saldo nunca negativo:** ao longo das rodadas, as reservas/devoluções concorrentes
+   nunca deixam o saldo gastável negativo; um lance acima do saldo é **rejeitado na hora**
+   (req. 3, 7).
 4. **Background ativo:** abrir um painel de logs mostrando o worker recalculando o mercado
    e avaliando coleções durante a partida (req. 4).
-5. **Pub/Sub:** um lance feito por um jogador aparece instantaneamente para todos (req. 5, 8).
-6. **Tolerância a falha:** derrubar uma instância de vault (ou a réplica do Postgres) e
-   mostrar que a partida continua (req. 6, 7).
+5. **Pub/Sub:** o início de uma rodada e um lance feito por um jogador aparecem
+   instantaneamente para todos (req. 5, 8).
+6. **Tolerância a falha / partição:** com **duas salas** em instâncias de Leilão diferentes,
+   derrubar uma instância (ou a réplica do Postgres) e mostrar que a outra sala continua
+   (req. 6, 7).
 7. **Fim da partida:** cálculo de patrimônio com coleções e mercado final → ranking (regra
    de negócio + req. 4).
 

@@ -31,7 +31,7 @@ remete ao "preço do martelo" — o valor pelo qual um lote é arrematado em um 
 Resumo de uma partida:
 
 1. Vários jogadores entram em uma sala (partida com tempo fixo).
-2. O servidor coloca **caixas misteriosas** em leilão simultâneo, distribuídas em *vaults*.
+2. A partida corre em **rodadas**: a cada rodada, o servidor coloca **uma** caixa misteriosa (tipo sorteado) em leilão.
 3. Cada caixa exibe a **probabilidade** de conter cada tipo de item.
 4. Jogadores dão **lances** com orçamento limitado; o maior lance quando o cronômetro
    da caixa zera arremata.

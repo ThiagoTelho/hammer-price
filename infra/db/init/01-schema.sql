@@ -13,6 +13,7 @@ CREATE TABLE IF NOT EXISTS rooms (
                 CHECK (status IN ('WAITING', 'RUNNING', 'ENDED')),
     started_at  timestamptz,
     ends_at     timestamptz,
+    current_round int NOT NULL DEFAULT 0,          -- rodada atual (modelo round-based; 1 caixa por rodada)
     seed        bigint,                            -- seed base do RNG (reprodutibilidade)
     created_at  timestamptz NOT NULL DEFAULT now()
 );
@@ -75,10 +76,10 @@ CREATE INDEX IF NOT EXISTS idx_ledger_player ON ledger(player_id);
 -- Caixas (histórico/resultados; estado vivo fica no Redis) -------------------
 CREATE TABLE IF NOT EXISTS boxes (
     id          text PRIMARY KEY,                   -- 'box-...'
-    room_id     text REFERENCES rooms(id),
-    vault_id    text,                               -- partição: qual instância de Leilão é dona
+    room_id     text REFERENCES rooms(id),          -- partição: a instância de Leilão dona da sala
+    round_no    int,                                -- rodada em que a caixa foi ofertada
     box_type    text CHECK (box_type IN ('BRONZE', 'SILVER', 'GOLD', 'VAULT')),
-    winner_id   text REFERENCES players(id),        -- preenchido ao arrematar
+    winner_id   text REFERENCES players(id),        -- preenchido ao arrematar (nulo se expirou sem lances)
     final_price bigint,
     opened_item text                                -- resultado do sorteio
 );

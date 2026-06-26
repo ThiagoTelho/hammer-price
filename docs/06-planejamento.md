@@ -17,7 +17,7 @@
 - Abertura de caixa com RNG server-side + afinidade.
 - Inventário + coleções + cálculo de patrimônio final.
 - Broadcast em tempo real (Pub/Sub) + uma fila de eventos (messaging).
-- Particionamento (vault/jogador) + replicação (Postgres réplica) demonstráveis.
+- Particionamento (sala/jogador) + replicação (Postgres réplica) demonstráveis.
 - Deploy em AWS EC2.
 
 ### Extras (ligam se sobrar tempo, sem quebrar o núcleo)
@@ -34,7 +34,7 @@
 | 1 | **Fundação** | Repos, contratos (proto/eventos), modelo de dados, docker-compose local subindo "esqueletos" que se comunicam |
 | 2 | **Leilão + Carteira** | Lance síncrono ponta a ponta; reserva/débito consistente; teste de corrida de lances |
 | 3 | **Abertura + Inventário + Tempo real** | RNG+afinidade; coleções; broadcast Pub/Sub; frontend jogável |
-| 4 | **Distribuição** | Particionamento por vault/jogador; réplica Postgres; deploy em AWS EC2; cenário de falha |
+| 4 | **Distribuição** | Particionamento por sala/jogador; réplica Postgres; deploy em AWS EC2; cenário de falha |
 | 5 | **Extras + Polimento** | Mercado/mímico/seguro (se der); dados de teste; ensaiar demo |
 | 6 | **Fechamento** | Gravar vídeo, finalizar documentação, revisar, entregar (28/06) |
 
@@ -45,7 +45,7 @@
 
 | Frente | Responsável | Escopo |
 |---|---|---|
-| **Core/Leilão (Java)** | _a definir_ | Serviço de Leilão, lances atômicos, timers, RNG, particionamento por vault |
+| **Core/Leilão (Java)** | _a definir_ | Serviço de Leilão, rodadas, lances atômicos, timers, RNG, particionamento por sala (room) |
 | **Carteira/Worker (Java/Python)** | _a definir_ | Carteira, Redlock+tx, ledger, worker de mercado/sets/reconciliação |
 | **Gateway/Frontend (Node/React)** | _a definir_ | Gateway WS, tradução gRPC, SPA React, UX do leilão |
 | **Infra/AWS/Docs** | _a definir_ | Docker, RabbitMQ/Redis/Postgres, deploy EC2, documentação, dados de teste |
@@ -79,7 +79,7 @@ Uma feature está pronta quando:
 - **Scripts de carga**: simular N jogadores dando lances concorrentes (validar invariantes
   de saldo). Ficam em `infra/loadtest/`.
 - **Cenários roteirizados**: corrida de lances, saldo compartilhado estourando, queda de
-  vault — todos automatizáveis para o vídeo.
+  uma instância de Leilão (um grupo de salas) — todos automatizáveis para o vídeo.
 
 ## Ferramentas de apoio
 

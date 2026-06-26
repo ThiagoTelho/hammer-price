@@ -21,15 +21,19 @@ patrimônio = dinheiro + valor de mercado dos itens no inventário + bônus de c
 - A sala fica em **espera (lobby)** até a partida começar; todos veem quem já entrou. É
   preciso **no mínimo 2 jogadores** (e no máximo 6) — com o mínimo presente, o host
   **inicia a partida**.
-- Ao iniciar, o cronômetro de tempo fixo começa e as primeiras caixas entram em leilão.
+- Ao iniciar, o cronômetro de tempo fixo começa e a **primeira rodada** entra em leilão.
 
 ### A partida em si
 
-- Uma partida acontece em uma **sala** com **tempo fixo** (sugestão: 15 minutos).
+- Uma partida acontece em uma **sala** com **tempo fixo** (sugestão: 15 minutos) e se
+  desenrola em **rodadas** sequenciais.
 - Cada jogador começa com um **orçamento inicial** igual.
-- Durante a partida, o servidor mantém vários **leilões simultâneos** de caixas,
-  distribuídos em **vaults** (grupos de caixas). Quando uma caixa é arrematada, outra
-  entra no lugar, mantendo a oferta.
+- **Em cada rodada, o servidor coloca UMA caixa misteriosa em leilão**, com o **tipo
+  sorteado aleatoriamente** (logo, odds diferentes a cada rodada). Toda a sala disputa
+  essa mesma caixa por lances. Quando o cronômetro zera, o último lance válido arremata;
+  o vencedor paga, abre a caixa, e **a próxima rodada começa** com uma nova caixa
+  aleatória. (Se ninguém der lance dentro do tempo-base, a rodada encerra sem vencedor e
+  a próxima começa.)
 - Ao fim do tempo, calcula-se o patrimônio de cada um e fecha-se o ranking.
 
 ## Os itens
@@ -46,7 +50,8 @@ Cinco tipos, do mais comum ao mais raro:
 
 ## Caixas misteriosas
 
-Cada caixa em leilão mostra, **publicamente**:
+A cada rodada entra **uma** caixa, cujo **tipo é sorteado** (e com ele as odds). A caixa
+da rodada mostra, **publicamente**:
 
 - A **probabilidade** de conter cada tipo de item (a soma é sempre 100%).
 - O **lance atual** e quem está ganhando.
@@ -138,12 +143,13 @@ seguro até o martelo final.
 
 ## Exemplo de turno
 
-1. Aparecem 4 caixas em vaults diferentes.
-2. Você nota que **Ana** deu 3 lances altos em caixas ricas em Diamante → provavelmente
-   persegue a Trinca Real.
-3. Você está a **1 Diamante** de fechar a Trinca também. Decide: brigar (caro, mas nega a
-   Ana) ou desviar para outra caixa.
-4. Dá o lance → **aceito** (síncrono). O cronômetro reseta.
-5. Ninguém cobre em 5s → você **arremata** e **abre**. Sai… **Ouro** 😖.
-6. O mercado avisa que Ouro caiu 12%. Decisão: **queimar** o Ouro por +5% de Diamante na
-   próxima, ou **guardar** para o Arco-íris?
+1. Começa a **rodada 7**: entra uma **caixa Dourada** (odds: 40% Ouro, 12% Diamante…).
+2. Você nota que **Ana** vinha dando lances altos nas rodadas ricas em Diamante →
+   provavelmente persegue a Trinca Real, e deve brigar por esta caixa também.
+3. Você está a **1 Diamante** de fechar a Trinca também. Decide: brigar pela caixa (caro,
+   mas nega a Ana) ou economizar para uma rodada futura com odds melhores.
+4. Dá o lance → **aceito** (síncrono). O cronômetro reseta (e estende se for nos
+   segundos finais).
+5. Ninguém cobre → você **arremata** e **abre**. Sai… **Ouro** 😖.
+6. O mercado avisa que Ouro caiu 12%. Decisão: **queimar** o Ouro por +afinidade de
+   Diamante, ou **guardar** para o Arco-íris? E já vem a **rodada 8**.
