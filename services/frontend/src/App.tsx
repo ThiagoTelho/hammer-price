@@ -405,44 +405,96 @@ export function App() {
         </div>
       </header>
 
-      {/* ---------- MENU ---------- */}
+      {/* ---------- MENU / BOAS-VINDAS ---------- */}
       {phase === "menu" && (
-        <div className={`${C.card} p-6 mt-8 max-w-md mx-auto flex flex-col gap-4`}>
-          <div>
-            <label className="text-xs uppercase tracking-wide text-muted">Seu nome</label>
-            <input className={`${C.input} mt-1`} placeholder="ex.: ana" value={name} onChange={(e) => setName(e.target.value)} />
-          </div>
-          {!name.trim() && <p className="text-xs text-muted -mt-2">Digite um nome para jogar.</p>}
-          <div>
-            <label className="text-xs uppercase tracking-wide text-muted">Rodadas (ao criar)</label>
-            <select className={`${C.input} mt-1`} value={roundsToCreate} onChange={(e) => setRoundsToCreate(Number(e.target.value))}>
-              {[8, 12, 16, 20, 24, 32].map((n) => (
-                <option key={n} value={n}>{n} rodadas</option>
+        <motion.div
+          initial={{ opacity: 0, y: 12 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5 }}
+          className="mt-6 grid lg:grid-cols-[1.1fr_minmax(0,400px)] gap-8 lg:gap-12 items-start"
+        >
+          {/* ----- Hero + como jogar ----- */}
+          <div className="order-2 lg:order-1">
+            <h2 className="font-display text-4xl sm:text-5xl text-gold leading-tight">Arremate. Abra. Enriqueça.</h2>
+            <p className="text-stone-300 mt-3 text-base sm:text-lg max-w-xl">
+              Um <b className="text-gold-soft">leilão de baús misteriosos em tempo real</b>. Dispute cada lote com os outros
+              jogadores, abra o que arrematar e termine com o maior patrimônio da mesa.
+            </p>
+
+            {/* fileira de baús (níveis) */}
+            <div className="flex flex-wrap gap-5 my-7 justify-center lg:justify-start">
+              {["WOODEN", "IRON", "ROYAL", "VAULT"].map((t) => (
+                <div key={t} className="flex flex-col items-center gap-1">
+                  <Chest tier={t} size={66} />
+                  <span className="text-[11px] text-muted">{tierLabel(t)}</span>
+                </div>
               ))}
-            </select>
+            </div>
+
+            {/* como jogar */}
+            <h3 className="text-gold font-semibold uppercase tracking-wider text-xs mb-3">Como jogar</h3>
+            <ol className="flex flex-col gap-3">
+              {[
+                { icon: "🎲", title: "Um baú por rodada", text: "A cada rodada sobe um baú aleatório — com as probabilidades de prêmio à vista." },
+                { icon: "🔨", title: "Dispute no lance", text: "O cronômetro só começa após o 1º lance; quem liderar quando ele zerar arremata. Sem interesse? É só passar." },
+                { icon: "🎁", title: "Abra o que ganhar", text: "Pode sair Cobre, Prata, Ouro ou Diamante… ou um 💀 Mímico, que aplica uma penalidade." },
+                { icon: "💰", title: "Faça seu patrimônio", text: "Venda no mercado, queime por afinidade ou junte coleções para multiplicar o valor dos itens." },
+                { icon: "🏆", title: "Maior patrimônio vence", text: "No fim das rodadas, ganha quem tiver mais dinheiro + itens + bônus de coleções." },
+              ].map((s, i) => (
+                <li key={i} className="flex gap-3 items-start">
+                  <span className="text-2xl leading-none mt-0.5 w-7 text-center shrink-0">{s.icon}</span>
+                  <div>
+                    <div className="text-stone-100 font-semibold text-sm">{s.title}</div>
+                    <div className="text-muted text-sm">{s.text}</div>
+                  </div>
+                </li>
+              ))}
+            </ol>
           </div>
-          <button className={C.btnGold} disabled={!name.trim()} onClick={() => connect({ kind: "create", rounds: roundsToCreate })}>
-            Criar sala
-          </button>
-          <div className="flex items-center gap-3 text-muted text-xs">
-            <span className="h-px flex-1 bg-line" /> ou <span className="h-px flex-1 bg-line" />
-          </div>
-          <div className="flex gap-2">
-            <input
-              className={`${C.input} uppercase tracking-widest`}
-              placeholder="CÓDIGO"
-              value={joinCode}
-              onChange={(e) => setJoinCode(e.target.value.toUpperCase())}
-            />
-            <button
-              className={C.btnSmall}
-              disabled={!name.trim() || !joinCode.trim()}
-              onClick={() => connect({ kind: "join", code: joinCode.trim() })}
-            >
-              Entrar
+
+          {/* ----- Card de entrar / criar ----- */}
+          <div className={`${C.card} box-glow p-6 flex flex-col gap-4 order-1 lg:order-2 lg:sticky lg:top-6`}>
+            <div className="text-center">
+              <div className="font-display text-xl text-gold">Entre na mesa</div>
+              <p className="text-xs text-muted mt-0.5">Crie uma sala e convide, ou entre com um código.</p>
+            </div>
+            <div>
+              <label className="text-xs uppercase tracking-wide text-muted">Seu nome</label>
+              <input className={`${C.input} mt-1`} placeholder="ex.: ana" value={name} onChange={(e) => setName(e.target.value)} />
+              {!name.trim() && <p className="text-xs text-muted mt-1">Digite um nome para jogar.</p>}
+            </div>
+            <div>
+              <label className="text-xs uppercase tracking-wide text-muted">Rodadas (ao criar)</label>
+              <select className={`${C.input} mt-1`} value={roundsToCreate} onChange={(e) => setRoundsToCreate(Number(e.target.value))}>
+                {[8, 12, 16, 20, 24, 32].map((n) => (
+                  <option key={n} value={n}>{n} rodadas</option>
+                ))}
+              </select>
+            </div>
+            <button className={`${C.btnGold} text-base py-2.5`} disabled={!name.trim()} onClick={() => connect({ kind: "create", rounds: roundsToCreate })}>
+              🔨 Criar sala
             </button>
+            <div className="flex items-center gap-3 text-muted text-xs">
+              <span className="h-px flex-1 bg-line" /> ou entre numa sala <span className="h-px flex-1 bg-line" />
+            </div>
+            <div className="flex gap-2">
+              <input
+                className={`${C.input} uppercase tracking-widest text-center`}
+                placeholder="CÓDIGO"
+                value={joinCode}
+                onChange={(e) => setJoinCode(e.target.value.toUpperCase())}
+              />
+              <button
+                className={`${C.btnSmall} whitespace-nowrap`}
+                disabled={!name.trim() || !joinCode.trim()}
+                onClick={() => connect({ kind: "join", code: joinCode.trim() })}
+              >
+                Entrar
+              </button>
+            </div>
+            <p className="text-[11px] text-muted text-center">2 a 15 jogadores · partida começa quando o anfitrião iniciar.</p>
           </div>
-        </div>
+        </motion.div>
       )}
 
       {/* ---------- LOBBY ---------- */}
