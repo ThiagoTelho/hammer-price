@@ -78,6 +78,8 @@ export function App() {
   const [prices, setPrices] = useState<Record<string, number>>({});
   const [wallet, setWallet] = useState<Wallet | null>(null);
   const [wonBoxes, setWonBoxes] = useState<{ boxId: string; boxType: string }[]>([]);
+  const [players, setPlayers] = useState<{ id: string; money: number; reserved: number; itemCount: number; net: number }[]>([]);
+  const [lastBids, setLastBids] = useState<Record<string, number>>({});
   const [log, setLog] = useState<string[]>([]);
   const [bidAmount, setBidAmount] = useState("");
 
@@ -123,11 +125,15 @@ export function App() {
               setWonBoxes([]);
               setIntermission(null);
               setRanking([]);
+              setPlayers([]);
+              setLastBids({});
             }
             break;
           case "MATCH_STARTED":
             setMatchRounds({ played: msg.roundsPlayed ?? 0, total: msg.totalRounds ?? 0 });
             setIntermission(null);
+            setPlayers([]);
+            setLastBids({});
             setPhase("playing");
             addLog(`🚀 Partida iniciada! ${msg.totalRounds} rodadas.`);
             break;
@@ -159,8 +165,12 @@ export function App() {
           case "READY_STATE":
             setReadyState({ ready: msg.ready ?? 0, total: msg.total ?? 0 });
             break;
+          case "PLAYERS_PANEL":
+            setPlayers(msg.players ?? []);
+            break;
           case "BID_PLACED":
             addLog(`🔨 ${msg.leader} deu lance de ${msg.amount} em ${msg.boxId}`);
+            setLastBids((prev) => ({ ...prev, [msg.leader]: msg.amount }));
             setBox((prev) =>
               prev && prev.boxId === msg.boxId
                 ? { ...prev, currentBid: msg.amount, leader: msg.leader, timerMs: msg.timerMs, deadlineAt: Date.now() + msg.timerMs }
@@ -431,6 +441,28 @@ export function App() {
               </div>
             )}
           </div>
+
+          {/* Mesa — leitura dos rivais (dinheiro, itens livres, último lance) */}
+          {players.length > 0 && (
+            <div className={`${C.card} p-4`}>
+              <div className="text-sm text-muted mb-2">🃏 Mesa</div>
+              <div className="flex flex-col gap-1">
+                {[...players].sort((a, b) => b.net - a.net).map((p) => (
+                  <div
+                    key={p.id}
+                    className={`flex items-center gap-3 text-sm rounded-lg px-2 py-1 ${p.id === playerId ? "bg-gold/10" : ""}`}
+                  >
+                    <span className={`flex-1 truncate ${p.id === playerId ? "text-gold font-semibold" : ""}`}>
+                      {p.id}{p.id === playerId ? " (você)" : ""}
+                    </span>
+                    <span className="w-24 text-right">💰 <b className="text-gold">{p.money}</b></span>
+                    <span className="w-14 text-right text-muted">🎒 {p.itemCount}</span>
+                    <span className="w-20 text-right text-xs text-stone-400">{lastBids[p.id] ? `🔨 ${lastBids[p.id]}` : "—"}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           {wonBoxes.length > 0 && (
             <div className="bg-gold/10 border border-gold-dim rounded-xl px-4 py-3 flex flex-wrap items-center gap-2">

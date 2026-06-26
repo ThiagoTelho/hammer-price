@@ -190,6 +190,28 @@ async function endMatch(room: string): Promise<void> {
   broadcastToRoom(room, roomStateMsg(room));
 }
 
+// "Leitura da mesa" (estilo pôquer): difunde o patrimônio VIVO de cada jogador da sala
+// a todos — quem está rico, quem gastou. Os lances recentes o frontend lê dos BID_PLACED.
+async function broadcastPlayersPanel(room: string): Promise<void> {
+  const m = matches[room];
+  if (!m || m.status !== "RUNNING") return;
+  const prices = await currentMarket();
+  const players = await Promise.all(
+    playersIn(room).map(async (id) => {
+      try {
+        const p = await getPlayer(WALLET_ROUTES[room], id);
+        const free = p.inventory.filter((i) => i.state === "FREE");
+        const items = free.reduce((s, i) => s + (prices[i.type] ?? 0), 0);
+        const bonus = p.collections.reduce((s, c) => s + c.bonus, 0);
+        return { id, money: p.balance, reserved: p.reserved, itemCount: free.length, net: p.balance + items + bonus };
+      } catch {
+        return { id, money: 0, reserved: 0, itemCount: 0, net: 0 };
+      }
+    }),
+  );
+  broadcastToRoom(room, { type: "PLAYERS_PANEL", players });
+}
+
 // Fan-out assíncrono por sala — só repassa eventos de jogo enquanto a partida está RUNNING.
 const sub = new Redis(REDIS_URL);
 sub.on("error", (e) => console.error("gateway: erro no Redis:", e.message));
@@ -197,6 +219,8 @@ for (const room of ROOMS) {
   sub.subscribe(`room:${room}:events`).catch((e) => console.error(`gateway: falha ao assinar ${room}:`, e.message));
 }
 const MONEY_EVENTS = new Set(["BID_PLACED", "BOX_SOLD", "BOX_OPENED"]);
+// Eventos que mudam o patrimônio de alguém ou abrem rodada → republica a "leitura da mesa".
+const PANEL_EVENTS = new Set(["BOX_SOLD", "BOX_OPENED", "ROUND_STARTED", "ROUND_ENDED"]);
 sub.on("message", (channel, message) => {
   const mt = /^room:(.+):events$/.exec(channel);
   if (!mt) return;
@@ -213,6 +237,7 @@ sub.on("message", (channel, message) => {
   if (MONEY_EVENTS.has(ev.type)) {
     for (const c of clients) if (c.room === room) void sendWallet(c);
   }
+  if (PANEL_EVENTS.has(ev.type)) void broadcastPlayersPanel(room);
   if (ev.type === "ROUND_ENDED") {
     m.roundsPlayed++;
     if (m.roundsPlayed >= m.totalRounds) {
@@ -310,6 +335,7 @@ wss.on("connection", (ws, req) => {
         /* segue com o estado atual */
       }
       for (const c of clients) if (c.room === slot) await sendGameState(c);
+      void broadcastPlayersPanel(slot);
       return;
     }
 
