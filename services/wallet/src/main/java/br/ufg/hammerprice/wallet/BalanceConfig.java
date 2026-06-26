@@ -65,6 +65,12 @@ public final class BalanceConfig {
         return v instanceof Number ? ((Number) v).longValue() : def;
     }
 
+    /** Valor inteiro de {@code mimic.<key>} (ex.: steal_money_pct). */
+    public long mimicLong(String key, long def) {
+        Object v = section("mimic").get(key);
+        return v instanceof Number ? ((Number) v).longValue() : def;
+    }
+
     /** Itens exigidos por uma coleção, de {@code collections.<kind>.requires}. */
     public Map<String, Integer> collectionRequires(String kind) {
         Object c = section("collections").get(kind);

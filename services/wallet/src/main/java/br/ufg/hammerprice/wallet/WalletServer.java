@@ -9,6 +9,7 @@ import br.ufg.hammerprice.wallet.grpc.Collection;
 import br.ufg.hammerprice.wallet.grpc.FormCollectionRequest;
 import br.ufg.hammerprice.wallet.grpc.FormReply;
 import br.ufg.hammerprice.wallet.grpc.Item;
+import br.ufg.hammerprice.wallet.grpc.MimicReply;
 import br.ufg.hammerprice.wallet.grpc.PlayerQuery;
 import br.ufg.hammerprice.wallet.grpc.PlayerState;
 import br.ufg.hammerprice.wallet.grpc.ReleaseRequest;
@@ -108,6 +109,15 @@ public final class WalletServer {
         public void resetPlayer(PlayerQuery req, StreamObserver<Ack> obs) {
             store.reset(req.getPlayerId());
             obs.onNext(Ack.newBuilder().setOk(true).build());
+            obs.onCompleted();
+        }
+
+        @Override
+        public void applyMimic(PlayerQuery req, StreamObserver<MimicReply> obs) {
+            int pct = (int) cfg.mimicLong("steal_money_pct", 10);
+            WalletStore.MimicResult r = store.applyMimic(req.getPlayerId(), pct);
+            obs.onNext(MimicReply.newBuilder()
+                    .setKind(r.kind()).setDetail(r.detail()).setValue(r.value()).build());
             obs.onCompleted();
         }
 

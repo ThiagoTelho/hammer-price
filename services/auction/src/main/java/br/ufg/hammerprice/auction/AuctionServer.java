@@ -13,6 +13,7 @@ import java.util.Map;
 import java.util.Random;
 import br.ufg.hammerprice.wallet.grpc.AddItemRequest;
 import br.ufg.hammerprice.wallet.grpc.Affinity;
+import br.ufg.hammerprice.wallet.grpc.MimicReply;
 import br.ufg.hammerprice.wallet.grpc.PlayerQuery;
 import br.ufg.hammerprice.wallet.grpc.PlayerState;
 import br.ufg.hammerprice.wallet.grpc.ReleaseRequest;
@@ -81,6 +82,17 @@ public final class AuctionServer {
                                 .setPlayerId(playerId).setType(type).build());
             } catch (Exception e) {
                 System.err.println("auction: erro ao creditar item: " + e.getMessage());
+            }
+        }
+
+        /** Aplica a penalidade do Mímico (abertura de 💀) e retorna o que aconteceu (ou null). */
+        MimicReply applyMimic(String playerId) {
+            try {
+                return stub.withDeadlineAfter(2, TimeUnit.SECONDS)
+                        .applyMimic(PlayerQuery.newBuilder().setPlayerId(playerId).build());
+            } catch (Exception e) {
+                System.err.println("auction: erro ao aplicar penalidade do Mímico: " + e.getMessage());
+                return null;
             }
         }
 
@@ -153,6 +165,16 @@ public final class AuctionServer {
         @Override
         public void openBox(OpenBoxRequest req, StreamObserver<OpenBoxReply> obs) {
             BoxStore.OpenResult r = store.openBox(req.getBoxId(), req.getPlayerId());
+            // Aplica o efeito na Carteira ANTES de responder, para que o saldo já reflita
+            // a penalidade quando o gateway reler a carteira do vencedor.
+            MimicReply pen = null;
+            if (r.ok()) {
+                if (r.isMimic()) {
+                    pen = wallet.applyMimic(req.getPlayerId()); // 💀 penaliza (não vira item)
+                } else {
+                    wallet.addItem(req.getPlayerId(), r.item()); // credita o item sorteado
+                }
+            }
             obs.onNext(OpenBoxReply.newBuilder()
                     .setOk(r.ok())
                     .setReason(r.reason())
@@ -161,12 +183,9 @@ public final class AuctionServer {
                     .build());
             obs.onCompleted();
             if (r.ok()) {
-                // Credita o item ao inventário do vencedor (MIMIC é penalidade, não vira item).
-                if (!r.isMimic()) {
-                    wallet.addItem(req.getPlayerId(), r.item());
-                }
-                // Difunde o resultado e enfileira box.opened (RabbitMQ) para o worker de mercado.
-                events.boxOpened(req.getBoxId(), req.getPlayerId(), r.item(), r.isMimic());
+                // Difunde o resultado (+ penalidade do Mímico) e enfileira box.opened (RabbitMQ).
+                events.boxOpened(req.getBoxId(), req.getPlayerId(), r.item(), r.isMimic(),
+                        pen == null ? "" : pen.getKind(), pen == null ? "" : pen.getDetail());
             }
         }
 

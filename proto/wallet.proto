@@ -18,6 +18,7 @@ service Wallet {
   rpc BurnItem  (BurnItemRequest) returns (BurnReply);  // item livre -> +afinidade pelo tipo
   rpc FormCollection (FormCollectionRequest) returns (FormReply);  // trava itens numa coleção -> bônus
   rpc ResetPlayer (PlayerQuery)   returns (Ack);   // zera o jogador p/ uma nova partida (orçamento inicial)
+  rpc ApplyMimic  (PlayerQuery)   returns (MimicReply);  // ao abrir 💀 Mímico: aplica 1 penalidade
   rpc GetPlayer (PlayerQuery)     returns (PlayerState);
 }
 
@@ -47,6 +48,13 @@ message SettleRequest {
 }
 
 message PlayerQuery { string player_id = 1; }
+
+// Penalidade do Mímico, sorteada entre roubar dinheiro, roubar um item ou anular uma coleção.
+message MimicReply {
+  string kind   = 1;   // MONEY | ITEM | COLLECTION | NONE
+  string detail = 2;   // descrição legível (ex.: "100 de dinheiro", "1 GOLD", "coleção ROYAL_TRIO")
+  int64  value  = 3;   // dinheiro roubado ou bônus anulado (0 para item)
+}
 
 // Credita um item ao inventário do jogador (chamado pelo Leilão na abertura da caixa).
 // A Carteira gera o id do item; MIMIC não vira item (é penalidade — etapa posterior).

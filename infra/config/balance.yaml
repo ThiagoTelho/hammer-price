@@ -48,6 +48,9 @@ affinity:
   cost_doubles_every_points: 3
   cap_pct: 15
 
+mimic:                          # penalidade ao abrir uma caixa 💀 (sorteada na Carteira)
+  steal_money_pct: 10           # quando a penalidade é MONEY: rouba 10% do saldo
+
 market:
   recalc_interval_seconds: 5
   sensitivity_k: 0.5

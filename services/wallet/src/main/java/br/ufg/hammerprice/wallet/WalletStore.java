@@ -4,6 +4,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Random;
 import java.util.concurrent.atomic.AtomicLong;
 
 /**
@@ -58,12 +59,16 @@ public final class WalletStore {
     /** Resultado de uma tentativa de formar coleção. */
     public record FormResult(boolean ok, String reason, long bonus) {}
 
+    /** Resultado da penalidade do Mímico. {@code kind}: MONEY | ITEM | COLLECTION | NONE. */
+    public record MimicResult(String kind, String detail, long value) {}
+
     /** Estado consultável de um jogador (saldo, reservas, inventário, afinidades e coleções). */
     public record PlayerView(long balance, long reserved, List<Item> items,
                              Map<String, Integer> affinities, List<FormedCollection> collections) {}
 
     private final Map<String, Player> players = new HashMap<>();
     private final AtomicLong itemSeq = new AtomicLong();
+    private final Random rng = new Random(); // sorteio da penalidade do Mímico
 
     private Player getOrCreate(String id) {
         return players.computeIfAbsent(id, k -> new Player(initialBudget));
@@ -223,6 +228,46 @@ public final class WalletStore {
         }
         p.collections.add(new FormedCollection(kind, bonus));
         return new FormResult(true, "OK", bonus);
+    }
+
+    /**
+     * Aplica a penalidade do Mímico (abertura de 💀): sorteia UMA entre roubar uma fração
+     * do dinheiro, roubar um item LIVRE ou anular o bônus de uma coleção formada — escolhendo
+     * apenas entre as opções possíveis (dinheiro é sempre possível). Atômica.
+     */
+    public synchronized MimicResult applyMimic(String playerId, int moneyPct) {
+        Player p = getOrCreate(playerId);
+        List<String> options = new ArrayList<>();
+        options.add("MONEY"); // sempre possível
+        List<Item> free = new ArrayList<>();
+        for (Item it : p.items) {
+            if ("FREE".equals(it.state())) {
+                free.add(it);
+            }
+        }
+        if (!free.isEmpty()) {
+            options.add("ITEM");
+        }
+        if (!p.collections.isEmpty()) {
+            options.add("COLLECTION");
+        }
+        String kind = options.get(rng.nextInt(options.size()));
+        switch (kind) {
+            case "ITEM": {
+                Item victim = free.get(rng.nextInt(free.size()));
+                p.items.remove(victim);
+                return new MimicResult("ITEM", "1 " + victim.type(), 0);
+            }
+            case "COLLECTION": {
+                FormedCollection c = p.collections.remove(rng.nextInt(p.collections.size()));
+                return new MimicResult("COLLECTION", "coleção " + c.kind() + " (-" + c.bonus() + ")", c.bonus());
+            }
+            default: { // MONEY
+                long stolen = Math.max(0, p.balance) * moneyPct / 100;
+                p.balance -= stolen;
+                return new MimicResult("MONEY", stolen + " de dinheiro", stolen);
+            }
+        }
     }
 
     /** Zera o jogador para uma nova partida: orçamento inicial, sem itens/afinidade/coleções. */

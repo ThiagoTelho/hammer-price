@@ -175,13 +175,16 @@ export function App() {
             break;
           case "OPEN_RESULT":
             if (msg.ok) {
-              addLog(`🎁 Você abriu ${msg.boxId}: ${msg.item}${msg.isMimic ? " 💀 (Mímico!)" : ""}`);
               setWonBoxes((prev) => prev.filter((b) => b.boxId !== msg.boxId));
+              if (!msg.isMimic) addLog(`🎁 Você abriu: ${msg.item}`); // mímico é narrado pelo BOX_OPENED
             } else addLog(`⚠️ Não foi possível abrir ${msg.boxId}: ${msg.reason}`);
             break;
-          case "BOX_OPENED":
-            if (msg.player !== playerIdRef.current) addLog(`📦 ${msg.player} abriu ${msg.boxId}: ${msg.item}${msg.isMimic ? " 💀" : ""}`);
+          case "BOX_OPENED": {
+            const who = msg.player === playerIdRef.current ? "Você" : msg.player;
+            if (msg.isMimic) addLog(`💀 ${who} abriu um MÍMICO — perdeu ${msg.penaltyDetail || "—"}`);
+            else if (msg.player !== playerIdRef.current) addLog(`📦 ${msg.player} abriu: ${msg.item}`);
             break;
+          }
           case "BID_ACCEPTED":
             addLog(`✅ Seu lance em ${msg.boxId} foi aceito (atual: ${msg.currentBid})`);
             setBox((prev) =>

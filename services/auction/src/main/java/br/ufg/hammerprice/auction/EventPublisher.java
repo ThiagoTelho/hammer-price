@@ -134,13 +134,16 @@ public final class EventPublisher {
         broadcast(ev);
     }
 
-    public void boxOpened(String boxId, String player, String item, boolean isMimic) {
+    public void boxOpened(String boxId, String player, String item, boolean isMimic,
+                          String penaltyKind, String penaltyDetail) {
         Map<String, Object> ev = new LinkedHashMap<>();
         ev.put("type", "BOX_OPENED");
         ev.put("boxId", boxId);
         ev.put("player", player);
         ev.put("item", item);
         ev.put("isMimic", isMimic);
+        ev.put("penaltyKind", penaltyKind);     // MONEY | ITEM | COLLECTION | "" (não-mímico)
+        ev.put("penaltyDetail", penaltyDetail);  // descrição legível da penalidade
         broadcast(ev);
         // Item entrou em circulação → o worker recalcula o mercado (messaging durável).
         mq("box.opened", mapOf("roomId", roomId, "boxId", boxId, "player", player,
