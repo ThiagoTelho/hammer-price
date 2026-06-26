@@ -23,4 +23,13 @@ curl -SL "https://github.com/docker/compose/releases/latest/download/docker-comp
   -o /usr/libexec/docker/cli-plugins/docker-compose
 chmod +x /usr/libexec/docker/cli-plugins/docker-compose
 
-echo "user-data: Docker $(docker --version) + $(docker compose version) prontos."
+# Plugin `buildx` (BuildKit): o `docker compose --build` v2 exige buildx >= 0.17, e o
+# AL2023 não traz uma versão compatível → instala o release mais recente como cli-plugin.
+# (Sem isso: "compose build requires buildx 0.17.0 or later".)
+BUILDX_VER="$(curl -fsSL https://api.github.com/repos/docker/buildx/releases/latest | grep -oP '"tag_name":\s*"\K[^"]+')"
+BUILDX_VER="${BUILDX_VER:-v0.19.3}"   # fallback caso a API do GitHub falhe/limite
+curl -SL "https://github.com/docker/buildx/releases/download/${BUILDX_VER}/buildx-${BUILDX_VER}.linux-amd64" \
+  -o /usr/libexec/docker/cli-plugins/docker-buildx
+chmod +x /usr/libexec/docker/cli-plugins/docker-buildx
+
+echo "user-data: Docker $(docker --version) + $(docker compose version) + $(docker buildx version) prontos."

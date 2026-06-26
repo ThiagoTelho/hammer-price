@@ -120,6 +120,7 @@ aws ec2 start-instances --instance-ids <ID>
 
 | Sintoma | Causa provável | Correção |
 |---|---|---|
+| `compose build requires buildx 0.17.0 or later` | plugin **buildx** ausente/antigo no AL2023 | já tratado no `user-data.sh`; se instalou o Docker à mão, rode o bloco de instalação do `docker-buildx` (ver `user-data.sh`) e tente de novo |
 | Frontend abre mas "não conecta" / lances não aparecem | `VITE_GATEWAY_URL` apontando para `localhost` | suba pelo `./infra/deploy/start.sh` (ele injeta o DNS público); confirme a porta **8080** no security group |
 | Build do Java morre / instância trava | RAM insuficiente (t3.small = 2 GB) | use **t3.medium**; ou adicione swap: `sudo dd if=/dev/zero of=/swapfile bs=1M count=2048 && sudo chmod 600 /swapfile && sudo mkswap /swapfile && sudo swapon /swapfile` |
 | `docker: permission denied` logo após o boot | grupo `docker` ainda não aplicado à sessão | reconecte o SSH (ou `newgrp docker`) |
