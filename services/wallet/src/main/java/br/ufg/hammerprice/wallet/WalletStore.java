@@ -225,6 +225,11 @@ public final class WalletStore {
         return new FormResult(true, "OK", bonus);
     }
 
+    /** Zera o jogador para uma nova partida: orçamento inicial, sem itens/afinidade/coleções. */
+    public synchronized void reset(String playerId) {
+        players.put(playerId, new Player(initialBudget));
+    }
+
     /** Retorna o estado atual do jogador (saldo, reservas, inventário, afinidades e coleções). */
     public synchronized PlayerView get(String playerId) {
         Player p = getOrCreate(playerId);

@@ -99,6 +99,15 @@ export function getRoomState(addr: string, roomId: string): Promise<RoomState> {
   });
 }
 
+// Zera o jogador para uma nova partida (orçamento inicial, sem itens/coleções).
+export function resetPlayer(addr: string, playerId: string): Promise<{ ok: boolean }> {
+  return new Promise((res, rej) => {
+    walletAt(addr).ResetPlayer({ playerId }, callOpts(), (err: any, reply: { ok: boolean }) =>
+      err ? rej(err) : res(reply),
+    );
+  });
+}
+
 // Encerra o intervalo e abre já a próxima rodada (chamado quando todos estão prontos).
 export function advanceRound(addr: string, roomId: string): Promise<{ started: boolean }> {
   return new Promise((res, rej) => {

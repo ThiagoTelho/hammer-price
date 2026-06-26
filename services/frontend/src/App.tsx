@@ -116,6 +116,14 @@ export function App() {
           case "ROOM_STATE":
             setLobby({ status: msg.status, host: msg.host, players: msg.players ?? [] });
             if (msg.code) setCode(msg.code);
+            if (msg.status === "WAITING") {
+              // (re)entrou no lobby — inclui "jogar novamente": limpa o estado da partida.
+              setPhase("lobby");
+              setBox(null);
+              setWonBoxes([]);
+              setIntermission(null);
+              setRanking([]);
+            }
             break;
           case "MATCH_STARTED":
             setMatchRounds({ played: msg.roundsPlayed ?? 0, total: msg.totalRounds ?? 0 });
@@ -529,8 +537,13 @@ export function App() {
               </tbody>
             </table>
           </div>
-          <div className="text-center mt-5">
-            <button className={C.btnGold} onClick={() => window.location.reload()}>Voltar ao menu</button>
+          <div className="text-center mt-5 flex gap-3 justify-center">
+            {isHost && (
+              <button className={C.btnGold} onClick={() => send({ type: "PLAY_AGAIN" })}>
+                Jogar novamente
+              </button>
+            )}
+            <button className={C.btnSmall} onClick={() => window.location.reload()}>Voltar ao menu</button>
           </div>
         </div>
       )}

@@ -105,6 +105,13 @@ public final class WalletServer {
         }
 
         @Override
+        public void resetPlayer(PlayerQuery req, StreamObserver<Ack> obs) {
+            store.reset(req.getPlayerId());
+            obs.onNext(Ack.newBuilder().setOk(true).build());
+            obs.onCompleted();
+        }
+
+        @Override
         public void getPlayer(PlayerQuery req, StreamObserver<PlayerState> obs) {
             WalletStore.PlayerView v = store.get(req.getPlayerId());
             PlayerState.Builder b = PlayerState.newBuilder()

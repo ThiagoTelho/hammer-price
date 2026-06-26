@@ -9,7 +9,7 @@
 // - Fan-out ASSÍNCRONO: assina o canal Redis Pub/Sub de cada sala (só durante a partida).
 import { WebSocketServer, WebSocket } from "ws";
 import Redis from "ioredis";
-import { placeBid, getRoomState, openBox, getPlayer, sellItem, burnItem, formCollection, advanceRound, type Box } from "./grpcClients.js";
+import { placeBid, getRoomState, openBox, getPlayer, sellItem, burnItem, formCollection, advanceRound, resetPlayer, type Box } from "./grpcClients.js";
 
 const PORT = Number(process.env.GATEWAY_PORT ?? 8080);
 const REDIS_URL = process.env.REDIS_URL ?? "redis://localhost:6379";
@@ -317,6 +317,23 @@ wss.on("connection", (ws, req) => {
       const slot = client.room;
       const m = slot ? matches[slot] : null;
       if (slot && m && m.host === playerId && m.status === "RUNNING") await endMatch(slot);
+      return;
+    }
+
+    // Jogar novamente na MESMA sala: zera as carteiras e volta ao lobby (host, partida encerrada).
+    if (msg.type === "PLAY_AGAIN") {
+      const slot = client.room;
+      const m = slot ? matches[slot] : null;
+      if (slot && m && m.host === playerId && m.status === "ENDED") {
+        await Promise.all(playersIn(slot).map((p) => resetPlayer(WALLET_ROUTES[slot], p).catch(() => {})));
+        m.status = "WAITING";
+        m.roundsPlayed = 0;
+        m.ready.clear();
+        m.intermissionEndsAt = 0;
+        if (!codeToRoom.has(m.code)) codeToRoom.set(m.code, slot); // reabre o código
+        broadcastToRoom(slot, roomStateMsg(slot));
+        for (const c of clients) if (c.room === slot) void sendWallet(c);
+      }
       return;
     }
 

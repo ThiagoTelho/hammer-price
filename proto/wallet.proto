@@ -17,6 +17,7 @@ service Wallet {
   rpc SellItem  (SellItemRequest) returns (SellReply);  // item livre -> dinheiro (preço de mercado)
   rpc BurnItem  (BurnItemRequest) returns (BurnReply);  // item livre -> +afinidade pelo tipo
   rpc FormCollection (FormCollectionRequest) returns (FormReply);  // trava itens numa coleção -> bônus
+  rpc ResetPlayer (PlayerQuery)   returns (Ack);   // zera o jogador p/ uma nova partida (orçamento inicial)
   rpc GetPlayer (PlayerQuery)     returns (PlayerState);
 }
 
