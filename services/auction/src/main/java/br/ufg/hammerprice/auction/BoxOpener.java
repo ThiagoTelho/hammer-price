@@ -82,4 +82,14 @@ public final class BoxOpener {
         }
         return last; // segurança contra arredondamento de ponto flutuante
     }
+
+    /**
+     * Sorteia QUANTOS itens do tipo sortido o baú rende: inteiro uniforme em [min, max]
+     * (camada extra de sorte). Usa o mesmo RNG com seed — reproduzível em testes.
+     */
+    public synchronized int drawQuantity(int min, int max) {
+        int lo = Math.max(1, min);
+        int hi = Math.max(lo, max);
+        return (hi == lo) ? lo : lo + rng.nextInt(hi - lo + 1);
+    }
 }

@@ -66,7 +66,10 @@ public final class WalletServer {
 
         @Override
         public void addItem(AddItemRequest req, StreamObserver<Ack> obs) {
-            store.addItem(req.getPlayerId(), req.getType());
+            int qty = Math.max(1, req.getQuantity()); // 0 (campo ausente) trata como 1
+            for (int i = 0; i < qty; i++) {
+                store.addItem(req.getPlayerId(), req.getType());
+            }
             obs.onNext(Ack.newBuilder().setOk(true).build());
             obs.onCompleted();
         }

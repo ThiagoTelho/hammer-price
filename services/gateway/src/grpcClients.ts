@@ -131,6 +131,7 @@ export interface OpenBoxReply {
   reason: string;
   item: string;
   isMimic: boolean;
+  quantity: number;
 }
 
 export interface WalletItem {

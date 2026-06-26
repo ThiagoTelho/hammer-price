@@ -44,7 +44,8 @@ message OpenBoxReply {
   bool   ok       = 1;
   string reason   = 2;   // OK | NOT_WINNER | UNKNOWN_BOX | ALREADY_OPENED
   string item     = 3;   // COPPER | SILVER | GOLD | DIAMOND | MIMIC
-  bool   is_mimic = 4;   // armadilha (penalidade aplicada numa etapa posterior)
+  bool   is_mimic = 4;   // armadilha (penalidade)
+  int32  quantity = 5;   // 1..4 itens DO tipo sorteado (0 no Mímico)
 }
 
 message RoomQuery { string room_id = 1; }

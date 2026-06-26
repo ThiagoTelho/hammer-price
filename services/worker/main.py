@@ -124,12 +124,13 @@ def main() -> int:
             payload = json.loads(body)
         except Exception:  # noqa: BLE001
             payload = {}
-        # Item entrou em circulação → atualiza a oferta e recalcula o mercado.
+        # Itens entraram em circulação → atualiza a oferta (N unidades) e recalcula o mercado.
         if method.routing_key == "box.opened":
             item = payload.get("item")
+            qty = max(1, int(payload.get("quantity", 1) or 1))
             if item in PRICED_ITEMS:
-                supply[item] += 1
-                print(f"worker: box.opened {item} (oferta={supply[item]})", flush=True)
+                supply[item] += qty
+                print(f"worker: box.opened {qty}x {item} (oferta={supply[item]})", flush=True)
                 publish_market()
         ch.basic_ack(delivery_tag=method.delivery_tag)
 

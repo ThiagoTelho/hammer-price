@@ -97,7 +97,7 @@ export function App() {
   const [flash, setFlash] = useState<{ kind: "win" | "open" | "mimic"; emoji: string; title: string; sub: string } | null>(null);
   const [muted, setMutedState] = useState(false);
   const [sold, setSold] = useState<string | null>(null); // baú arrematado → carimbo no palco
-  const [opening, setOpening] = useState<{ tier: string; item: string; isMimic: boolean; sub: string } | null>(null);
+  const [opening, setOpening] = useState<{ tier: string; item: string; qty: number; isMimic: boolean; sub: string } | null>(null);
   const [confettiKey, setConfettiKey] = useState(0); // bump → dispara uma rajada de confete
   const fireConfetti = () => setConfettiKey((k) => k + 1);
   const wonBoxesRef = useRef<{ boxId: string; boxType: string }[]>([]);
@@ -231,12 +231,13 @@ export function App() {
             if (msg.ok) {
               const tier = wonBoxesRef.current.find((b) => b.boxId === msg.boxId)?.boxType ?? "WOODEN";
               setWonBoxes((prev) => prev.filter((b) => b.boxId !== msg.boxId));
+              const qty = msg.quantity ?? 1;
               // Abertura animada do baú (substitui o flash "open").
-              setOpening({ tier, item: msg.item, isMimic: msg.isMimic, sub: msg.isMimic ? "Cuidado…" : "Item para o inventário" });
+              setOpening({ tier, item: msg.item, qty, isMimic: msg.isMimic, sub: msg.isMimic ? "Cuidado…" : `${qty}× para o inventário` });
               sfx.creak();
               if (msg.isMimic) sfx.thud();
               else {
-                addLog(`🎁 Você abriu: ${msg.item}`); // mímico é narrado pelo BOX_OPENED
+                addLog(`🎁 Você abriu: ${qty}× ${msg.item}`); // mímico é narrado pelo BOX_OPENED
                 sfx.fanfare();
                 fireConfetti();
               }
@@ -251,7 +252,7 @@ export function App() {
                 sfx.thud();
                 setFlash({ kind: "mimic", emoji: "💀", title: `${msg.player} pegou um MÍMICO!`, sub: `Perdeu ${msg.penaltyDetail || "—"}` });
               }
-            } else if (!mine) addLog(`📦 ${msg.player} abriu: ${msg.item}`);
+            } else if (!mine) addLog(`📦 ${msg.player} abriu: ${msg.quantity ?? 1}× ${msg.item}`);
             break;
           }
           case "BID_ACCEPTED":
@@ -865,15 +866,17 @@ export function App() {
               <div className="relative flex flex-col items-center">
                 <Chest tier={opening.tier} size={150} open />
                 <motion.div
-                  className="absolute top-0 text-6xl"
+                  className="absolute top-0 text-6xl flex gap-1"
                   initial={{ y: 30, scale: 0.2, opacity: 0 }}
                   animate={{ y: -42, scale: 1, opacity: 1 }}
                   transition={{ delay: 0.22, type: "spring", stiffness: 200, damping: 13 }}
                 >
-                  {opening.isMimic ? "💀" : ITEM_EMOJI[opening.item] ?? "🎁"}
+                  {opening.isMimic
+                    ? "💀"
+                    : Array.from({ length: Math.min(opening.qty, 4) }).map((_, i) => <span key={i}>{ITEM_EMOJI[opening.item] ?? "🎁"}</span>)}
                 </motion.div>
                 <div className={`font-display text-2xl mt-1 ${opening.isMimic ? "text-red-300" : "text-gold"}`}>
-                  {opening.isMimic ? "MÍMICO!" : opening.item}
+                  {opening.isMimic ? "MÍMICO!" : `${opening.qty}× ${opening.item}`}
                 </div>
                 <div className="text-muted text-sm mt-1">{opening.sub}</div>
               </div>

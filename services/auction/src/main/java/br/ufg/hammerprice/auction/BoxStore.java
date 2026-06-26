@@ -33,7 +33,7 @@ public final class BoxStore {
     /** Parâmetros do leilão (do balance.yaml), injetados para facilitar testes. */
     public record Settings(long timerBaseMs, long antiSnipeWindowMs, long antiSnipeResetMs,
                            long incrementPct, long incrementAbs, long intermissionMs,
-                           long noBidTimeoutMs) {}
+                           long noBidTimeoutMs, int minItems, int maxItems) {}
 
     /** Dependência da Carteira: reservar, devolver e debitar (arremate). */
     public interface Wallet {
@@ -65,8 +65,8 @@ public final class BoxStore {
                             long currentBid, String leader, long timerMs,
                             Map<String, Integer> odds) {}
 
-    /** Resultado de uma abertura de caixa (sorteio do item). */
-    public record OpenResult(boolean ok, String reason, String item, boolean isMimic) {}
+    /** Resultado de uma abertura de caixa (item sorteado + quantos). {@code quantity}=0 no Mímico. */
+    public record OpenResult(boolean ok, String reason, String item, int quantity, boolean isMimic) {}
 
     /** Caixa arrematada à espera de abertura pelo vencedor. */
     private record PendingOpen(String winner, String boxType, long price) {}
@@ -355,17 +355,20 @@ public final class BoxStore {
     public OpenResult openBox(String reqBoxId, String playerId) {
         PendingOpen po = pendingOpens.get(reqBoxId);
         if (po == null) {
-            return new OpenResult(false, opened.contains(reqBoxId) ? "ALREADY_OPENED" : "UNKNOWN_BOX", "", false);
+            return new OpenResult(false, opened.contains(reqBoxId) ? "ALREADY_OPENED" : "UNKNOWN_BOX", "", 0, false);
         }
         if (!po.winner().equals(playerId)) {
-            return new OpenResult(false, "NOT_WINNER", "", false);
+            return new OpenResult(false, "NOT_WINNER", "", 0, false);
         }
         if (!pendingOpens.remove(reqBoxId, po)) {
-            return new OpenResult(false, "ALREADY_OPENED", "", false); // corrida: já aberta
+            return new OpenResult(false, "ALREADY_OPENED", "", 0, false); // corrida: já aberta
         }
         opened.add(reqBoxId);
         String item = opener.draw(po.boxType(), affinitySource.forPlayer(playerId));
-        return new OpenResult(true, "OK", item, "MIMIC".equals(item));
+        boolean mimic = "MIMIC".equals(item);
+        // Mímico é penalidade única (sem itens); item real rende de min..max unidades.
+        int quantity = mimic ? 0 : opener.drawQuantity(cfg.minItems(), cfg.maxItems());
+        return new OpenResult(true, "OK", item, quantity, mimic);
     }
 
     /** Estado da sala: rodada atual + a caixa em leilão (odds públicas quando ativa). */

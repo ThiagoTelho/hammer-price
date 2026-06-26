@@ -76,6 +76,9 @@ P_efetiva(item) = normalizar( P_base(c, item) + afinidade(j, item) )
 - O sorteio usa um **RNG com seed injetável** (testes determinísticos) e roda **no
   servidor** (cliente nunca sorteia).
 - **Invariante:** a soma de `P_efetiva` é exatamente 1; nenhuma probabilidade é negativa.
+- **Quantidade (camada de sorte):** sorteado o tipo, o baú rende **`open.min_items`..`open.max_items`
+  unidades** (padrão **1 a 4**) DAQUELE tipo — ex.: `3× Diamante`. Isso eleva o teto de valor de
+  um baú (um Cofre pode render `4× Diamante`). O **Mímico é penalidade única** (não rende itens).
 
 ### Mímico (penalidade)
 Ao sair `MIMIC`, aplica-se **uma** penalidade sorteada:

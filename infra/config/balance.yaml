@@ -38,6 +38,10 @@ box_odds:                       # soma de cada baú = 100
   ROYAL:   { COPPER: 15, SILVER: 30, GOLD: 40, DIAMOND: 12, MIMIC: 3 }
   VAULT:   { COPPER: 5,  SILVER: 15, GOLD: 35, DIAMOND: 40, MIMIC: 5 }
 
+open:                           # ao abrir, o baú rende N itens DO MESMO tipo sorteado
+  min_items: 1                  # (ex.: 3× Diamante) — camada extra de sorte; eleva o teto
+  max_items: 4                  # de valor de um baú. Mímico continua penalidade única.
+
 collections:                    # bônus ~2–3× o valor de mercado dos itens consumidos
   COPPER_TRIO:     { requires: { COPPER: 3 },                              bonus: 70 }
   SILVER_SET:      { requires: { SILVER: 3 },                              bonus: 230 }

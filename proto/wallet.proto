@@ -61,6 +61,7 @@ message MimicReply {
 message AddItemRequest {
   string player_id = 1;
   string type      = 2;   // COPPER | SILVER | GOLD | DIAMOND
+  int32  quantity  = 3;   // quantos itens desse tipo creditar (>= 1)
 }
 
 // Item do inventário. `state`: FREE (livre) | LOCKED_COLLECTION | CONSUMED (etapas futuras).

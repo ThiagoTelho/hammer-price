@@ -59,6 +59,12 @@ public final class BalanceConfig {
         return v instanceof Number ? ((Number) v).longValue() : def;
     }
 
+    /** Valor inteiro de {@code open.<key>} (ex.: min_items, max_items por abertura). */
+    public long openLong(String key, long def) {
+        Object v = section("open").get(key);
+        return v instanceof Number ? ((Number) v).longValue() : def;
+    }
+
     /**
      * Pesos do sorteio do TIPO de caixa por rodada, de {@code round.box_type_weights}
      * (ex.: {@code {BRONZE=50, SILVER=30, GOLD=15, VAULT=5}}). Ordem preservada (YAML).

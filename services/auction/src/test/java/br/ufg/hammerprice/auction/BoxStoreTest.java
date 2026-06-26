@@ -52,7 +52,7 @@ class BoxStoreTest {
     // (pausa zero = a próxima rodada começa imediatamente → determinístico em teste),
     // janela de abertura sem lances 45s.
     private static final BoxStore.Settings SETTINGS =
-            new BoxStore.Settings(20_000, 5_000, 8_000, 5, 5, 0, 45_000);
+            new BoxStore.Settings(20_000, 5_000, 8_000, 5, 5, 0, 45_000, 1, 4);
 
     private static Map<String, Integer> weights() {
         LinkedHashMap<String, Integer> w = new LinkedHashMap<>();
@@ -232,6 +232,12 @@ class BoxStoreTest {
             assertTrue(r.ok(), "o vencedor abre a caixa");
             assertEquals("OK", r.reason());
             assertFalse(r.item().isEmpty(), "o sorteio retorna um item");
+            // item real rende de 1 a 4 unidades; Mímico não rende item (quantity 0)
+            if (r.isMimic()) {
+                assertEquals(0, r.quantity(), "Mímico não rende itens");
+            } else {
+                assertTrue(r.quantity() >= 1 && r.quantity() <= 4, "1..4 itens, veio " + r.quantity());
+            }
             // segunda abertura da mesma caixa é rejeitada
             assertEquals("ALREADY_OPENED", store.openBox(b, "ana").reason());
         } finally {

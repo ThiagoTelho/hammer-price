@@ -74,12 +74,12 @@ public final class AuctionServer {
             }
         }
 
-        /** Credita ao inventário do jogador o item sorteado na abertura da caixa. */
-        void addItem(String playerId, String type) {
+        /** Credita {@code quantity} itens do tipo sorteado ao inventário do jogador (abertura). */
+        void addItem(String playerId, String type, int quantity) {
             try {
                 stub.withDeadlineAfter(2, TimeUnit.SECONDS)
                         .addItem(AddItemRequest.newBuilder()
-                                .setPlayerId(playerId).setType(type).build());
+                                .setPlayerId(playerId).setType(type).setQuantity(quantity).build());
             } catch (Exception e) {
                 System.err.println("auction: erro ao creditar item: " + e.getMessage());
             }
@@ -172,19 +172,20 @@ public final class AuctionServer {
                 if (r.isMimic()) {
                     pen = wallet.applyMimic(req.getPlayerId()); // 💀 penaliza (não vira item)
                 } else {
-                    wallet.addItem(req.getPlayerId(), r.item()); // credita o item sorteado
+                    wallet.addItem(req.getPlayerId(), r.item(), r.quantity()); // credita N itens do tipo
                 }
             }
             obs.onNext(OpenBoxReply.newBuilder()
                     .setOk(r.ok())
                     .setReason(r.reason())
                     .setItem(r.item())
+                    .setQuantity(r.quantity())
                     .setIsMimic(r.isMimic())
                     .build());
             obs.onCompleted();
             if (r.ok()) {
                 // Difunde o resultado (+ penalidade do Mímico) e enfileira box.opened (RabbitMQ).
-                events.boxOpened(req.getBoxId(), req.getPlayerId(), r.item(), r.isMimic(),
+                events.boxOpened(req.getBoxId(), req.getPlayerId(), r.item(), r.quantity(), r.isMimic(),
                         pen == null ? "" : pen.getKind(), pen == null ? "" : pen.getDetail());
             }
         }
@@ -228,7 +229,9 @@ public final class AuctionServer {
                 cfg.matchLong("min_bid_increment_pct", 5),
                 cfg.matchLong("min_bid_increment_abs", 5),
                 cfg.roundLong("intermission_max_seconds", 120) * 1000,
-                cfg.matchLong("no_bid_timeout_seconds", 45) * 1000);
+                cfg.matchLong("no_bid_timeout_seconds", 45) * 1000,
+                (int) cfg.openLong("min_items", 1),
+                (int) cfg.openLong("max_items", 4));
 
         // RNG de abertura: usa odds do balance.yaml (com fallback) e seed injetável.
         BoxOpener.Odds oddsSource = type -> {
