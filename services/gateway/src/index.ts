@@ -9,13 +9,15 @@
 // - Fan-out ASSÍNCRONO: assina o canal Redis Pub/Sub de cada sala (só durante a partida).
 import { WebSocketServer, WebSocket } from "ws";
 import Redis from "ioredis";
-import { placeBid, getRoomState, openBox, getPlayer, sellItem, burnItem, formCollection, advanceRound, resetPlayer, type Box } from "./grpcClients.js";
+import { placeBid, getRoomState, openBox, getPlayer, sellItem, burnItem, formCollection, advanceRound, forceClose, resetPlayer, type Box } from "./grpcClients.js";
 
 const PORT = Number(process.env.GATEWAY_PORT ?? 8080);
 const REDIS_URL = process.env.REDIS_URL ?? "redis://localhost:6379";
 const REDIS_REPLICA_URL = process.env.REDIS_REPLICA_URL ?? REDIS_URL;
 // Teto do intervalo entre rodadas (o gateway abre antes se todos marcarem "pronto").
 const INTERMISSION_MS = Number(process.env.INTERMISSION_MAX_SECONDS ?? 120) * 1000;
+// Capacidade máxima de jogadores por sala.
+const MAX_PLAYERS = Number(process.env.MAX_PLAYERS_PER_ROOM ?? 15);
 
 // Mapa slot de sala -> endereço da instância de Leilão dona da sala (a partição R6).
 function parseRoutes(s: string): Record<string, string> {
@@ -46,6 +48,9 @@ interface Match {
   roundsPlayed: number;
   ready: Set<string>;
   intermissionEndsAt: number;
+  folded: Set<string>; // quem passou a vez NESTA rodada (zera a cada rodada)
+  spectators: Set<string>; // quem desistiu e só assiste (persiste a partida)
+  leader: string; // líder atual da rodada (p/ decidir o fechamento por fold)
 }
 const matches: Record<string, Match | null> = {};
 for (const r of ROOMS) matches[r] = null;
@@ -62,6 +67,12 @@ function genCode(): string {
 
 function playersIn(room: string): string[] {
   return [...clients].filter((c) => c.room === room).map((c) => c.playerId);
+}
+
+// Jogadores que ainda disputam (exclui quem desistiu/assiste) — base do fold e do "pronto".
+function activeBidders(room: string): string[] {
+  const m = matches[room];
+  return m ? playersIn(room).filter((p) => !m.spectators.has(p)) : [];
 }
 
 // Slot livre = sem partida, ou partida ENCERRADA e sem jogadores conectados.
@@ -198,18 +209,35 @@ async function broadcastPlayersPanel(room: string): Promise<void> {
   const prices = await currentMarket();
   const players = await Promise.all(
     playersIn(room).map(async (id) => {
+      const spectating = m.spectators.has(id);
       try {
         const p = await getPlayer(WALLET_ROUTES[room], id);
         const free = p.inventory.filter((i) => i.state === "FREE");
         const items = free.reduce((s, i) => s + (prices[i.type] ?? 0), 0);
         const bonus = p.collections.reduce((s, c) => s + c.bonus, 0);
-        return { id, money: p.balance, reserved: p.reserved, itemCount: free.length, net: p.balance + items + bonus };
+        return { id, money: p.balance, reserved: p.reserved, itemCount: free.length, net: p.balance + items + bonus, spectating };
       } catch {
-        return { id, money: 0, reserved: 0, itemCount: 0, net: 0 };
+        return { id, money: 0, reserved: 0, itemCount: 0, net: 0, spectating };
       }
     }),
   );
   broadcastToRoom(room, { type: "PLAYERS_PANEL", players });
+}
+
+// Se todos os que ainda disputam (exceto o líder) passaram, fecha a rodada já (o líder vence).
+async function maybeCloseByFold(room: string): Promise<void> {
+  const m = matches[room];
+  if (!m || m.status !== "RUNNING") return;
+  const bidders = activeBidders(room);
+  if (bidders.length === 0) return;
+  const remaining = bidders.filter((p) => p !== m.leader && !m.folded.has(p));
+  if (remaining.length === 0) {
+    try {
+      await forceClose(ROUTES[room], room);
+    } catch (e) {
+      console.error("gateway: forceClose:", e);
+    }
+  }
 }
 
 // Fan-out assíncrono por sala — só repassa eventos de jogo enquanto a partida está RUNNING.
@@ -238,6 +266,9 @@ sub.on("message", (channel, message) => {
     for (const c of clients) if (c.room === room) void sendWallet(c);
   }
   if (PANEL_EVENTS.has(ev.type)) void broadcastPlayersPanel(room);
+  if (ev.type === "BID_PLACED" && typeof ev.leader === "string") {
+    m.leader = ev.leader; // acompanha o líder p/ decidir o fechamento por fold
+  }
   if (ev.type === "ROUND_ENDED") {
     m.roundsPlayed++;
     if (m.roundsPlayed >= m.totalRounds) {
@@ -247,11 +278,13 @@ sub.on("message", (channel, message) => {
       m.ready.clear();
       m.intermissionEndsAt = Date.now() + INTERMISSION_MS;
       broadcastToRoom(room, { type: "ROUND_INTERMISSION", endsAt: m.intermissionEndsAt, roundsPlayed: m.roundsPlayed, totalRounds: m.totalRounds });
-      broadcastToRoom(room, { type: "READY_STATE", ready: 0, total: playersIn(room).length });
+      broadcastToRoom(room, { type: "READY_STATE", ready: 0, total: activeBidders(room).length });
     }
   } else if (ev.type === "ROUND_STARTED") {
     m.intermissionEndsAt = 0;
     m.ready.clear();
+    m.folded.clear(); // novo lote → todos podem dar lance de novo
+    m.leader = "";
   }
 });
 
@@ -286,8 +319,8 @@ wss.on("connection", (ws, req) => {
       const prev = matches[slot];
       if (prev && codeToRoom.get(prev.code) === slot) codeToRoom.delete(prev.code);
       const code = genCode();
-      const rounds = Math.max(1, Math.min(20, Number(msg.rounds) || 8));
-      matches[slot] = { status: "WAITING", code, host: playerId, totalRounds: rounds, roundsPlayed: 0, ready: new Set(), intermissionEndsAt: 0 };
+      const rounds = Math.max(8, Math.min(40, Number(msg.rounds) || 16));
+      matches[slot] = { status: "WAITING", code, host: playerId, totalRounds: rounds, roundsPlayed: 0, ready: new Set(), intermissionEndsAt: 0, folded: new Set(), spectators: new Set(), leader: "" };
       codeToRoom.set(code, slot);
       client.room = slot;
       console.log(`gateway: ${playerId} criou a sala ${slot} (código ${code})`);
@@ -305,6 +338,10 @@ wss.on("connection", (ws, req) => {
       }
       if (m.status !== "WAITING") {
         ws.send(JSON.stringify({ type: "ERROR", reason: "MATCH_ALREADY_STARTED" }));
+        return;
+      }
+      if (playersIn(slot).length >= MAX_PLAYERS) {
+        ws.send(JSON.stringify({ type: "ERROR", reason: "ROOM_FULL" }));
         return;
       }
       client.room = slot;
@@ -325,6 +362,9 @@ wss.on("connection", (ws, req) => {
       m.roundsPlayed = 0;
       m.ready.clear();
       m.intermissionEndsAt = 0;
+      m.folded.clear();
+      m.spectators.clear();
+      m.leader = "";
       console.log(`gateway: partida iniciada na sala ${slot} (${playersIn(slot).length} jogadores, ${m.totalRounds} rodadas)`);
       broadcastToRoom(slot, { type: "MATCH_STARTED", totalRounds: m.totalRounds, roundsPlayed: 0 });
       broadcastToRoom(slot, roomStateMsg(slot));
@@ -356,6 +396,9 @@ wss.on("connection", (ws, req) => {
         m.roundsPlayed = 0;
         m.ready.clear();
         m.intermissionEndsAt = 0;
+        m.folded.clear();
+        m.spectators.clear();
+        m.leader = "";
         if (!codeToRoom.has(m.code)) codeToRoom.set(m.code, slot); // reabre o código
         broadcastToRoom(slot, roomStateMsg(slot));
         for (const c of clients) if (c.room === slot) void sendWallet(c);
@@ -367,9 +410,9 @@ wss.on("connection", (ws, req) => {
     if (msg.type === "READY") {
       const slot = client.room;
       const m = slot ? matches[slot] : null;
-      if (slot && m && m.status === "RUNNING" && m.intermissionEndsAt > Date.now()) {
+      if (slot && m && m.status === "RUNNING" && m.intermissionEndsAt > Date.now() && !m.spectators.has(playerId)) {
         m.ready.add(playerId);
-        const total = playersIn(slot).length;
+        const total = activeBidders(slot).length;
         broadcastToRoom(slot, { type: "READY_STATE", ready: m.ready.size, total });
         if (m.ready.size >= total) {
           m.intermissionEndsAt = 0;
@@ -383,11 +426,41 @@ wss.on("connection", (ws, req) => {
       return;
     }
 
-    // ---- Ações de jogo (só durante a partida) ----
-    if (!inRunningMatch(client)) {
-      if (["PLACE_BID", "OPEN_BOX", "SELL_ITEM", "BURN_ITEM", "FORM_COLLECTION"].includes(msg.type)) {
-        ws.send(JSON.stringify({ type: "ERROR", reason: "MATCH_NOT_RUNNING" }));
+    // Passar a vez NESTA rodada. Se todos (exceto o líder) passarem, o líder vence já.
+    if (msg.type === "FOLD") {
+      const slot = client.room;
+      const m = slot ? matches[slot] : null;
+      if (slot && m && m.status === "RUNNING" && !m.spectators.has(playerId)) {
+        m.folded.add(playerId);
+        broadcastToRoom(slot, { type: "FOLD_STATE", folded: m.folded.size, total: activeBidders(slot).length });
+        await maybeCloseByFold(slot);
       }
+      return;
+    }
+
+    // Desistir da partida e só assistir (permanece no ranking com o patrimônio atual).
+    if (msg.type === "GIVE_UP") {
+      const slot = client.room;
+      const m = slot ? matches[slot] : null;
+      if (slot && m && m.status === "RUNNING" && !m.spectators.has(playerId)) {
+        m.spectators.add(playerId);
+        m.folded.delete(playerId);
+        ws.send(JSON.stringify({ type: "SPECTATING" }));
+        broadcastToRoom(slot, { type: "FOLD_STATE", folded: m.folded.size, total: activeBidders(slot).length });
+        void broadcastPlayersPanel(slot);
+        await maybeCloseByFold(slot); // sair pode deixar só o líder
+      }
+      return;
+    }
+
+    // ---- Ações de jogo (só durante a partida e para quem NÃO é espectador) ----
+    const GAME_ACTIONS = ["PLACE_BID", "OPEN_BOX", "SELL_ITEM", "BURN_ITEM", "FORM_COLLECTION"];
+    if (!inRunningMatch(client)) {
+      if (GAME_ACTIONS.includes(msg.type)) ws.send(JSON.stringify({ type: "ERROR", reason: "MATCH_NOT_RUNNING" }));
+      return;
+    }
+    if (matches[client.room!]?.spectators.has(playerId)) {
+      if (GAME_ACTIONS.includes(msg.type)) ws.send(JSON.stringify({ type: "ERROR", reason: "SPECTATING" }));
       return;
     }
     const room = client.room!;

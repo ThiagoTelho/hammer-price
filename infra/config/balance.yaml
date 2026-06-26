@@ -6,10 +6,10 @@ match:
   initial_budget: 1000
   duration_seconds: 900        # 15 min
   min_players: 2
-  max_players: 6
+  max_players: 15
   min_bid_increment_pct: 5
   min_bid_increment_abs: 5
-  box_timer_seconds: 20         # cronômetro do leilão — começa SÓ no 1º lance
+  box_timer_seconds: 12         # cronômetro do leilão — começa SÓ no 1º lance
   no_bid_timeout_seconds: 45    # janela de abertura sem lances; sem lance até aqui, o lote
                                 # fecha sem vencedor e a partida segue (não trava)
   antisnipe_window_seconds: 5
@@ -19,17 +19,17 @@ round:                          # modelo round-based: UMA caixa por rodada
   boxes_per_round: 1
   intermission_max_seconds: 120 # TETO do intervalo entre rodadas; o gateway abre antes
                                 # se todos os jogadores marcarem "pronto"
-  box_type_weights:             # sorteio aleatório do baú a cada rodada (raridade crescente)
-    WOODEN: 50                  # Baú de Madeira
-    IRON:   30                  # Baú de Ferro
-    ROYAL:  15                  # Baú Real
-    VAULT:  5                   # Cofre
+  box_type_weights:             # sorteio do baú a cada rodada — PROBABILIDADE IGUAL entre os 4
+    WOODEN: 25                  # Baú de Madeira
+    IRON:   25                  # Baú de Ferro
+    ROYAL:  25                  # Baú Real
+    VAULT:  25                  # Cofre
 
 items:                          # valor base (preço de mercado flutua em torno disto)
-  COPPER: 10
-  SILVER: 50
-  GOLD: 200
-  DIAMOND: 2000
+  COPPER: 10                    # escada ~3×, acessível dentro do orçamento de 1000
+  SILVER: 30
+  GOLD: 100
+  DIAMOND: 300
   # MIMIC: penalidade, não valor positivo
 
 box_odds:                       # soma de cada baú = 100
@@ -38,12 +38,16 @@ box_odds:                       # soma de cada baú = 100
   ROYAL:   { COPPER: 15, SILVER: 30, GOLD: 40, DIAMOND: 12, MIMIC: 3 }
   VAULT:   { COPPER: 5,  SILVER: 15, GOLD: 35, DIAMOND: 40, MIMIC: 5 }
 
-collections:
-  COMMON_ALLOY:    { requires: { COPPER: 5 },                          bonus: 150 }
-  NOBLE_PAIR:      { requires: { GOLD: 3 },                            bonus: 400 }
-  RAINBOW:         { requires: { COPPER: 1, SILVER: 1, GOLD: 1, DIAMOND: 1 }, bonus: 900 }
-  ROYAL_TRIO:      { requires: { DIAMOND: 3 },                         bonus: 3000 }
-  LEGENDARY_VAULT: { requires: { DIAMOND: 5 },                         bonus: 8000 }
+collections:                    # bônus ~2–3× o valor de mercado dos itens consumidos
+  COPPER_TRIO:     { requires: { COPPER: 3 },                              bonus: 70 }
+  SILVER_SET:      { requires: { SILVER: 3 },                              bonus: 230 }
+  ALLOY:           { requires: { COPPER: 2, SILVER: 2 },                   bonus: 220 }
+  SILVER_GOLD:     { requires: { SILVER: 2, GOLD: 1 },                     bonus: 400 }
+  GOLD_TRIO:       { requires: { GOLD: 3 },                                bonus: 720 }
+  RAINBOW:         { requires: { COPPER: 1, SILVER: 1, GOLD: 1, DIAMOND: 1 }, bonus: 1100 }
+  DIAMOND_PAIR:    { requires: { DIAMOND: 2 },                             bonus: 1500 }
+  ROYAL_FLUSH:     { requires: { SILVER: 1, GOLD: 1, DIAMOND: 2 },         bonus: 2000 }
+  LEGENDARY_VAULT: { requires: { DIAMOND: 5 },                             bonus: 5000 }
 
 affinity:
   gain_per_burn_pct: 2

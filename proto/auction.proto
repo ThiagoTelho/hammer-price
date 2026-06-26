@@ -15,6 +15,7 @@ service Auction {
   rpc GetRoomState (RoomQuery)       returns (RoomState);    // rodada atual + caixa + odds
   rpc OpenBox      (OpenBoxRequest)  returns (OpenBoxReply); // sorteio server-side
   rpc AdvanceRound (RoomQuery)       returns (AdvanceReply); // encerra o intervalo e abre já a próxima rodada
+  rpc ForceClose   (RoomQuery)       returns (AdvanceReply); // fecha JÁ a rodada (todos passaram): o líder vence
 }
 
 message PlaceBidRequest {
@@ -52,7 +53,7 @@ message AdvanceReply { bool started = 1; }
 
 message Box {
   string box_id      = 1;
-  string box_type    = 2;            // BRONZE | SILVER | GOLD | VAULT (sorteado por rodada)
+  string box_type    = 2;            // WOODEN | IRON | ROYAL | VAULT (sorteado por rodada)
   int64  current_bid = 3;
   string leader      = 4;
   int64  timer_ms    = 5;

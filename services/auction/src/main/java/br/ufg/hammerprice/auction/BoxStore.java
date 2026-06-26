@@ -396,17 +396,25 @@ public final class BoxStore {
         scheduler.shutdownNow();
     }
 
-    // ---- Apoio a testes (visível no mesmo pacote) ----
-
-    /** Força o fechamento imediato da rodada corrente (determinístico em teste). */
-    void closeNow() {
+    /**
+     * Fecha a rodada corrente IMEDIATAMENTE (ex.: todos os jogadores passaram/fold). Liquida
+     * o líder se houver; sem líder, encerra sem vencedor. Idempotente (guardado por {@code ended}).
+     */
+    public void forceClose() {
         lock.lock();
         try {
-            deadlineMs = System.currentTimeMillis() - 1;
+            deadlineMs = System.currentTimeMillis() - 1; // vence o cronômetro -> closeRound fecha de fato
         } finally {
             lock.unlock();
         }
         closeRound();
+    }
+
+    // ---- Apoio a testes (visível no mesmo pacote) ----
+
+    /** Força o fechamento imediato da rodada corrente (determinístico em teste). */
+    void closeNow() {
+        forceClose();
     }
 
     /** Ajusta o tempo restante da rodada para simular cenários de anti-sniping. */

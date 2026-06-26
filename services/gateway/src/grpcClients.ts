@@ -117,6 +117,15 @@ export function advanceRound(addr: string, roomId: string): Promise<{ started: b
   });
 }
 
+// Fecha a rodada imediatamente (todos passaram/fold) — o líder vence sem esperar o cronômetro.
+export function forceClose(addr: string, roomId: string): Promise<{ started: boolean }> {
+  return new Promise((res, rej) => {
+    auctionAt(addr).ForceClose({ roomId }, callOpts(), (err: any, reply: { started: boolean }) =>
+      err ? rej(err) : res(reply),
+    );
+  });
+}
+
 export interface OpenBoxReply {
   ok: boolean;
   reason: string;

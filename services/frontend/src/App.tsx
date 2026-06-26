@@ -44,11 +44,15 @@ const ITEM_ORDER = ["COPPER", "SILVER", "GOLD", "DIAMOND", "MIMIC"];
 const ITEM_EMOJI: Record<string, string> = { COPPER: "🪙", SILVER: "🥈", GOLD: "🥇", DIAMOND: "💎", MIMIC: "💀" };
 
 const COLLECTIONS: { kind: string; label: string; requires: Record<string, number>; bonus: number }[] = [
-  { kind: "COMMON_ALLOY", label: "Liga Comum", requires: { COPPER: 5 }, bonus: 150 },
-  { kind: "NOBLE_PAIR", label: "Dupla Nobre", requires: { GOLD: 3 }, bonus: 400 },
-  { kind: "RAINBOW", label: "Arco-íris", requires: { COPPER: 1, SILVER: 1, GOLD: 1, DIAMOND: 1 }, bonus: 900 },
-  { kind: "ROYAL_TRIO", label: "Trinca Real", requires: { DIAMOND: 3 }, bonus: 3000 },
-  { kind: "LEGENDARY_VAULT", label: "Cofre Lendário", requires: { DIAMOND: 5 }, bonus: 8000 },
+  { kind: "COPPER_TRIO", label: "Trinca de Cobre", requires: { COPPER: 3 }, bonus: 70 },
+  { kind: "SILVER_SET", label: "Trio de Prata", requires: { SILVER: 3 }, bonus: 230 },
+  { kind: "ALLOY", label: "Liga Metálica", requires: { COPPER: 2, SILVER: 2 }, bonus: 220 },
+  { kind: "SILVER_GOLD", label: "Prata & Ouro", requires: { SILVER: 2, GOLD: 1 }, bonus: 400 },
+  { kind: "GOLD_TRIO", label: "Trinca de Ouro", requires: { GOLD: 3 }, bonus: 720 },
+  { kind: "RAINBOW", label: "Arco-íris", requires: { COPPER: 1, SILVER: 1, GOLD: 1, DIAMOND: 1 }, bonus: 1100 },
+  { kind: "DIAMOND_PAIR", label: "Par de Diamantes", requires: { DIAMOND: 2 }, bonus: 1500 },
+  { kind: "ROYAL_FLUSH", label: "Realeza", requires: { SILVER: 1, GOLD: 1, DIAMOND: 2 }, bonus: 2000 },
+  { kind: "LEGENDARY_VAULT", label: "Cofre Lendário", requires: { DIAMOND: 5 }, bonus: 5000 },
 ];
 
 // Classes reutilizáveis do tema.
@@ -72,18 +76,21 @@ export function App() {
   const [isHost, setIsHost] = useState(false);
   const [lobby, setLobby] = useState<{ status: string; host: string; players: string[] }>({ status: "WAITING", host: "", players: [] });
   const [ranking, setRanking] = useState<RankRow[]>([]);
-  const [roundsToCreate, setRoundsToCreate] = useState(8);
+  const [roundsToCreate, setRoundsToCreate] = useState(16);
   const [matchRounds, setMatchRounds] = useState({ played: 0, total: 0 });
   const [intermission, setIntermission] = useState<{ endsAt: number } | null>(null);
   const [readyState, setReadyState] = useState({ ready: 0, total: 0 });
   const [iAmReady, setIAmReady] = useState(false);
+  const [folded, setFolded] = useState(false); // passei a vez nesta rodada
+  const [foldState, setFoldState] = useState({ folded: 0, total: 0 });
+  const [spectating, setSpectating] = useState(false); // desisti e só assisto
 
   const [round, setRound] = useState(0);
   const [box, setBox] = useState<Box | null>(null);
   const [prices, setPrices] = useState<Record<string, number>>({});
   const [wallet, setWallet] = useState<Wallet | null>(null);
   const [wonBoxes, setWonBoxes] = useState<{ boxId: string; boxType: string }[]>([]);
-  const [players, setPlayers] = useState<{ id: string; money: number; reserved: number; itemCount: number; net: number }[]>([]);
+  const [players, setPlayers] = useState<{ id: string; money: number; reserved: number; itemCount: number; net: number; spectating?: boolean }[]>([]);
   const [lastBids, setLastBids] = useState<Record<string, number>>({});
   const [log, setLog] = useState<string[]>([]);
   const [bidAmount, setBidAmount] = useState("");
@@ -140,6 +147,8 @@ export function App() {
               setRanking([]);
               setPlayers([]);
               setLastBids({});
+              setSpectating(false);
+              setFolded(false);
             }
             break;
           case "MATCH_STARTED":
@@ -147,6 +156,9 @@ export function App() {
             setIntermission(null);
             setPlayers([]);
             setLastBids({});
+            setFolded(false);
+            setFoldState({ folded: 0, total: 0 });
+            setSpectating(false);
             setPhase("playing");
             addLog(`🚀 Partida iniciada! ${msg.totalRounds} rodadas.`);
             break;
@@ -165,6 +177,8 @@ export function App() {
             setIntermission(null);
             setIAmReady(false);
             setSold(null);
+            setFolded(false);
+            setFoldState((s) => ({ folded: 0, total: s.total }));
             sfx.whoosh();
             addLog(`🆕 Nova rodada: ${tierLabel(msg.box?.boxType ?? "WOODEN")} em leilão`);
             break;
@@ -183,6 +197,13 @@ export function App() {
             break;
           case "PLAYERS_PANEL":
             setPlayers(msg.players ?? []);
+            break;
+          case "FOLD_STATE":
+            setFoldState({ folded: msg.folded ?? 0, total: msg.total ?? 0 });
+            break;
+          case "SPECTATING":
+            setSpectating(true);
+            addLog("👀 Você desistiu — agora está assistindo.");
             break;
           case "BID_PLACED":
             addLog(`🔨 ${msg.leader} deu lance de ${money(msg.amount)} em ${msg.boxId}`);
@@ -270,9 +291,17 @@ export function App() {
             }
             addLog(msg.ok ? `🏅 Coleção ${msg.kind} formada! +${money(msg.bonus)}` : `⚠️ Não deu para formar ${msg.kind}: ${msg.reason}`);
             break;
-          case "ERROR":
-            addLog(`⚠️ ${msg.reason}`);
+          case "ERROR": {
+            const errors: Record<string, string> = {
+              ROOM_FULL: "Sala cheia (máx. 15 jogadores).",
+              ROOM_NOT_FOUND: "Sala não encontrada — confira o código.",
+              MATCH_ALREADY_STARTED: "A partida já começou.",
+              NEED_2_PLAYERS: "São necessários ao menos 2 jogadores.",
+              NO_ROOMS_AVAILABLE: "Não há salas livres no momento.",
+            };
+            addLog(`⚠️ ${errors[msg.reason] ?? msg.reason}`);
             break;
+          }
         }
       };
     },
@@ -387,7 +416,7 @@ export function App() {
           <div>
             <label className="text-xs uppercase tracking-wide text-muted">Rodadas (ao criar)</label>
             <select className={`${C.input} mt-1`} value={roundsToCreate} onChange={(e) => setRoundsToCreate(Number(e.target.value))}>
-              {[5, 8, 10, 15].map((n) => (
+              {[8, 12, 16, 20, 24, 32].map((n) => (
                 <option key={n} value={n}>{n} rodadas</option>
               ))}
             </select>
@@ -423,7 +452,7 @@ export function App() {
           <div className="font-display text-5xl text-gold tracking-[0.25em] my-2">{code}</div>
           <p className="text-muted text-sm mb-5">Compartilhe o código. A partida exige ao menos 2 jogadores.</p>
           <div className="text-left bg-surface-2 border border-line rounded-xl p-4 mb-5">
-            <div className="text-sm text-muted mb-2">Jogadores ({lobby.players.length})</div>
+            <div className="text-sm text-muted mb-2">Jogadores ({lobby.players.length}/15)</div>
             <ul className="flex flex-col gap-1">
               {lobby.players.map((p) => (
                 <li key={p} className="flex items-center gap-2">
@@ -460,8 +489,20 @@ export function App() {
                 {wallet.affinities.length > 0 && (
                   <div className="text-xs text-emerald-400 pt-2">✨ {wallet.affinities.map((a) => `${ITEM_EMOJI[a.type]} +${a.points}`).join("  ")}</div>
                 )}
-                {isHost && (
-                  <button className={`${C.btnSmall} w-full mt-3`} onClick={() => send({ type: "END_MATCH" })}>Encerrar partida</button>
+                {spectating ? (
+                  <div className="mt-3 text-center text-xs text-sky-300 bg-sky-500/10 border border-sky-500/30 rounded-lg py-1.5">👀 Assistindo</div>
+                ) : (
+                  <div className="mt-3 flex flex-col gap-2">
+                    {isHost && (
+                      <button className={`${C.btnSmall} w-full`} onClick={() => send({ type: "END_MATCH" })}>Encerrar partida</button>
+                    )}
+                    <button
+                      className={`${C.btnSmall} w-full`}
+                      onClick={() => { if (confirm("Desistir da partida e só assistir? Você não poderá mais dar lances.")) send({ type: "GIVE_UP" }); }}
+                    >
+                      Desistir (assistir)
+                    </button>
+                  </div>
                 )}
               </div>
             )}
@@ -473,7 +514,7 @@ export function App() {
                 <div className="flex flex-col gap-1">
                   {[...players].sort((a, b) => b.net - a.net).map((p) => (
                     <div key={p.id} className={`flex items-center gap-2 text-sm rounded-lg px-2 py-1 ${p.id === playerId ? "bg-gold/10" : ""}`}>
-                      <span className={`flex-1 truncate ${p.id === playerId ? "text-gold font-semibold" : ""}`}>{p.id}{p.id === playerId ? " (você)" : ""}</span>
+                      <span className={`flex-1 truncate ${p.id === playerId ? "text-gold font-semibold" : ""} ${p.spectating ? "opacity-50" : ""}`}>{p.id}{p.id === playerId ? " (você)" : ""}{p.spectating ? " 👀" : ""}</span>
                       <span className="whitespace-nowrap">💰 <b className="text-gold">{money(p.money)}</b></span>
                       <span className="whitespace-nowrap text-muted">🎒 {p.itemCount}</span>
                       <span className="whitespace-nowrap text-xs text-stone-400 w-16 text-right">{lastBids[p.id] ? `🔨 ${money(lastBids[p.id])}` : "—"}</span>
@@ -554,6 +595,7 @@ export function App() {
                       {box.currentBid > 0 ? `💰 ${money(box.currentBid)}` : "sem lances"}
                     </motion.div>
                     <div className="text-sm">líder: <b className={box.leader === playerId ? "text-gold" : ""}>{box.leader || "—"}</b></div>
+                    {foldState.folded > 0 && <div className="text-xs text-stone-400">🙅 {foldState.folded}/{foldState.total} passaram</div>}
                     <div className="h-6 flex items-center">
                       {(() => {
                         const call = goingCall(box);
@@ -581,13 +623,18 @@ export function App() {
               </AnimatePresence>
             </div>
 
-            {/* Controles de lance — abaixo do palco, largura cheia (alinhados, sem aperto das cortinas) */}
-            {box && (() => {
+            {/* Controles de lance / passar — abaixo do palco. Espectador não vê. */}
+            {box && !spectating && (folded ? (
+              <div className={`${C.card} p-3 text-center text-sm text-muted`}>
+                🙅 Você passou nesta rodada · <b className="text-stone-300">{foldState.folded}/{foldState.total || "?"}</b> passaram
+              </div>
+            ) : (() => {
               const minInc = Math.max(5, Math.floor(box.currentBid * 0.05));
               const minNext = box.currentBid + minInc;
               const customVal = Number(bidAmount);
               const customOk = bidAmount === "" || customVal >= minNext;
               const bidValue = bidAmount === "" ? minNext : customVal;
+              const iAmLeader = box.leader === playerId;
               return (
                 <div className={`${C.card} p-3 flex flex-col gap-2`}>
                   <div className="text-xs text-muted text-center">lance mínimo: <b className="text-gold">{money(minNext)}</b></div>
@@ -601,15 +648,20 @@ export function App() {
                     <input className={`${C.input} text-center`} type="number" placeholder={`${minNext}`} value={bidAmount} onChange={(e) => setBidAmount(e.target.value)} />
                     <button className={`${C.btnGold} whitespace-nowrap`} disabled={!customOk} onClick={() => placeBid(box.boxId, bidValue)}>Dar lance</button>
                   </div>
+                  {!iAmLeader && (
+                    <button className={`${C.btnSmall} w-full`} onClick={() => { setFolded(true); send({ type: "FOLD" }); }}>
+                      Passar {foldState.folded > 0 ? `· ${foldState.folded}/${foldState.total} passaram` : ""}
+                    </button>
+                  )}
                 </div>
               );
-            })()}
+            })())}
 
             {wonBoxes.length > 0 && (
               <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="bg-gold/10 border border-gold-dim rounded-xl px-4 py-3 flex flex-wrap items-center gap-2 justify-center">
                 <b className="text-gold">🎉 Você arrematou! Abra:</b>
                 {wonBoxes.map((b) => (
-                  <button key={b.boxId} className={C.btnGold} onClick={() => sendOpen(b.boxId)}>Abrir {CHEST_GLYPH} {tierLabel(b.boxType)}</button>
+                  <button key={b.boxId} className={C.btnGold} disabled={spectating} onClick={() => sendOpen(b.boxId)}>Abrir {CHEST_GLYPH} {tierLabel(b.boxType)}</button>
                 ))}
               </motion.div>
             )}
@@ -637,8 +689,8 @@ export function App() {
                   return (
                     <div key={t} className="flex items-center gap-2 text-sm">
                       <span className="flex-1">{ITEM_EMOJI[t]} {t} ×{count}{locked > 0 ? <span className="text-muted"> ({locked}🔒)</span> : ""}</span>
-                      <button className={C.btnSmall} disabled={!firstFree} onClick={() => firstFree && sell(firstFree.id)}>vender</button>
-                      <button className={C.btnSmall} disabled={!firstFree} onClick={() => firstFree && burn(firstFree.id)}>queimar</button>
+                      <button className={C.btnSmall} disabled={!firstFree || spectating} onClick={() => firstFree && sell(firstFree.id)}>vender</button>
+                      <button className={C.btnSmall} disabled={!firstFree || spectating} onClick={() => firstFree && burn(firstFree.id)}>queimar</button>
                     </div>
                   );
                 })}
@@ -657,7 +709,7 @@ export function App() {
                       <span className="flex-1">{c.label} <span className="text-muted">{reqStr}</span></span>
                       <span className="text-gold">+{money(c.bonus)}</span>
                       {formed > 0 && <span className="text-emerald-400">✓×{formed}</span>}
-                      <button className={C.btnSmall} disabled={!canForm(c.requires)} onClick={() => form(c.kind)}>formar</button>
+                      <button className={C.btnSmall} disabled={!canForm(c.requires) || spectating} onClick={() => form(c.kind)}>formar</button>
                     </div>
                   );
                 })}

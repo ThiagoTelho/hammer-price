@@ -9,9 +9,9 @@
 | Item | Código | Valor base | Raridade alvo |
 |---|---|---|---|
 | Cobre | `COPPER` | 10 | comum |
-| Prata | `SILVER` | 50 | incomum |
-| Ouro | `GOLD` | 200 | raro |
-| Diamante | `DIAMOND` | 2000 | muito raro |
+| Prata | `SILVER` | 30 | incomum |
+| Ouro | `GOLD` | 100 | raro |
+| Diamante | `DIAMOND` | 300 | muito raro |
 | Mímico | `MIMIC` | — (penalidade) | armadilha |
 
 O **valor base** é a referência; o **preço de mercado** (seção 6) flutua em torno dele.
@@ -35,8 +35,9 @@ O **valor base** é a referência; o **preço de mercado** (seção 6) flutua em
 ## 3. Caixas e probabilidades (odds)
 
 Cada **tipo de caixa** define uma distribuição de drop. A soma é sempre 100%. A cada
-**rodada**, o servidor **sorteia o tipo** da caixa (pesos configuráveis em
-`balance.yaml`); as odds do tipo sorteado são **públicas** — exibidas aos jogadores antes
+**rodada**, o servidor **sorteia o tipo** da caixa — os 4 tipos têm **probabilidade igual
+de aparecer** (pesos `25/25/25/25` em `balance.yaml`); as odds do tipo sorteado são
+**públicas** — exibidas aos jogadores antes
 e durante o leilão, e devem ser **iguais** às realmente aplicadas na abertura (ver §4).
 
 Os nomes dos baús são **distintos dos materiais** (Cobre/Prata/Ouro/Diamante) para evitar confusão:
@@ -58,9 +59,9 @@ EV(caixa) = Σ  P(item) × preço_mercado(item)   −  P(Mímico) × penalidade_
 ```
 Exemplo (Baú de Madeira, preços = valores base, penalidade do Mímico = 0 aqui):
 ```
-EV = 0,60·10 + 0,30·50 + 0,09·200 + 0,01·2000 = 6 + 15 + 18 + 20 = 59
+EV = 0,60·10 + 0,30·30 + 0,09·100 + 0,01·300 = 6 + 9 + 9 + 3 = 27
 ```
-→ Lance racional "frio" ≈ 59. Jogadores perto de fechar uma coleção têm **EV pessoal**
+→ Lance racional "frio" ≈ 27. Jogadores perto de fechar uma coleção têm **EV pessoal**
 maior e tendem a sobre-apostar (ver seção 5).
 
 ## 4. Abertura de caixa (RNG + afinidade)
@@ -90,11 +91,18 @@ O **seguro** (seção 7) reduz a penalidade.
 
 | Coleção | Código | Requisito | Bônus |
 |---|---|---|---:|
-| Liga Comum | `COMMON_ALLOY` | 5× Cobre | +150 |
-| Dupla Nobre | `NOBLE_PAIR` | 3× Ouro | +400 |
-| Arco-íris | `RAINBOW` | 1×Cobre +1×Prata +1×Ouro +1×Diamante | +900 |
-| Trinca Real | `ROYAL_TRIO` | 3× Diamante | +3.000 |
-| Cofre Lendário | `LEGENDARY_VAULT` | 5× Diamante | +8.000 |
+| Trinca de Cobre | `COPPER_TRIO` | 3× Cobre | +70 |
+| Trio de Prata | `SILVER_SET` | 3× Prata | +230 |
+| Liga Metálica | `ALLOY` | 2× Cobre + 2× Prata | +220 |
+| Prata & Ouro | `SILVER_GOLD` | 2× Prata + 1× Ouro | +400 |
+| Trinca de Ouro | `GOLD_TRIO` | 3× Ouro | +720 |
+| Arco-íris | `RAINBOW` | 1×Cobre +1×Prata +1×Ouro +1×Diamante | +1.100 |
+| Par de Diamantes | `DIAMOND_PAIR` | 2× Diamante | +1.500 |
+| Realeza | `ROYAL_FLUSH` | 1× Prata + 1× Ouro + 2× Diamante | +2.000 |
+| Cofre Lendário | `LEGENDARY_VAULT` | 5× Diamante | +5.000 |
+
+> Bônus calibrado em **~2–3× o valor de mercado** dos itens consumidos: formar uma coleção
+> rende mais que vender as peças soltas.
 
 - Itens "consumidos" por uma coleção ficam **travados** (não podem ser vendidos/queimados).
 - Uma coleção é avaliada uma vez; itens excedentes podem formar outra do mesmo tipo.
