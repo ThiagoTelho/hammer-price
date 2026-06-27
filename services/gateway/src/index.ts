@@ -21,6 +21,13 @@ const MAX_PLAYERS = Number(process.env.MAX_PLAYERS_PER_ROOM ?? 15);
 // Imposto (carta TAX): quanto cada rival paga ao autor (espelha cards.tax_amount do balance.yaml).
 const CARD_TAX = Number(process.env.CARD_TAX ?? 25);
 const CARD_DISCOUNT_PCT = Number(process.env.CARD_DISCOUNT_PCT ?? 30); // Desconto: % de abatimento no arremate
+// Quem é NOTIFICADO ao jogar a carta (CARD_PLAYED): "self" (só quem jogou), "target" (quem jogou +
+// o alvo) ou "group" (toda a sala). Cartas que só afetam quem usou não incomodam os demais.
+const CARD_SCOPE: Record<string, "self" | "target" | "group"> = {
+  DOUBLE: "self", INSURANCE: "self", DISCOUNT: "self", INSIGHT: "self", SHIELD: "self",
+  BLOCK: "target", CURSE: "target",
+  TAX: "group", GAVEL: "group", UPGRADE: "group",
+};
 // Heartbeat: termina conexões mortas (que não respondem ao ping) → libera o slot da sala.
 const HEARTBEAT_MS = Number(process.env.HEARTBEAT_SECONDS ?? 30) * 1000;
 // Reaper: libera salas sem nenhuma atividade de cliente por este tempo (lobbies/partidas abandonados).
@@ -772,7 +779,19 @@ wss.on("connection", (ws, req) => {
       }
       m.pendingCards.push({ source: playerId, cardType, target });
       m.playedThisInterval.add(playerId); // consumiu sua jogada deste intervalo
-      broadcastToRoom(slot, { type: "CARD_PLAYED", source: playerId, cardType, target: target ?? "" });
+      // Notifica só quem a carta afeta: o próprio (self), o alvo (target) ou toda a sala (group).
+      const cardPlayedMsg = { type: "CARD_PLAYED", source: playerId, cardType, target: target ?? "" };
+      const scope = CARD_SCOPE[cardType] ?? "group";
+      if (scope === "group") {
+        broadcastToRoom(slot, cardPlayedMsg);
+      } else {
+        const recipients = new Set<string>([playerId]);
+        if (scope === "target" && target) recipients.add(target);
+        const data = JSON.stringify(cardPlayedMsg);
+        for (const c of clients) {
+          if (c.room === slot && recipients.has(c.playerId) && c.ws.readyState === WebSocket.OPEN) c.ws.send(data);
+        }
+      }
       // Empurra os efeitos do Leilão (idempotente: o conjunto acumulado) p/ a próxima rodada.
       try {
         await setRoundEffects(ROUTES[slot], slot, auctionEffectsOf(m));
