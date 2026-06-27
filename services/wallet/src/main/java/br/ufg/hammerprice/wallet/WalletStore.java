@@ -2,6 +2,7 @@ package br.ufg.hammerprice.wallet;
 
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Random;
@@ -178,9 +179,10 @@ public final class WalletStore {
     }
 
     /**
-     * Forma uma coleção: se o jogador tem os itens LIVRES exigidos, trava-os
-     * ({@code FREE -> LOCKED_COLLECTION}) e registra a coleção com seu bônus. Atômica.
-     * Itens excedentes continuam livres (podem formar outra coleção do mesmo tipo).
+     * Forma uma coleção: se o jogador tem os itens LIVRES exigidos, CONSOME-os (remove do
+     * inventário) e registra a coleção com seu bônus. Atômica. Itens excedentes continuam livres
+     * (podem formar outra coleção do mesmo tipo). O patrimônio não muda — os itens consumidos já
+     * não contavam como livres; o valor agora vem do bônus da coleção.
      */
     public synchronized FormResult formCollection(String playerId, String kind,
                                                   Map<String, Integer> requires, long bonus) {
@@ -194,12 +196,13 @@ public final class WalletStore {
             }
         }
         for (Map.Entry<String, Integer> e : requires.entrySet()) {
-            int toLock = e.getValue();
-            for (int i = 0; i < p.items.size() && toLock > 0; i++) {
-                Item it = p.items.get(i);
-                if (it.type().equals(e.getKey()) && "FREE".equals(it.state())) {
-                    p.items.set(i, new Item(it.id(), it.type(), "LOCKED_COLLECTION"));
-                    toLock--;
+            int toRemove = e.getValue();
+            Iterator<Item> it = p.items.iterator();
+            while (it.hasNext() && toRemove > 0) {
+                Item item = it.next();
+                if (item.type().equals(e.getKey()) && "FREE".equals(item.state())) {
+                    it.remove(); // consumido: sai do inventário
+                    toRemove--;
                 }
             }
         }
