@@ -41,6 +41,33 @@ function withDeadline(box: Box | null): Box | null {
 const CHEST_GLYPH = "🧰";
 // O playerId do backend é `nome#sufixo` (único por sessão). Para exibir, mostramos só o nome.
 const nm = (id: string): string => (id && id.includes("#") ? id.slice(0, id.indexOf("#")) : id);
+
+// Sessão persistida (reconexão): permite voltar à sala após refresh/queda enquanto ela estiver aberta.
+const SESSION_KEY = "hammerprice.session";
+type Session = { playerId: string; room: string; code: string; name: string };
+const loadSession = (): Session | null => {
+  try {
+    const r = localStorage.getItem(SESSION_KEY);
+    return r ? (JSON.parse(r) as Session) : null;
+  } catch {
+    return null;
+  }
+};
+const saveSession = (s: Session) => {
+  try {
+    localStorage.setItem(SESSION_KEY, JSON.stringify(s));
+  } catch {
+    /* storage indisponível */
+  }
+};
+const clearSession = () => {
+  try {
+    localStorage.removeItem(SESSION_KEY);
+  } catch {
+    /* ignora */
+  }
+};
+
 const BID_TIMER_MS = 20000; // espelha match.box_timer_seconds (escala do anel de contagem)
 const money = (n: number): string => `$${Math.round(n).toLocaleString("pt-BR")}`;
 const ITEM_ORDER = ["COPPER", "SILVER", "GOLD", "DIAMOND", "MIMIC"];
@@ -77,6 +104,7 @@ export function App() {
   const [playerId, setPlayerId] = useState("");
   const [code, setCode] = useState("");
   const [isHost, setIsHost] = useState(false);
+  const [reconnecting, setReconnecting] = useState(false); // tentando voltar à sala salva
   const [lobby, setLobby] = useState<{ status: string; host: string; players: string[] }>({ status: "WAITING", host: "", players: [] });
   const [ranking, setRanking] = useState<RankRow[]>([]);
   const [roundsToCreate, setRoundsToCreate] = useState(16);
@@ -123,10 +151,25 @@ export function App() {
   const send = (o: unknown) => wsRef.current?.send(JSON.stringify(o));
 
   const connect = useCallback(
-    (action: { kind: "create"; rounds: number } | { kind: "join"; code: string }) => {
-      const player = name.trim() || `player-${Math.floor(Math.random() * 9000 + 1000)}`;
-      pendingRef.current = action;
-      const ws = new WebSocket(`${GATEWAY_URL}?player=${encodeURIComponent(player)}`);
+    (action: { kind: "create"; rounds: number } | { kind: "join"; code: string } | { kind: "resume"; session: Session }) => {
+      try {
+        wsRef.current?.close();
+      } catch {
+        /* nada a fechar */
+      }
+      let url: string;
+      if (action.kind === "resume") {
+        // Reconexão: reapresenta playerId + sala; o gateway religa o assento e envia RESUMED.
+        const s = action.session;
+        setName(s.name);
+        pendingRef.current = null;
+        url = `${GATEWAY_URL}?player=${encodeURIComponent(s.name)}&resume=${encodeURIComponent(s.playerId)}&room=${encodeURIComponent(s.room)}`;
+      } else {
+        const player = name.trim() || `player-${Math.floor(Math.random() * 9000 + 1000)}`;
+        pendingRef.current = action;
+        url = `${GATEWAY_URL}?player=${encodeURIComponent(player)}`;
+      }
+      const ws = new WebSocket(url);
       wsRef.current = ws;
       ws.onclose = () => addLog("Desconectado");
       ws.onerror = () => addLog("Erro de conexão com o gateway");
@@ -143,6 +186,25 @@ export function App() {
             setCode(msg.code);
             setIsHost(!!msg.host);
             setPhase("lobby");
+            // Guarda a sessão p/ reconectar após refresh/queda enquanto a sala estiver aberta.
+            saveSession({ playerId: playerIdRef.current, room: msg.room, code: msg.code, name: name.trim() || nm(playerIdRef.current) });
+            break;
+          case "RESUMED":
+            setReconnecting(false);
+            setCode(msg.code);
+            setIsHost(!!msg.host);
+            setSpectating(!!msg.spectator);
+            setFolded(!!msg.folded);
+            setMatchRounds({ played: msg.roundsPlayed ?? 0, total: msg.totalRounds ?? 0 });
+            setPhase(msg.status === "RUNNING" ? "playing" : "lobby");
+            saveSession({ playerId: playerIdRef.current, room: msg.room, code: msg.code, name: name.trim() || nm(playerIdRef.current) });
+            addLog("🔄 Reconectado à sua sala.");
+            break;
+          case "RESUME_FAILED":
+            setReconnecting(false);
+            clearSession();
+            setPhase("menu");
+            addLog("Sua sessão anterior expirou — comece uma nova.");
             break;
           case "ROOM_STATE":
             setLobby({ status: msg.status, host: msg.host, players: msg.players ?? [] });
@@ -341,6 +403,7 @@ export function App() {
             addLog(msg.ok ? `🏅 Coleção ${msg.kind} formada! +${money(msg.bonus)}` : `⚠️ Não deu para formar ${msg.kind}: ${msg.reason}`);
             break;
           case "ROOM_CLOSED":
+            clearSession();
             addLog(`⚠️ Sala encerrada${msg.reason === "IDLE" ? " por inatividade" : ""}. Voltando ao menu…`);
             setTimeout(() => window.location.reload(), 1800);
             break;
@@ -362,6 +425,18 @@ export function App() {
   );
 
   useEffect(() => () => wsRef.current?.close(), []);
+
+  // Ao abrir o app: se há uma sessão salva, tenta voltar à sala (refresh/queda). Falha → menu.
+  const autoResumed = useRef(false);
+  useEffect(() => {
+    if (autoResumed.current) return;
+    autoResumed.current = true;
+    const s = loadSession();
+    if (s?.playerId && s.room) {
+      setReconnecting(true);
+      connect({ kind: "resume", session: s });
+    }
+  }, [connect]);
 
   const [, setTick] = useState(0);
   const boxRef = useRef<Box | null>(null);
@@ -466,6 +541,16 @@ export function App() {
       </header>
 
       {/* ---------- MENU / BOAS-VINDAS ---------- */}
+      {reconnecting && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-ink/92 px-4">
+          <div className="text-center">
+            <motion.div className="text-5xl" animate={{ rotate: 360 }} transition={{ repeat: Infinity, duration: 1.4, ease: "linear" }}>🔄</motion.div>
+            <div className="text-gold font-display text-2xl mt-4">Reconectando à sua sala…</div>
+            <div className="text-muted text-sm mt-1">Voltando de onde você parou.</div>
+          </div>
+        </div>
+      )}
+
       {phase === "menu" && (
         <motion.div
           initial={{ opacity: 0, y: 12 }}

@@ -25,6 +25,8 @@ const CARD_DISCOUNT_PCT = Number(process.env.CARD_DISCOUNT_PCT ?? 30); // Descon
 const HEARTBEAT_MS = Number(process.env.HEARTBEAT_SECONDS ?? 30) * 1000;
 // Reaper: libera salas sem nenhuma atividade de cliente por este tempo (lobbies/partidas abandonados).
 const ROOM_IDLE_MS = Number(process.env.ROOM_IDLE_MINUTES ?? 15) * 60 * 1000;
+// Reconexão: tempo que um assento fica guardado após a queda do socket (refresh, blip de rede).
+const RECONNECT_GRACE_MS = Number(process.env.RECONNECT_GRACE_MINUTES ?? 3) * 60 * 1000;
 
 // Mapa slot de sala -> endereço da instância de Leilão dona da sala (a partição R6).
 function parseRoutes(s: string): Record<string, string> {
@@ -64,6 +66,8 @@ interface Match {
   pendingCards: { source: string; cardType: string; target?: string }[]; // cartas jogadas p/ a próxima rodada
   blocked: Set<string>; // bloqueados de dar lance NESTA rodada (carta Bloqueio)
   shielded: Set<string>; // imunes a efeitos ofensivos (carta Escudo — fase 2)
+  disconnected: Map<string, number>; // playerId → epoch da queda do socket (assento guardado p/ reconexão)
+  effectsMsg: unknown | null; // último CARD_EFFECTS difundido (replay na reconexão)
 }
 const matches: Record<string, Match | null> = {};
 for (const r of ROOMS) matches[r] = null;
@@ -80,6 +84,12 @@ function genCode(): string {
 
 function playersIn(room: string): string[] {
   return [...clients].filter((c) => c.room === room).map((c) => c.playerId);
+}
+
+// Nome de exibição a partir do playerId `nome#sufixo`.
+function nameOf(id: string): string {
+  const i = id.indexOf("#");
+  return i >= 0 ? id.slice(0, i) : id;
 }
 
 // Jogadores que ainda disputam (exclui quem desistiu/assiste) — base do fold e do "pronto".
@@ -189,6 +199,39 @@ async function sendGameState(c: Client): Promise<void> {
   } catch {
     if (c.ws.readyState === WebSocket.OPEN) c.ws.send(JSON.stringify({ type: "ERROR", reason: "AUCTION_UNAVAILABLE" }));
   }
+}
+
+// Reconexão: restaura a fase/host/posição do jogador e reenvia o estado vivo da partida.
+async function resumeSnapshot(c: Client): Promise<void> {
+  const room = c.room;
+  const m = room ? matches[room] : null;
+  if (!room || !m) return;
+  if (c.ws.readyState === WebSocket.OPEN) {
+    c.ws.send(
+      JSON.stringify({
+        type: "RESUMED",
+        room,
+        code: m.code,
+        host: m.host === c.playerId,
+        status: m.status,
+        totalRounds: m.totalRounds,
+        roundsPlayed: m.roundsPlayed,
+        spectator: m.spectators.has(c.playerId),
+        folded: m.folded.has(c.playerId),
+      }),
+    );
+  }
+  if (m.status === "RUNNING") {
+    await sendGameState(c); // WELCOME (rodada/caixa/mercado) + carteira
+    if (m.intermissionEndsAt > Date.now() && c.ws.readyState === WebSocket.OPEN) {
+      c.ws.send(JSON.stringify({ type: "ROUND_INTERMISSION", endsAt: m.intermissionEndsAt, roundsPlayed: m.roundsPlayed, totalRounds: m.totalRounds }));
+    }
+    if (m.effectsMsg && c.ws.readyState === WebSocket.OPEN) c.ws.send(JSON.stringify(m.effectsMsg)); // selos/bloqueio da rodada
+  } else {
+    void sendWallet(c);
+  }
+  broadcastToRoom(room, roomStateMsg(room)); // os demais veem o jogador de volta
+  void broadcastPlayersPanel(room);
 }
 
 // Fim da partida: patrimônio = dinheiro + itens LIVRES a preço de mercado + bônus de
@@ -321,7 +364,8 @@ async function resolveRoundCards(room: string): Promise<void> {
       console.error("gateway: peekDrop:", e);
     }
   }
-  broadcastToRoom(room, { type: "CARD_EFFECTS", blocked: [...m.blocked], doubleLoot, insured, cursed, shielded: [...m.shielded], gavel });
+  m.effectsMsg = { type: "CARD_EFFECTS", blocked: [...m.blocked], doubleLoot, insured, cursed, shielded: [...m.shielded], gavel };
+  broadcastToRoom(room, m.effectsMsg);
   for (const c of clients) if (c.room === room) void sendWallet(c);
   void broadcastPlayersPanel(room);
 }
@@ -369,6 +413,7 @@ sub.on("message", (channel, message) => {
   if (ev.type === "ROUND_ENDED") {
     m.blocked.clear(); // efeitos de carta da rodada expiram
     m.shielded.clear();
+    m.effectsMsg = null;
     m.roundsPlayed++;
     if (m.roundsPlayed >= m.totalRounds) {
       void endMatch(room); // última rodada → fim da partida
@@ -434,19 +479,68 @@ setInterval(() => {
   }
 }, Math.min(60_000, ROOM_IDLE_MS)); // checa a cada 60s (ou mais rápido se o teto de inatividade for curto)
 
+// Graça de reconexão: descarta assentos cujo dono não voltou a tempo; se a sala ficou sem
+// ninguém vivo nem reconexão pendente, libera já (sem esperar o reaper de inatividade).
+setInterval(() => {
+  const now = Date.now();
+  for (const room of ROOMS) {
+    const m = matches[room];
+    if (!m) continue;
+    let changed = false;
+    for (const [pid, at] of m.disconnected) {
+      if (now - at > RECONNECT_GRACE_MS) {
+        m.disconnected.delete(pid);
+        changed = true;
+        console.log(`gateway: assento de ${pid} liberado (graça de reconexão expirou)`);
+      }
+    }
+    if (playersIn(room).length === 0 && m.disconnected.size === 0) {
+      if (codeToRoom.get(m.code) === room) codeToRoom.delete(m.code);
+      matches[room] = null;
+    } else if (changed) {
+      broadcastToRoom(room, roomStateMsg(room));
+      void broadcastPlayersPanel(room);
+    }
+  }
+}, Math.min(30_000, RECONNECT_GRACE_MS));
+
 wss.on("connection", (ws, req) => {
   const url = new URL(req.url ?? "", "http://localhost");
   // Identidade ÚNICA: nome (display, sem '#') + sufixo aleatório → `ana#a3f`. Evita que dois
   // jogadores de mesmo nome colidam de sessão. O frontend mostra só o nome (antes do '#').
   const rawName = (url.searchParams.get("player") || "").replace(/#/g, "").trim().slice(0, 20) || "jogador";
+
+  // RECONEXÃO: o frontend reapresenta o playerId salvo + a sala. Se o assento ainda existe
+  // (guardado pela graça em `m.disconnected`, ou outro socket vivo do mesmo id), religa em vez
+  // de criar uma identidade nova — carteira/cartas/host/posição na rodada são preservados.
+  const resumeId = (url.searchParams.get("resume") || "").trim();
+  const resumeRoom = (url.searchParams.get("room") || "").trim();
+  let resumedRoom: string | null = null;
+  if (resumeId && resumeRoom && matches[resumeRoom] && matches[resumeRoom]!.status !== "ENDED") {
+    const m = matches[resumeRoom]!;
+    if (m.disconnected.has(resumeId) || playersIn(resumeRoom).includes(resumeId)) {
+      resumedRoom = resumeRoom;
+      m.disconnected.delete(resumeId);
+    }
+  }
+
   let playerId = "";
-  do {
-    playerId = `${rawName}#${Math.random().toString(36).slice(2, 6)}`;
-  } while ([...clients].some((c) => c.playerId === playerId));
-  const client: Client = { ws, playerId, room: null, isAlive: true };
+  if (resumedRoom) {
+    playerId = resumeId;
+  } else {
+    do {
+      playerId = `${rawName}#${Math.random().toString(36).slice(2, 6)}`;
+    } while ([...clients].some((c) => c.playerId === playerId));
+  }
+  const client: Client = { ws, playerId, room: resumedRoom, isAlive: true };
   clients.add(client);
   ws.on("pong", () => { client.isAlive = true; }); // resposta ao heartbeat → conexão viva
-  ws.send(JSON.stringify({ type: "HELLO", playerId, name: rawName, slotsTotal: ROOMS.length }));
+  ws.send(JSON.stringify({ type: "HELLO", playerId, name: nameOf(playerId), slotsTotal: ROOMS.length }));
+  if (resumedRoom) {
+    void resumeSnapshot(client); // reenvia o estado da sessão e avisa os demais
+  } else if (resumeId) {
+    ws.send(JSON.stringify({ type: "RESUME_FAILED" })); // sessão expirou/sala fechou → menu
+  }
 
   ws.on("message", async (raw) => {
     let msg: any;
@@ -469,7 +563,7 @@ wss.on("connection", (ws, req) => {
       if (prev && codeToRoom.get(prev.code) === slot) codeToRoom.delete(prev.code);
       const code = genCode();
       const rounds = Math.max(8, Math.min(40, Number(msg.rounds) || 16));
-      matches[slot] = { status: "WAITING", code, host: playerId, totalRounds: rounds, roundsPlayed: 0, ready: new Set(), intermissionEndsAt: 0, folded: new Set(), spectators: new Set(), leader: "", pendingCards: [], blocked: new Set(), shielded: new Set(), lastActivity: Date.now() };
+      matches[slot] = { status: "WAITING", code, host: playerId, totalRounds: rounds, roundsPlayed: 0, ready: new Set(), intermissionEndsAt: 0, folded: new Set(), spectators: new Set(), leader: "", pendingCards: [], blocked: new Set(), shielded: new Set(), lastActivity: Date.now(), disconnected: new Map(), effectsMsg: null };
       codeToRoom.set(code, slot);
       client.room = slot;
       console.log(`gateway: ${playerId} criou a sala ${slot} (código ${code})`);
@@ -761,6 +855,22 @@ wss.on("connection", (ws, req) => {
     const slot = client.room;
     if (!slot || !matches[slot]) return;
     const m = matches[slot]!;
+    // Outro socket vivo do mesmo jogador (ex.: takeover por reconexão) → o assento segue ocupado.
+    if (playersIn(slot).includes(playerId)) return;
+
+    if (m.status !== "ENDED") {
+      // Partida em andamento: GUARDA o assento p/ reconexão (refresh/queda) durante a graça.
+      m.disconnected.set(playerId, Date.now());
+      if (m.host === playerId) {
+        const liveHost = playersIn(slot)[0]; // host passa a alguém VIVO, se houver
+        if (liveHost) m.host = liveHost;
+      }
+      console.log(`gateway: ${playerId} caiu na sala ${slot} — assento guardado por reconexão`);
+      broadcastToRoom(slot, roomStateMsg(slot));
+      void broadcastPlayersPanel(slot);
+      return;
+    }
+    // Partida encerrada: comportamento antigo (libera sala vazia / reatribui host).
     if (playersIn(slot).length === 0) {
       if (codeToRoom.get(m.code) === slot) codeToRoom.delete(m.code);
       matches[slot] = null;
