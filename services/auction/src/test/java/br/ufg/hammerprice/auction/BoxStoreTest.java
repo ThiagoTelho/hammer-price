@@ -29,6 +29,7 @@ class BoxStoreTest {
         final AtomicInteger reserves = new AtomicInteger();
         final AtomicInteger releases = new AtomicInteger();
         final List<String> settles = Collections.synchronizedList(new ArrayList<>());
+        final List<Integer> settleDiscounts = Collections.synchronizedList(new ArrayList<>());
         volatile boolean allowReserve = true;
 
         @Override
@@ -43,9 +44,16 @@ class BoxStoreTest {
         }
 
         @Override
-        public void settle(String p, String b, long a) {
+        public void settle(String p, String b, long a, int discountPct) {
             settles.add(p + ":" + b + ":" + a);
+            settleDiscounts.add(discountPct);
         }
+    }
+
+    // Atalho p/ os testes de carta (fase 2): sem efeitos, salvo os passados.
+    private static void setEffects(BoxStore s, List<String> gavel, List<String> cursed,
+                                   Map<String, Integer> discounts, int boxTierBoost) {
+        s.setPendingEffects(List.of(), List.of(), cursed, gavel, List.of(), discounts, boxTierBoost);
     }
 
     // base 20s, janela anti-snipe 5s, reset 8s, incremento 5% / mín. 5, intermission 0
@@ -281,6 +289,95 @@ class BoxStoreTest {
         } finally {
             a.shutdown();
             b.shutdown();
+        }
+    }
+
+    // ---- Cartas (fase 2): efeitos aplicados no Leilão ----
+
+    @Test
+    void upgradeRaisesBoxTier() {
+        StubWallet w = new StubWallet();
+        BoxStore store = newStore(w);
+        try {
+            setEffects(store, List.of(), List.of(), Map.of(), 3); // Reforço alto → topo do ladder
+            store.closeNow(); // abre a próxima rodada aplicando o pending
+            assertEquals("VAULT", store.roomState().boxType(), "Reforço sobe ao topo do ladder de raridade");
+        } finally {
+            store.shutdown();
+        }
+    }
+
+    @Test
+    void gavelDoublesRivalIncrement() {
+        StubWallet w = new StubWallet();
+        BoxStore store = newStore(w);
+        try {
+            setEffects(store, List.of("ana"), List.of(), Map.of(), 0); // Martelo da ana
+            store.closeNow();
+            String b = store.roomState().boxId();
+            assertTrue(store.placeBid(b, "ana", 100).accepted(), "o autor do Martelo lança normal");
+            BoxStore.BidResult low = store.placeBid(b, "bob", 105); // +5 (incremento normal) não basta
+            assertFalse(low.accepted(), "rival precisa do DOBRO do incremento");
+            assertEquals("TOO_LOW", low.reason());
+            assertTrue(store.placeBid(b, "bob", 110).accepted(), "rival com +10 (2× incremento) é aceito");
+        } finally {
+            store.shutdown();
+        }
+    }
+
+    @Test
+    void discountPassesPctToSettle() {
+        StubWallet w = new StubWallet();
+        BoxStore store = newStore(w);
+        try {
+            setEffects(store, List.of(), List.of(), Map.of("ana", 30), 0); // Desconto de 30% p/ ana
+            store.closeNow();
+            String b = store.roomState().boxId();
+            assertTrue(store.placeBid(b, "ana", 200).accepted());
+            store.closeNow();
+            assertEquals(30, w.settleDiscounts.get(w.settleDiscounts.size() - 1),
+                    "o Desconto repassa o % ao settle da Carteira");
+        } finally {
+            store.shutdown();
+        }
+    }
+
+    @Test
+    void curseForcesMimicOnWinner() {
+        StubWallet w = new StubWallet();
+        BoxStore store = newStore(w);
+        try {
+            setEffects(store, List.of(), List.of("ana"), Map.of(), 0); // Maldição em ana
+            store.closeNow();
+            String b = store.roomState().boxId();
+            assertTrue(store.placeBid(b, "ana", 100).accepted());
+            store.closeNow();
+            BoxStore.OpenResult r = store.openBox(b, "ana");
+            // O opener de teste nunca dá Mímico (peso 0) → isMimic prova o efeito da Maldição.
+            assertTrue(r.isMimic(), "a Maldição abre a caixa do alvo como Mímico");
+            assertEquals("MIMIC", r.item());
+            assertEquals(0, r.quantity());
+        } finally {
+            store.shutdown();
+        }
+    }
+
+    @Test
+    void peekDropMatchesOpenedItem() {
+        StubWallet w = new StubWallet();
+        BoxStore store = newStore(w);
+        try {
+            String b = store.roomState().boxId();
+            BoxStore.OpenResult peek = store.peekDrop(); // Visão: drop pré-sorteado
+            assertTrue(peek.ok());
+            assertFalse(peek.item().isEmpty(), "há um drop pré-sorteado para a rodada");
+            assertTrue(store.placeBid(b, "ana", 100).accepted());
+            store.closeNow();
+            BoxStore.OpenResult open = store.openBox(b, "ana");
+            assertEquals(peek.item(), open.item(), "a Visão revela exatamente o item que a caixa dá");
+            assertEquals(peek.quantity(), open.quantity(), "e a mesma quantidade");
+        } finally {
+            store.shutdown();
         }
     }
 }

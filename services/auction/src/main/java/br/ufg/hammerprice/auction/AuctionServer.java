@@ -1,6 +1,8 @@
 package br.ufg.hammerprice.auction;
 
 import br.ufg.hammerprice.auction.grpc.AdvanceReply;
+import br.ufg.hammerprice.auction.grpc.DiscountEntry;
+import br.ufg.hammerprice.auction.grpc.DropReply;
 import br.ufg.hammerprice.auction.grpc.AuctionGrpc;
 import br.ufg.hammerprice.auction.grpc.Box;
 import br.ufg.hammerprice.auction.grpc.OpenBoxReply;
@@ -10,6 +12,7 @@ import br.ufg.hammerprice.auction.grpc.PlaceBidRequest;
 import br.ufg.hammerprice.auction.grpc.RoomEffects;
 import br.ufg.hammerprice.auction.grpc.RoomQuery;
 import br.ufg.hammerprice.auction.grpc.RoomState;
+import java.util.HashMap;
 import java.util.Map;
 import java.util.Random;
 import br.ufg.hammerprice.wallet.grpc.AddItemRequest;
@@ -62,11 +65,11 @@ public final class AuctionServer {
         }
 
         @Override
-        public void settle(String playerId, String boxId, long amount) {
+        public void settle(String playerId, String boxId, long amount, int discountPct) {
             try {
                 stub.withDeadlineAfter(2, TimeUnit.SECONDS)
                         .settle(SettleRequest.newBuilder()
-                                .setPlayerId(playerId).setBoxId(boxId).setAmount(amount).build());
+                                .setPlayerId(playerId).setBoxId(boxId).setAmount(amount).setDiscountPct(discountPct).build());
             } catch (Exception e) {
                 System.err.println("auction: erro ao debitar o vencedor: " + e.getMessage());
             }
@@ -197,7 +200,12 @@ public final class AuctionServer {
         @Override
         public void setRoundEffects(RoomEffects req, StreamObserver<AdvanceReply> obs) {
             // Efeitos de carta para a PRÓXIMA rodada (empurrados pelo gateway antes do advance).
-            store.setPendingEffects(req.getDoubleLootList(), req.getInsuredList(), req.getCursedList());
+            HashMap<String, Integer> discounts = new HashMap<>();
+            for (DiscountEntry d : req.getDiscountsList()) {
+                discounts.put(d.getPlayer(), d.getPct());
+            }
+            store.setPendingEffects(req.getDoubleLootList(), req.getInsuredList(), req.getCursedList(),
+                    req.getGavelList(), req.getInsightList(), discounts, req.getBoxTierBoost());
             obs.onNext(AdvanceReply.newBuilder().setStarted(true).build());
             obs.onCompleted();
         }
@@ -206,6 +214,13 @@ public final class AuctionServer {
         public void resetOpens(RoomQuery req, StreamObserver<AdvanceReply> obs) {
             store.resetOpens(); // nova partida: limpa caixas pendentes/abertas (evita acúmulo)
             obs.onNext(AdvanceReply.newBuilder().setStarted(true).build());
+            obs.onCompleted();
+        }
+
+        @Override
+        public void peekDrop(RoomQuery req, StreamObserver<DropReply> obs) {
+            BoxStore.OpenResult d = store.peekDrop(); // carta Visão: item pré-sorteado da caixa atual
+            obs.onNext(DropReply.newBuilder().setItem(d.item()).setQuantity(d.quantity()).build());
             obs.onCompleted();
         }
     }

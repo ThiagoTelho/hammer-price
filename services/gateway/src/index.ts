@@ -9,7 +9,7 @@
 // - Fan-out ASSÍNCRONO: assina o canal Redis Pub/Sub de cada sala (só durante a partida).
 import { WebSocketServer, WebSocket } from "ws";
 import Redis from "ioredis";
-import { placeBid, getRoomState, openBox, getPlayer, sellItem, formCollection, advanceRound, forceClose, resetOpens, resetPlayer, buyCard, consumeCard, transfer, setRoundEffects, type Box } from "./grpcClients.js";
+import { placeBid, getRoomState, openBox, getPlayer, sellItem, formCollection, advanceRound, forceClose, resetOpens, resetPlayer, buyCard, consumeCard, transfer, setRoundEffects, peekDrop, type Box } from "./grpcClients.js";
 
 const PORT = Number(process.env.GATEWAY_PORT ?? 8080);
 const REDIS_URL = process.env.REDIS_URL ?? "redis://localhost:6379";
@@ -20,6 +20,7 @@ const INTERMISSION_MS = Number(process.env.INTERMISSION_MAX_SECONDS ?? 120) * 10
 const MAX_PLAYERS = Number(process.env.MAX_PLAYERS_PER_ROOM ?? 15);
 // Imposto (carta TAX): quanto cada rival paga ao autor (espelha cards.tax_amount do balance.yaml).
 const CARD_TAX = Number(process.env.CARD_TAX ?? 25);
+const CARD_DISCOUNT_PCT = Number(process.env.CARD_DISCOUNT_PCT ?? 30); // Desconto: % de abatimento no arremate
 // Heartbeat: termina conexões mortas (que não respondem ao ping) → libera o slot da sala.
 const HEARTBEAT_MS = Number(process.env.HEARTBEAT_SECONDS ?? 30) * 1000;
 // Reaper: libera salas sem nenhuma atividade de cliente por este tempo (lobbies/partidas abandonados).
@@ -253,20 +254,32 @@ async function maybeCloseByFold(room: string): Promise<void> {
   }
 }
 
-// Efeitos do LEILÃO acumulados a partir das cartas jogadas no intervalo (Dobro/Seguro/Maldição).
-function auctionEffectsOf(m: Match): { doubleLoot: string[]; insured: string[]; cursed: string[] } {
-  const doubleLoot: string[] = [];
-  const insured: string[] = [];
-  const cursed: string[] = [];
+// Efeitos do LEILÃO acumulados das cartas jogadas no intervalo. O Escudo (alvo protegido)
+// ANULA a Maldição; os demais buffs são do próprio jogador. Empurrado via SetRoundEffects.
+function auctionEffectsOf(m: Match): {
+  doubleLoot: string[]; insured: string[]; cursed: string[];
+  gavel: string[]; insight: string[];
+  discounts: { player: string; pct: number }[]; boxTierBoost: number;
+} {
+  const shielded = new Set(m.pendingCards.filter((c) => c.cardType === "SHIELD").map((c) => c.source));
+  const doubleLoot: string[] = [], insured: string[] = [], cursed: string[] = [];
+  const gavel: string[] = [], insight: string[] = [];
+  const discounts: { player: string; pct: number }[] = [];
+  let boxTierBoost = 0;
   for (const c of m.pendingCards) {
     if (c.cardType === "DOUBLE") doubleLoot.push(c.source);
     else if (c.cardType === "INSURANCE") insured.push(c.source);
-    else if (c.cardType === "CURSE" && c.target) cursed.push(c.target);
+    else if (c.cardType === "GAVEL") gavel.push(c.source);
+    else if (c.cardType === "INSIGHT") insight.push(c.source);
+    else if (c.cardType === "DISCOUNT") discounts.push({ player: c.source, pct: CARD_DISCOUNT_PCT });
+    else if (c.cardType === "UPGRADE") boxTierBoost += 1;
+    else if (c.cardType === "CURSE" && c.target && !shielded.has(c.target)) cursed.push(c.target); // Escudo anula
   }
-  return { doubleLoot, insured, cursed };
+  return { doubleLoot, insured, cursed, gavel, insight, discounts, boxTierBoost };
 }
 
-// Ao iniciar a rodada: aplica efeitos do gateway (Imposto, Bloqueio) e difunde os ativos p/ a UI.
+// Ao iniciar a rodada: aplica efeitos do gateway (Escudo, Imposto, Bloqueio), revela a Visão
+// em privado e difunde os efeitos ativos p/ a UI.
 async function resolveRoundCards(room: string): Promise<void> {
   const m = matches[room];
   if (!m) return;
@@ -274,15 +287,19 @@ async function resolveRoundCards(room: string): Promise<void> {
   m.pendingCards = [];
   m.blocked.clear();
   m.shielded.clear();
-  const doubleLoot: string[] = [];
-  const insured: string[] = [];
+  for (const c of cards) if (c.cardType === "SHIELD") m.shielded.add(c.source); // Escudo anula ofensivas
+  const doubleLoot: string[] = [], insured: string[] = [], cursed: string[] = [], gavel: string[] = [];
+  const insightSources: string[] = [];
   for (const c of cards) {
-    if (c.cardType === "BLOCK" && c.target) m.blocked.add(c.target);
+    if (c.cardType === "BLOCK" && c.target && !m.shielded.has(c.target)) m.blocked.add(c.target);
+    else if (c.cardType === "CURSE" && c.target && !m.shielded.has(c.target)) cursed.push(c.target);
     else if (c.cardType === "DOUBLE") doubleLoot.push(c.source);
     else if (c.cardType === "INSURANCE") insured.push(c.source);
+    else if (c.cardType === "GAVEL") gavel.push(c.source);
+    else if (c.cardType === "INSIGHT") insightSources.push(c.source);
     else if (c.cardType === "TAX") {
       for (const rival of activeBidders(room)) {
-        if (rival !== c.source) {
+        if (rival !== c.source && !m.shielded.has(rival)) {
           try {
             await transfer(WALLET_ROUTES[room], rival, c.source, CARD_TAX);
           } catch (e) {
@@ -292,7 +309,19 @@ async function resolveRoundCards(room: string): Promise<void> {
       }
     }
   }
-  broadcastToRoom(room, { type: "CARD_EFFECTS", blocked: [...m.blocked], doubleLoot, insured });
+  // Visão: revela o drop pré-sorteado (a caixa já foi sorteada no startRound) em privado.
+  if (insightSources.length) {
+    try {
+      const d = await peekDrop(ROUTES[room], room);
+      for (const src of insightSources) {
+        const cl = [...clients].find((x) => x.room === room && x.playerId === src);
+        if (cl) cl.ws.send(JSON.stringify({ type: "INSIGHT", item: d.item, quantity: d.quantity }));
+      }
+    } catch (e) {
+      console.error("gateway: peekDrop:", e);
+    }
+  }
+  broadcastToRoom(room, { type: "CARD_EFFECTS", blocked: [...m.blocked], doubleLoot, insured, cursed, shielded: [...m.shielded], gavel });
   for (const c of clients) if (c.room === room) void sendWallet(c);
   void broadcastPlayersPanel(room);
 }

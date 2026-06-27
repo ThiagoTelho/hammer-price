@@ -89,7 +89,8 @@ export function App() {
   const [spectating, setSpectating] = useState(false); // desisti e só assisto
   const [chat, setChat] = useState<{ player: string; text: string; ts: number }[]>([]);
   const [nextCardPrice, setNextCardPrice] = useState(0);
-  const [cardEffects, setCardEffects] = useState<{ blocked: string[]; doubleLoot: string[]; insured: string[] }>({ blocked: [], doubleLoot: [], insured: [] });
+  const [cardEffects, setCardEffects] = useState<{ blocked: string[]; doubleLoot: string[]; insured: string[]; cursed: string[]; shielded: string[]; gavel: string[] }>({ blocked: [], doubleLoot: [], insured: [], cursed: [], shielded: [], gavel: [] });
+  const [insight, setInsight] = useState<{ item: string; quantity: number } | null>(null); // Visão: drop revelado
   const [targeting, setTargeting] = useState<string | null>(null); // cartType aguardando escolha de alvo
   const [showCheats, setShowCheats] = useState(false); // overlay com todas as cartas
 
@@ -167,7 +168,8 @@ export function App() {
             setFolded(false);
             setFoldState({ folded: 0, total: 0 });
             setSpectating(false);
-            setCardEffects({ blocked: [], doubleLoot: [], insured: [] });
+            setCardEffects({ blocked: [], doubleLoot: [], insured: [], cursed: [], shielded: [], gavel: [] });
+            setInsight(null);
             setTargeting(null);
             setPhase("playing");
             addLog(`🚀 Partida iniciada! ${msg.totalRounds} rodadas.`);
@@ -201,7 +203,8 @@ export function App() {
             setIntermission({ endsAt: msg.endsAt ?? 0 });
             setMatchRounds({ played: msg.roundsPlayed ?? 0, total: msg.totalRounds ?? 0 });
             setIAmReady(false);
-            setCardEffects({ blocked: [], doubleLoot: [], insured: [] });
+            setCardEffects({ blocked: [], doubleLoot: [], insured: [], cursed: [], shielded: [], gavel: [] });
+            setInsight(null);
             setTargeting(null);
             break;
           case "READY_STATE":
@@ -312,7 +315,19 @@ export function App() {
             break;
           }
           case "CARD_EFFECTS":
-            setCardEffects({ blocked: msg.blocked ?? [], doubleLoot: msg.doubleLoot ?? [], insured: msg.insured ?? [] });
+            setCardEffects({
+              blocked: msg.blocked ?? [],
+              doubleLoot: msg.doubleLoot ?? [],
+              insured: msg.insured ?? [],
+              cursed: msg.cursed ?? [],
+              shielded: msg.shielded ?? [],
+              gavel: msg.gavel ?? [],
+            });
+            break;
+          case "INSIGHT": // Visão: o servidor revelou o item que a caixa vai dar
+            setInsight({ item: msg.item, quantity: msg.quantity });
+            sfx.whoosh();
+            addLog(`👁️ Visão: a caixa desta rodada vai dar ${msg.item === "MIMIC" ? "um MÍMICO 💀" : `${msg.quantity}× ${msg.item}`}`);
             break;
           case "SELL_RESULT":
             if (msg.ok) sfx.coin();
@@ -616,11 +631,15 @@ export function App() {
                   )}
                 </div>
 
-                {(cardEffects.blocked.includes(playerId) || cardEffects.doubleLoot.includes(playerId) || cardEffects.insured.includes(playerId)) && (
+                {(cardEffects.blocked.includes(playerId) || cardEffects.doubleLoot.includes(playerId) || cardEffects.insured.includes(playerId) || cardEffects.cursed.includes(playerId) || cardEffects.shielded.includes(playerId) || cardEffects.gavel.length > 0) && (
                   <div className="flex flex-wrap gap-1 text-[11px]">
                     {cardEffects.blocked.includes(playerId) && <span className="px-1.5 py-0.5 rounded bg-red-500/15 text-red-300 border border-red-500/30">🚫 Bloqueado</span>}
                     {cardEffects.doubleLoot.includes(playerId) && <span className="px-1.5 py-0.5 rounded bg-cyan-500/15 text-cyan-300 border border-cyan-500/30">✖️2 Dobro</span>}
                     {cardEffects.insured.includes(playerId) && <span className="px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">🛡️ Seguro</span>}
+                    {cardEffects.cursed.includes(playerId) && <span className="px-1.5 py-0.5 rounded bg-fuchsia-500/15 text-fuchsia-300 border border-fuchsia-500/30">🪤 Amaldiçoado</span>}
+                    {cardEffects.shielded.includes(playerId) && <span className="px-1.5 py-0.5 rounded bg-sky-500/15 text-sky-300 border border-sky-500/30">⛓️ Escudo</span>}
+                    {cardEffects.gavel.includes(playerId) && <span className="px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-300 border border-amber-500/30">🔨 Martelo</span>}
+                    {cardEffects.gavel.length > 0 && !cardEffects.gavel.includes(playerId) && <span className="px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-200/80 border border-amber-500/20">🔨 incremento 2×</span>}
                   </div>
                 )}
 
@@ -756,7 +775,7 @@ export function App() {
                     exit={{ opacity: 0 }}
                     className="relative z-[4] w-full max-w-[300px] text-center flex flex-col items-center gap-3"
                   >
-                    <div className="text-muted">⏳ Intervalo — venda, queime ou forme coleções</div>
+                    <div className="text-muted">⏳ Intervalo — venda, forme coleções, jogue cartas</div>
                     <div className="text-5xl font-bold text-gold tabular-nums">{intermission ? intermissionCountdown(intermission.endsAt) : "—"}</div>
                     <div className="text-sm text-muted">{readyState.ready}/{readyState.total} prontos</div>
                     <button className={`${C.btnGold} w-full`} disabled={iAmReady || !intermission} onClick={() => { send({ type: "READY" }); setIAmReady(true); }}>
@@ -767,13 +786,22 @@ export function App() {
               </AnimatePresence>
             </div>
 
+            {/* Carta Visão: o item pré-sorteado da caixa desta rodada (só o portador recebe). */}
+            {box && insight && !spectating && (
+              <div className="rounded-lg border border-fuchsia-500/40 bg-fuchsia-500/10 px-3 py-2 text-center text-sm text-fuchsia-200">
+                👁️ Visão: esta caixa vai dar {insight.item === "MIMIC" ? <b className="text-red-300">um MÍMICO 💀</b> : <b className="text-fuchsia-100">{insight.quantity}× {insight.item}</b>}
+              </div>
+            )}
+
             {/* Controles de lance / passar — abaixo do palco. Espectador não vê. */}
             {box && !spectating && (folded ? (
               <div className={`${C.card} p-3 text-center text-sm text-muted`}>
                 🙅 Você passou nesta rodada · <b className="text-stone-300">{foldState.folded}/{foldState.total || "?"}</b> passaram
               </div>
             ) : (() => {
-              const minInc = Math.max(5, Math.floor(box.currentBid * 0.05));
+              // Carta Martelo: se o Martelo está ativo e eu NÃO o joguei, meu incremento dobra.
+              const gavelOnMe = cardEffects.gavel.length > 0 && !cardEffects.gavel.includes(playerId);
+              const minInc = Math.max(5, Math.floor(box.currentBid * 0.05)) * (gavelOnMe ? 2 : 1);
               const minNext = box.currentBid + minInc;
               const customVal = Number(bidAmount);
               const customOk = bidAmount === "" || customVal >= minNext;
@@ -781,7 +809,7 @@ export function App() {
               const iAmLeader = box.leader === playerId;
               return (
                 <div className={`${C.card} p-3 flex flex-col gap-2`}>
-                  <div className="text-xs text-muted text-center">lance mínimo: <b className="text-gold">{money(minNext)}</b></div>
+                  <div className="text-xs text-muted text-center">lance mínimo: <b className="text-gold">{money(minNext)}</b>{gavelOnMe && <span className="text-amber-300"> 🔨 (2×)</span>}</div>
                   <div className="grid grid-cols-4 gap-2">
                     <button className={C.btnSmall} onClick={() => placeBid(box.boxId, minNext)}>Mín</button>
                     {[10, 50, 100].map((n) => (

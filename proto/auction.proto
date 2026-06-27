@@ -17,6 +17,13 @@ service Auction {
   rpc ForceClose   (RoomQuery)       returns (AdvanceReply); // fecha JÁ a rodada (todos passaram): o líder vence
   rpc SetRoundEffects (RoomEffects)  returns (AdvanceReply); // efeitos de cartas para a PRÓXIMA rodada
   rpc ResetOpens   (RoomQuery)       returns (AdvanceReply); // limpa o rastreio de aberturas (nova partida)
+  rpc PeekDrop     (RoomQuery)       returns (DropReply);    // carta Visão: item pré-sorteado da caixa atual
+}
+
+// Item pré-sorteado da caixa da rodada atual (revelado ao portador da carta Visão).
+message DropReply {
+  string item     = 1;   // COPPER | SILVER | GOLD | DIAMOND | MIMIC | "" (sem rodada ativa)
+  int32  quantity = 2;
 }
 
 // Efeitos de cartas que valem para a próxima rodada (empurrados pelo gateway antes do advance).

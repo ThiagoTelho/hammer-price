@@ -60,7 +60,7 @@ public final class WalletServer {
 
         @Override
         public void settle(SettleRequest req, StreamObserver<Ack> obs) {
-            boolean ok = store.settle(req.getPlayerId(), req.getBoxId());
+            boolean ok = store.settle(req.getPlayerId(), req.getBoxId(), req.getDiscountPct());
             obs.onNext(Ack.newBuilder().setOk(ok).build());
             obs.onCompleted();
         }

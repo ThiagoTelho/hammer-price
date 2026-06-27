@@ -110,11 +110,10 @@ public final class WalletStore {
 
     /**
      * Converte a reserva da caixa em débito definitivo: o vencedor PAGA ao arrematar.
-     * Debita do saldo e zera a reserva daquela caixa. Idempotente (se não houver reserva,
-     * não faz nada). Usa o valor reservado como verdade (ignora divergências do {@code amount}).
-     * Retorna {@code false} se não havia reserva para a caixa.
+     * A carta Desconto abate {@code discountPct}% do débito (libera a reserva, debita menos).
+     * Idempotente; retorna {@code false} se não havia reserva para a caixa.
      */
-    public synchronized boolean settle(String playerId, String boxId) {
+    public synchronized boolean settle(String playerId, String boxId, int discountPct) {
         Player p = players.get(playerId);
         if (p == null) {
             return false;
@@ -124,7 +123,8 @@ public final class WalletStore {
             return false; // nada reservado nesta caixa (já liquidado/devolvido)
         }
         p.reserved -= amt;
-        p.balance -= amt; // débito real: o dinheiro sai do saldo
+        int pct = Math.max(0, Math.min(100, discountPct));
+        p.balance -= amt - (amt * pct / 100); // débito real, com Desconto se houver
         return true;
     }
 

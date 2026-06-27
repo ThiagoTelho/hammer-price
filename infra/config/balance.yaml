@@ -69,6 +69,12 @@ cards:                          # cartas de habilidade (compradas com dinheiro; 
     DOUBLE: 10                  # Dobro: sua abertura rende o dobro de itens
     TAX: 10                     # Imposto: cada rival te paga
     INSURANCE: 10               # Seguro: sem penalidade de Mímico
+    DISCOUNT: 10                # Desconto: paga menos se vencer
+    CURSE: 10                   # Maldição: se o alvo vencer, a caixa abre como Mímico
+    UPGRADE: 10                 # Reforço: a caixa sobe um nível (odds melhores)
+    SHIELD: 10                  # Escudo: imune a Bloqueio/Maldição/Imposto
+    GAVEL: 10                   # Martelo: incremento mínimo dobrado p/ rivais
+    INSIGHT: 10                 # Visão: vê o item que a caixa vai dar
 
 market:
   recalc_interval_seconds: 5

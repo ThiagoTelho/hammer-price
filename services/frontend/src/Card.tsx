@@ -1,5 +1,5 @@
 // Cartas de habilidade — "arte" por tipo (cor + ícone + moldura). Visual distinto por carta,
-// no estilo do Chest.tsx. As 10 cartas estão definidas; a Fase 1 usa BLOCK/DOUBLE/TAX/INSURANCE.
+// no estilo do Chest.tsx. As 10 cartas estão ativas (Bloqueio…Visão).
 
 export interface CardDef {
   label: string;

@@ -138,13 +138,39 @@ export function transfer(addr: string, fromPlayer: string, toPlayer: string, amo
   });
 }
 // Empurra os efeitos de carta para a PRÓXIMA rodada do Leilão.
-export interface RoundEffects { doubleLoot?: string[]; insured?: string[]; cursed?: string[] }
+export interface RoundEffects {
+  doubleLoot?: string[];
+  insured?: string[];
+  cursed?: string[];
+  gavel?: string[];
+  insight?: string[];
+  discounts?: { player: string; pct: number }[];
+  boxTierBoost?: number;
+}
 export function setRoundEffects(addr: string, roomId: string, eff: RoundEffects): Promise<{ started: boolean }> {
   return new Promise((res, rej) => {
     auctionAt(addr).SetRoundEffects(
-      { roomId, doubleLoot: eff.doubleLoot ?? [], insured: eff.insured ?? [], cursed: eff.cursed ?? [] },
+      {
+        roomId,
+        doubleLoot: eff.doubleLoot ?? [],
+        insured: eff.insured ?? [],
+        cursed: eff.cursed ?? [],
+        gavel: eff.gavel ?? [],
+        insight: eff.insight ?? [],
+        discounts: eff.discounts ?? [],
+        boxTierBoost: eff.boxTierBoost ?? 0,
+      },
       callOpts(),
       (err: any, reply: { started: boolean }) => (err ? rej(err) : res(reply)),
+    );
+  });
+}
+
+// Carta Visão: item pré-sorteado da caixa da rodada atual.
+export function peekDrop(addr: string, roomId: string): Promise<{ item: string; quantity: number }> {
+  return new Promise((res, rej) => {
+    auctionAt(addr).PeekDrop({ roomId }, callOpts(), (err: any, reply: { item: string; quantity: number }) =>
+      err ? rej(err) : res(reply),
     );
   });
 }

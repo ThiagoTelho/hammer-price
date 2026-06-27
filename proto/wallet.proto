@@ -44,9 +44,10 @@ message ReleaseRequest {
 
 // Converte a reserva da caixa em débito definitivo (o vencedor paga ao arrematar).
 message SettleRequest {
-  string player_id = 1;
-  string box_id    = 2;
-  int64  amount    = 3;   // valor arrematado; a carteira confere contra a reserva
+  string player_id   = 1;
+  string box_id      = 2;
+  int64  amount      = 3;   // valor arrematado; a carteira confere contra a reserva
+  int32  discount_pct = 4;  // carta Desconto: % de abatimento no débito (0 = sem desconto)
 }
 
 message PlayerQuery { string player_id = 1; }
