@@ -325,6 +325,10 @@ export function App() {
             }
             addLog(msg.ok ? `🏅 Coleção ${msg.kind} formada! +${money(msg.bonus)}` : `⚠️ Não deu para formar ${msg.kind}: ${msg.reason}`);
             break;
+          case "ROOM_CLOSED":
+            addLog(`⚠️ Sala encerrada${msg.reason === "IDLE" ? " por inatividade" : ""}. Voltando ao menu…`);
+            setTimeout(() => window.location.reload(), 1800);
+            break;
           case "ERROR": {
             const errors: Record<string, string> = {
               ROOM_FULL: "Sala cheia (máx. 15 jogadores).",

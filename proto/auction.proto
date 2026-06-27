@@ -16,6 +16,7 @@ service Auction {
   rpc AdvanceRound (RoomQuery)       returns (AdvanceReply); // encerra o intervalo e abre já a próxima rodada
   rpc ForceClose   (RoomQuery)       returns (AdvanceReply); // fecha JÁ a rodada (todos passaram): o líder vence
   rpc SetRoundEffects (RoomEffects)  returns (AdvanceReply); // efeitos de cartas para a PRÓXIMA rodada
+  rpc ResetOpens   (RoomQuery)       returns (AdvanceReply); // limpa o rastreio de aberturas (nova partida)
 }
 
 // Efeitos de cartas que valem para a próxima rodada (empurrados pelo gateway antes do advance).

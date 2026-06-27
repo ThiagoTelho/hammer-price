@@ -454,6 +454,15 @@ public final class BoxStore {
         closeRound();
     }
 
+    /**
+     * Limpa o rastreamento de aberturas (caixas arrematadas pendentes + ids já abertos) — chamado
+     * no início de cada partida para não acumular estado de jogos anteriores (evita vazamento lento).
+     */
+    public void resetOpens() {
+        pendingOpens.clear();
+        opened.clear();
+    }
+
     // ---- Apoio a testes (visível no mesmo pacote) ----
 
     /** Força o fechamento imediato da rodada corrente (determinístico em teste). */

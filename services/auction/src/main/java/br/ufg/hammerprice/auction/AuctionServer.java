@@ -201,6 +201,13 @@ public final class AuctionServer {
             obs.onNext(AdvanceReply.newBuilder().setStarted(true).build());
             obs.onCompleted();
         }
+
+        @Override
+        public void resetOpens(RoomQuery req, StreamObserver<AdvanceReply> obs) {
+            store.resetOpens(); // nova partida: limpa caixas pendentes/abertas (evita acúmulo)
+            obs.onNext(AdvanceReply.newBuilder().setStarted(true).build());
+            obs.onCompleted();
+        }
     }
 
     /** Odds de fallback (espelham o balance.yaml) caso a config não esteja disponível. */

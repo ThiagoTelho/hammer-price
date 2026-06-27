@@ -158,6 +158,15 @@ export function forceClose(addr: string, roomId: string): Promise<{ started: boo
   });
 }
 
+// Limpa o rastreio de aberturas do Leilão (chamado ao iniciar uma nova partida).
+export function resetOpens(addr: string, roomId: string): Promise<{ started: boolean }> {
+  return new Promise((res, rej) => {
+    auctionAt(addr).ResetOpens({ roomId }, callOpts(), (err: any, reply: { started: boolean }) =>
+      err ? rej(err) : res(reply),
+    );
+  });
+}
+
 export interface OpenBoxReply {
   ok: boolean;
   reason: string;

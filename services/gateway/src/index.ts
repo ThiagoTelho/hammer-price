@@ -9,7 +9,7 @@
 // - Fan-out ASSÍNCRONO: assina o canal Redis Pub/Sub de cada sala (só durante a partida).
 import { WebSocketServer, WebSocket } from "ws";
 import Redis from "ioredis";
-import { placeBid, getRoomState, openBox, getPlayer, sellItem, formCollection, advanceRound, forceClose, resetPlayer, buyCard, consumeCard, transfer, setRoundEffects, type Box } from "./grpcClients.js";
+import { placeBid, getRoomState, openBox, getPlayer, sellItem, formCollection, advanceRound, forceClose, resetOpens, resetPlayer, buyCard, consumeCard, transfer, setRoundEffects, type Box } from "./grpcClients.js";
 
 const PORT = Number(process.env.GATEWAY_PORT ?? 8080);
 const REDIS_URL = process.env.REDIS_URL ?? "redis://localhost:6379";
@@ -20,6 +20,10 @@ const INTERMISSION_MS = Number(process.env.INTERMISSION_MAX_SECONDS ?? 120) * 10
 const MAX_PLAYERS = Number(process.env.MAX_PLAYERS_PER_ROOM ?? 15);
 // Imposto (carta TAX): quanto cada rival paga ao autor (espelha cards.tax_amount do balance.yaml).
 const CARD_TAX = Number(process.env.CARD_TAX ?? 25);
+// Heartbeat: termina conexões mortas (que não respondem ao ping) → libera o slot da sala.
+const HEARTBEAT_MS = Number(process.env.HEARTBEAT_SECONDS ?? 30) * 1000;
+// Reaper: libera salas sem nenhuma atividade de cliente por este tempo (lobbies/partidas abandonados).
+const ROOM_IDLE_MS = Number(process.env.ROOM_IDLE_MINUTES ?? 15) * 60 * 1000;
 
 // Mapa slot de sala -> endereço da instância de Leilão dona da sala (a partição R6).
 function parseRoutes(s: string): Record<string, string> {
@@ -39,6 +43,7 @@ interface Client {
   playerId: string;
   room: string | null; // slot da sala, definido ao criar/entrar
   lastChat?: number; // timestamp do último chat (anti-spam leve)
+  isAlive: boolean; // heartbeat: respondeu ao último ping? (conexões mortas são terminadas)
 }
 const clients = new Set<Client>();
 
@@ -54,6 +59,7 @@ interface Match {
   folded: Set<string>; // quem passou a vez NESTA rodada (zera a cada rodada)
   spectators: Set<string>; // quem desistiu e só assiste (persiste a partida)
   leader: string; // líder atual da rodada (p/ decidir o fechamento por fold)
+  lastActivity: number; // último ms com mensagem de algum cliente da sala (p/ reaper de inatividade)
   pendingCards: { source: string; cardType: string; target?: string }[]; // cartas jogadas p/ a próxima rodada
   blocked: Set<string>; // bloqueados de dar lance NESTA rodada (carta Bloqueio)
   shielded: Set<string>; // imunes a efeitos ofensivos (carta Escudo — fase 2)
@@ -359,6 +365,46 @@ replica.on("error", (e) => console.error("gateway: erro na réplica Redis:", e.m
 const wss = new WebSocketServer({ port: PORT });
 console.log(`gateway: WebSocket ouvindo em ws://localhost:${PORT} (slots: ${ROOMS.join(", ")})`);
 
+// Heartbeat: a cada HEARTBEAT_MS, mata quem não respondeu ao último ping (o `close`
+// resultante libera o slot da sala). Evita conexões "fantasma" presas após queda de rede.
+const heartbeat = setInterval(() => {
+  for (const c of clients) {
+    if (!c.isAlive) {
+      c.ws.terminate();
+      continue;
+    }
+    c.isAlive = false;
+    try {
+      c.ws.ping();
+    } catch {
+      /* socket já caindo */
+    }
+  }
+}, HEARTBEAT_MS);
+wss.on("close", () => clearInterval(heartbeat));
+
+// Reaper: libera salas sem QUALQUER mensagem de cliente há ROOM_IDLE_MS (lobby/partida abandonados).
+setInterval(() => {
+  const now = Date.now();
+  for (const room of ROOMS) {
+    const m = matches[room];
+    if (!m || now - m.lastActivity <= ROOM_IDLE_MS) continue;
+    for (const c of clients) {
+      if (c.room === room) {
+        try {
+          c.ws.send(JSON.stringify({ type: "ROOM_CLOSED", reason: "IDLE" }));
+        } catch {
+          /* ignora */
+        }
+        c.room = null;
+      }
+    }
+    if (codeToRoom.get(m.code) === room) codeToRoom.delete(m.code);
+    matches[room] = null;
+    console.log(`gateway: sala ${room} liberada por inatividade`);
+  }
+}, Math.min(60_000, ROOM_IDLE_MS)); // checa a cada 60s (ou mais rápido se o teto de inatividade for curto)
+
 wss.on("connection", (ws, req) => {
   const url = new URL(req.url ?? "", "http://localhost");
   // Identidade ÚNICA: nome (display, sem '#') + sufixo aleatório → `ana#a3f`. Evita que dois
@@ -368,8 +414,9 @@ wss.on("connection", (ws, req) => {
   do {
     playerId = `${rawName}#${Math.random().toString(36).slice(2, 6)}`;
   } while ([...clients].some((c) => c.playerId === playerId));
-  const client: Client = { ws, playerId, room: null };
+  const client: Client = { ws, playerId, room: null, isAlive: true };
   clients.add(client);
+  ws.on("pong", () => { client.isAlive = true; }); // resposta ao heartbeat → conexão viva
   ws.send(JSON.stringify({ type: "HELLO", playerId, name: rawName, slotsTotal: ROOMS.length }));
 
   ws.on("message", async (raw) => {
@@ -379,6 +426,8 @@ wss.on("connection", (ws, req) => {
     } catch {
       return;
     }
+    // Marca atividade da sala (p/ o reaper de inatividade não liberar salas em uso).
+    if (client.room && matches[client.room]) matches[client.room]!.lastActivity = Date.now();
 
     // ---- Lobby ----
     if (msg.type === "CREATE_ROOM") {
@@ -391,7 +440,7 @@ wss.on("connection", (ws, req) => {
       if (prev && codeToRoom.get(prev.code) === slot) codeToRoom.delete(prev.code);
       const code = genCode();
       const rounds = Math.max(8, Math.min(40, Number(msg.rounds) || 16));
-      matches[slot] = { status: "WAITING", code, host: playerId, totalRounds: rounds, roundsPlayed: 0, ready: new Set(), intermissionEndsAt: 0, folded: new Set(), spectators: new Set(), leader: "", pendingCards: [], blocked: new Set(), shielded: new Set() };
+      matches[slot] = { status: "WAITING", code, host: playerId, totalRounds: rounds, roundsPlayed: 0, ready: new Set(), intermissionEndsAt: 0, folded: new Set(), spectators: new Set(), leader: "", pendingCards: [], blocked: new Set(), shielded: new Set(), lastActivity: Date.now() };
       codeToRoom.set(code, slot);
       client.room = slot;
       console.log(`gateway: ${playerId} criou a sala ${slot} (código ${code})`);
@@ -442,6 +491,12 @@ wss.on("connection", (ws, req) => {
       console.log(`gateway: partida iniciada na sala ${slot} (${playersIn(slot).length} jogadores, ${m.totalRounds} rodadas)`);
       broadcastToRoom(slot, { type: "MATCH_STARTED", totalRounds: m.totalRounds, roundsPlayed: 0 });
       broadcastToRoom(slot, roomStateMsg(slot));
+      // Nova partida: limpa o rastreio de aberturas do Leilão (não acumula estado entre jogos).
+      try {
+        await resetOpens(ROUTES[slot], slot);
+      } catch {
+        /* ignora */
+      }
       // Garante uma rodada ATIVA já no início (caso o Leilão esteja num intervalo longo).
       try {
         await advanceRound(ROUTES[slot], slot);
