@@ -104,6 +104,7 @@ const BID_TIMER_MS = 20000; // fallback p/ a escala do anel se box.timerMs vier 
 // Log de "Eventos": escondido por padrão (entrega informação ao jogador). Abra com ?logs=1
 // para a gravação da demo. Lido 1× no carregamento.
 const SHOW_LOGS = new URLSearchParams(window.location.search).has("logs");
+const HAND_MAX = 4; // espelha cards.hand_max no balance.yaml (teto da mão; o servidor é a verdade)
 const money = (n: number): string => `$${Math.round(n).toLocaleString("pt-BR")}`;
 const ITEM_ORDER = ["COPPER", "SILVER", "GOLD", "DIAMOND", "MIMIC"];
 const ITEM_EMOJI: Record<string, string> = { COPPER: "🪙", SILVER: "🥈", GOLD: "🥇", DIAMOND: "💎", MIMIC: "💀" };
@@ -143,6 +144,8 @@ export function App() {
   const [playedCard, setPlayedCard] = useState(false); // já joguei 1 carta NESTE intervalo (1 por intervalo)
   const [logsOpen, setLogsOpen] = useState(true); // painel de Eventos recolhível
   const [copiedCode, setCopiedCode] = useState(false); // feedback do botão "copiar código"
+  // Confirmação no estilo do jogo (substitui o confirm() nativo). null = fechado.
+  const [confirmDialog, setConfirmDialog] = useState<{ title: string; body: string; yes: string; onYes: () => void } | null>(null);
   const [lobby, setLobby] = useState<{ status: string; host: string; players: string[] }>({ status: "WAITING", host: "", players: [] });
   const [ranking, setRanking] = useState<RankRow[]>([]);
   const [roundsToCreate, setRoundsToCreate] = useState(16);
@@ -178,6 +181,7 @@ export function App() {
   const fireConfetti = () => setConfettiKey((k) => k + 1);
   const wonBoxesRef = useRef<{ boxId: string; boxType: string }[]>([]);
   const lastTickRef = useRef(-1);
+  const openCursedRef = useRef(false); // a abertura atual veio de uma Maldição? (revela ao vencedor)
 
   const wsRef = useRef<WebSocket | null>(null);
   const playerIdRef = useRef("");
@@ -362,8 +366,10 @@ export function App() {
               const tier = wonBoxesRef.current.find((b) => b.boxId === msg.boxId)?.boxType ?? "WOODEN";
               setWonBoxes((prev) => prev.filter((b) => b.boxId !== msg.boxId));
               const qty = msg.quantity ?? 1;
+              const cursedMimic = !!(msg.isMimic && msg.cursed); // Mímico forçado por Maldição
+              openCursedRef.current = cursedMimic;
               // Abertura animada do baú — entra na fila de overlays.
-              enqueueOverlay({ kind: "open", tier, item: msg.item, qty, isMimic: msg.isMimic, sub: msg.isMimic ? "Cuidado…" : `${qty}× para o inventário`, durationMs: 2800 });
+              enqueueOverlay({ kind: "open", tier, item: msg.item, qty, isMimic: msg.isMimic, sub: msg.isMimic ? (cursedMimic ? "🪤 Você foi amaldiçoado!" : "Cuidado…") : `${qty}× para o inventário`, durationMs: 2800 });
               sfx.creak();
               if (msg.isMimic) sfx.thud();
               else {
@@ -377,8 +383,9 @@ export function App() {
             const mine = msg.player === playerIdRef.current;
             if (msg.isMimic) {
               const insured = msg.penaltyKind === "INSURED";
-              addLog(`💀 ${mine ? "Você" : nm(msg.player)} abriu um MÍMICO — ${insured ? "Seguro evitou a penalidade 🛡️" : `perdeu ${msg.penaltyDetail || "—"}`}`);
-              if (mine) patchOpenSub(insured ? "Seguro evitou! 🛡️" : `Perdeu ${msg.penaltyDetail || "—"}`);
+              const curse = mine && openCursedRef.current; // só o alvo sabe que foi maldição
+              addLog(`💀 ${mine ? "Você" : nm(msg.player)} abriu um MÍMICO${curse ? " 🪤 (Maldição)" : ""} — ${insured ? "Seguro evitou a penalidade 🛡️" : `perdeu ${msg.penaltyDetail || "—"}`}`);
+              if (mine) patchOpenSub(insured ? "Seguro evitou! 🛡️" : `${curse ? "🪤 Maldição! " : ""}Perdeu ${msg.penaltyDetail || "—"}`);
               else if (!insured) {
                 sfx.thud();
                 enqueueOverlay({ kind: "flash", flashKind: "mimic", emoji: "💀", title: `${nm(msg.player)} pegou um MÍMICO!`, sub: `Perdeu ${msg.penaltyDetail || "—"}`, durationMs: 2600 });
@@ -577,12 +584,23 @@ export function App() {
   };
   // Sai da sala de vez e volta ao menu (o servidor responde LEFT_ROOM).
   const leaveRoom = () => {
-    if (!confirm("Sair da sala e voltar ao menu? Você sairá do ranking desta partida.")) return;
-    send({ type: "LEAVE_ROOM" });
-    clearSession();
+    setConfirmDialog({
+      title: "Sair da sala?",
+      body: "Você volta ao menu e sai do ranking desta partida.",
+      yes: "Sair",
+      onYes: () => {
+        send({ type: "LEAVE_ROOM" });
+        clearSession();
+      },
+    });
   };
   const giveUp = () => {
-    if (confirm("Desistir da partida e só assistir? Você não poderá mais dar lances.")) send({ type: "GIVE_UP" });
+    setConfirmDialog({
+      title: "Desistir da partida?",
+      body: "Você passa a só assistir e não poderá mais dar lances (continua no ranking).",
+      yes: "Desistir",
+      onYes: () => send({ type: "GIVE_UP" }),
+    });
   };
   // Botões de controle da partida — reusados: no desktop ficam no card "Você"; no mobile vão
   // para o rodapé da página (evita toque acidental). Espectador só tem "Sair da sala".
@@ -862,11 +880,20 @@ export function App() {
               <div className={`${C.card} p-4 flex flex-col gap-2`}>
                 <div className="flex items-center justify-between">
                   <span className="text-sm text-muted">🃏 Cartas</span>
-                  {!spectating && (
-                    <button className={C.btnSmall} disabled={wallet.balance - wallet.reserved < nextCardPrice} onClick={buyCardAction}>
-                      Comprar ({money(nextCardPrice)})
-                    </button>
-                  )}
+                  {!spectating && (() => {
+                    const handFull = wallet.cards.length >= HAND_MAX;
+                    const tooPoor = wallet.balance - wallet.reserved < nextCardPrice;
+                    return (
+                      <button
+                        className={C.btnSmall}
+                        disabled={handFull || tooPoor}
+                        title={handFull ? `Mão cheia (máx. ${HAND_MAX})` : tooPoor ? "Saldo insuficiente" : ""}
+                        onClick={buyCardAction}
+                      >
+                        {handFull ? `Mão cheia (${wallet.cards.length}/${HAND_MAX})` : `Comprar (${money(nextCardPrice)})`}
+                      </button>
+                    );
+                  })()}
                 </div>
 
                 {(cardEffects.blocked.includes(playerId) || cardEffects.doubleLoot.includes(playerId) || cardEffects.insured.includes(playerId) || cardEffects.shielded.includes(playerId) || cardEffects.gavel.length > 0) && (
@@ -1366,6 +1393,37 @@ export function App() {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* ---------- Confirmação (no estilo do jogo, no lugar do confirm() nativo) ---------- */}
+      {confirmDialog && (
+        <div
+          className="fixed inset-0 z-[65] flex items-center justify-center bg-black/70 px-4"
+          onClick={() => setConfirmDialog(null)}
+        >
+          <motion.div
+            className={`${C.card} p-5 w-full max-w-sm text-center`}
+            initial={{ scale: 0.92, y: 12, opacity: 0 }}
+            animate={{ scale: 1, y: 0, opacity: 1 }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="font-display text-xl text-gold">{confirmDialog.title}</div>
+            <p className="text-sm text-muted mt-2">{confirmDialog.body}</p>
+            <div className="flex gap-2 mt-5">
+              <button className={`${C.btnSmall} flex-1`} onClick={() => setConfirmDialog(null)}>Cancelar</button>
+              <button
+                className={`${C.btnGold} flex-1`}
+                onClick={() => {
+                  const fn = confirmDialog.onYes;
+                  setConfirmDialog(null);
+                  fn();
+                }}
+              >
+                {confirmDialog.yes}
+              </button>
+            </div>
+          </motion.div>
+        </div>
+      )}
     </div>
   );
 }
