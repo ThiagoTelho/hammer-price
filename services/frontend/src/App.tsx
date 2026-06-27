@@ -100,7 +100,10 @@ const HOW_TO_PLAY = [
   { icon: "🏆", title: "Maior patrimônio", text: "No fim das rodadas vence quem tiver mais dinheiro + itens + bônus de coleções." },
 ];
 
-const BID_TIMER_MS = 20000; // espelha match.box_timer_seconds (escala do anel de contagem)
+const BID_TIMER_MS = 20000; // fallback p/ a escala do anel se box.timerMs vier 0
+// Log de "Eventos": escondido por padrão (entrega informação ao jogador). Abra com ?logs=1
+// para a gravação da demo. Lido 1× no carregamento.
+const SHOW_LOGS = new URLSearchParams(window.location.search).has("logs");
 const money = (n: number): string => `$${Math.round(n).toLocaleString("pt-BR")}`;
 const ITEM_ORDER = ["COPPER", "SILVER", "GOLD", "DIAMOND", "MIMIC"];
 const ITEM_EMOJI: Record<string, string> = { COPPER: "🪙", SILVER: "🥈", GOLD: "🥇", DIAMOND: "💎", MIMIC: "💀" };
@@ -578,6 +581,19 @@ export function App() {
     send({ type: "LEAVE_ROOM" });
     clearSession();
   };
+  const giveUp = () => {
+    if (confirm("Desistir da partida e só assistir? Você não poderá mais dar lances.")) send({ type: "GIVE_UP" });
+  };
+  // Botões de controle da partida — reusados: no desktop ficam no card "Você"; no mobile vão
+  // para o rodapé da página (evita toque acidental). Espectador só tem "Sair da sala".
+  const matchControlButtons = spectating ? (
+    <button className={`${C.btnSmall} w-full`} onClick={leaveRoom}>🚪 Sair da sala</button>
+  ) : (
+    <>
+      {isHost && <button className={`${C.btnSmall} w-full`} onClick={() => send({ type: "END_MATCH" })}>Encerrar partida</button>}
+      <button className={`${C.btnSmall} w-full`} onClick={giveUp}>Desistir (assistir)</button>
+    </>
+  );
 
   const boxCountdown = (b: Box): string => {
     if (!b.leader || !b.deadlineAt) return "—";
@@ -821,6 +837,7 @@ export function App() {
 
       {/* ---------- PARTIDA ---------- */}
       {phase === "playing" && (
+        <>
         <div className="mt-5 grid gap-4 lg:grid-cols-[260px_minmax(0,1fr)_300px]">
           {/* ----- ESQUERDA: você + mesa ----- */}
           <aside className="order-2 lg:order-1 flex flex-col gap-4">
@@ -832,24 +849,11 @@ export function App() {
                   <div className="flex justify-between"><span className="text-muted">🔒 Reservado</span><span>{money(wallet.reserved)}</span></div>
                   <div className="flex justify-between"><span className="text-muted">🟢 Gastável</span><b className="text-emerald-400">{money(wallet.balance - wallet.reserved)}</b></div>
                 </div>
-                {spectating ? (
-                  <div className="mt-3 flex flex-col gap-2">
-                    <div className="text-center text-xs text-sky-300 bg-sky-500/10 border border-sky-500/30 rounded-lg py-1.5">👀 Assistindo</div>
-                    <button className={`${C.btnSmall} w-full`} onClick={leaveRoom}>🚪 Sair da sala</button>
-                  </div>
-                ) : (
-                  <div className="mt-3 flex flex-col gap-2">
-                    {isHost && (
-                      <button className={`${C.btnSmall} w-full`} onClick={() => send({ type: "END_MATCH" })}>Encerrar partida</button>
-                    )}
-                    <button
-                      className={`${C.btnSmall} w-full`}
-                      onClick={() => { if (confirm("Desistir da partida e só assistir? Você não poderá mais dar lances.")) send({ type: "GIVE_UP" }); }}
-                    >
-                      Desistir (assistir)
-                    </button>
-                  </div>
+                {spectating && (
+                  <div className="mt-3 text-center text-xs text-sky-300 bg-sky-500/10 border border-sky-500/30 rounded-lg py-1.5">👀 Assistindo</div>
                 )}
+                {/* Botões: no desktop ficam aqui; no mobile vão p/ o rodapé (ver abaixo). */}
+                <div className="mt-3 hidden sm:flex flex-col gap-2">{matchControlButtons}</div>
               </div>
             )}
 
@@ -865,12 +869,11 @@ export function App() {
                   )}
                 </div>
 
-                {(cardEffects.blocked.includes(playerId) || cardEffects.doubleLoot.includes(playerId) || cardEffects.insured.includes(playerId) || cardEffects.cursed.includes(playerId) || cardEffects.shielded.includes(playerId) || cardEffects.gavel.length > 0) && (
+                {(cardEffects.blocked.includes(playerId) || cardEffects.doubleLoot.includes(playerId) || cardEffects.insured.includes(playerId) || cardEffects.shielded.includes(playerId) || cardEffects.gavel.length > 0) && (
                   <div className="flex flex-wrap gap-1 text-[11px]">
                     {cardEffects.blocked.includes(playerId) && <span className="px-1.5 py-0.5 rounded bg-red-500/15 text-red-300 border border-red-500/30">🚫 Bloqueado</span>}
                     {cardEffects.doubleLoot.includes(playerId) && <span className="px-1.5 py-0.5 rounded bg-cyan-500/15 text-cyan-300 border border-cyan-500/30">✖️2 Dobro</span>}
                     {cardEffects.insured.includes(playerId) && <span className="px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">🛡️ Seguro</span>}
-                    {cardEffects.cursed.includes(playerId) && <span className="px-1.5 py-0.5 rounded bg-fuchsia-500/15 text-fuchsia-300 border border-fuchsia-500/30">🪤 Amaldiçoado</span>}
                     {cardEffects.shielded.includes(playerId) && <span className="px-1.5 py-0.5 rounded bg-sky-500/15 text-sky-300 border border-sky-500/30">⛓️ Escudo</span>}
                     {cardEffects.gavel.includes(playerId) && <span className="px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-300 border border-amber-500/30">🔨 Martelo</span>}
                     {cardEffects.gavel.length > 0 && !cardEffects.gavel.includes(playerId) && <span className="px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-200/80 border border-amber-500/20">🔨 incremento 2×</span>}
@@ -907,17 +910,15 @@ export function App() {
               </div>
             )}
 
-            {/* Mesa — leitura dos rivais (dinheiro, itens livres, último lance) */}
+            {/* Mesa — só nome + dinheiro de cada jogador (sem revelar itens/lances) */}
             {players.length > 0 && (
               <div className={`${C.card} p-4`}>
                 <div className="text-sm text-muted mb-2">🃏 Mesa</div>
                 <div className="flex flex-col gap-1">
-                  {[...players].sort((a, b) => b.net - a.net).map((p) => (
+                  {[...players].sort((a, b) => b.money - a.money).map((p) => (
                     <div key={p.id} className={`flex items-center gap-2 text-sm rounded-lg px-2 py-1 ${p.id === playerId ? "bg-gold/10" : ""}`}>
                       <span className={`flex-1 truncate ${p.id === playerId ? "text-gold font-semibold" : ""} ${p.spectating ? "opacity-50" : ""}`}>{nm(p.id)}{p.id === playerId ? " (você)" : ""}{p.spectating ? " 👀" : ""}</span>
                       <span className="whitespace-nowrap">💰 <b className="text-gold">{money(p.money)}</b></span>
-                      <span className="whitespace-nowrap text-muted">🎒 {p.itemCount}</span>
-                      <span className="whitespace-nowrap text-xs text-stone-400 w-16 text-right">{lastBids[p.id] ? `🔨 ${money(lastBids[p.id])}` : "—"}</span>
                     </div>
                   ))}
                 </div>
@@ -959,7 +960,11 @@ export function App() {
                       {box.leader && box.deadlineAt
                         ? (() => {
                             const rem = Math.max(0, box.deadlineAt - Date.now());
-                            const frac = Math.min(1, rem / BID_TIMER_MS);
+                            // Denominador = duração REAL do ciclo atual (box.timerMs, já com extensões
+                            // de anti-sniping) → o anel começa CHEIO e esvazia certo. (Antes usava um
+                            // BID_TIMER_MS fixo de 20s com timer real de 12s → começava ~60%.)
+                            const full = box.timerMs > 0 ? box.timerMs : BID_TIMER_MS;
+                            const frac = Math.min(1, rem / full);
                             const R = 68;
                             const circ = 2 * Math.PI * R;
                             const danger = rem <= 5000;
@@ -1142,8 +1147,9 @@ export function App() {
               </div>
             )}
 
-            {/* Eventos (recolhível) — oculto no mobile (não essencial em telas pequenas) */}
-            <div className="hidden sm:block">
+            {/* Eventos (recolhível) — só com ?logs=1 (recurso de demo; escondido p/ jogadores). */}
+            {SHOW_LOGS && (
+            <div>
               <button
                 className="w-full flex items-center justify-between text-sm text-muted mb-1 hover:text-stone-200 transition"
                 onClick={() => setLogsOpen((o) => !o)}
@@ -1161,11 +1167,15 @@ export function App() {
                 </div>
               )}
             </div>
+            )}
 
             {/* Chat da sala */}
             <ChatPanel messages={chat} me={playerId} onSend={(t) => send({ type: "CHAT_SEND", text: t })} />
           </aside>
         </div>
+        {/* Rodapé MOBILE: controles da partida no FIM da página (evita toque acidental no topo). */}
+        {wallet && <div className="sm:hidden mt-4 flex flex-col gap-2">{matchControlButtons}</div>}
+        </>
       )}
 
       {/* ---------- RANKING ---------- */}
