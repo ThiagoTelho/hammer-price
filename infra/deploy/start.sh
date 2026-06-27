@@ -29,6 +29,7 @@ PUBLIC_HOST="$(imds public-hostname)"
 [[ -z "$PUBLIC_HOST" ]] && PUBLIC_HOST="$(imds public-ipv4)"
 [[ -z "$PUBLIC_HOST" ]] && PUBLIC_HOST="localhost"   # fallback (ex.: rodando fora da AWS)
 export VITE_GATEWAY_URL="ws://${PUBLIC_HOST}:8080"
+export VITE_PUBLIC_URL="http://${PUBLIC_HOST}:5173"   # base p/ as meta tags Open Graph (preview no WhatsApp)
 
 dc() { docker compose --profile local "$@"; }
 

@@ -219,6 +219,8 @@ services:
       # o DNS/IP PÚBLICO da instância (o navegador roda na máquina do jogador, não no host
       # do container) — o infra/deploy/start.sh detecta e injeta isso automaticamente.
       VITE_GATEWAY_URL: ${VITE_GATEWAY_URL:-ws://localhost:8080}
+      # Base pública p/ as meta tags Open Graph (preview no WhatsApp etc.).
+      VITE_PUBLIC_URL: ${VITE_PUBLIC_URL:-http://localhost:5173}
     ports: ["5173:5173"]
     depends_on:
       gateway:

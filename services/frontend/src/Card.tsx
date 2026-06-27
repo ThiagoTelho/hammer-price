@@ -31,7 +31,7 @@ export function Card({ type, size = 64, dim = false }: { type: string; size?: nu
       title={`${c.label} — ${c.desc}`}
       className="rounded-lg border-2 flex flex-col items-center justify-center gap-0.5 shrink-0"
       style={{
-        width: size,
+        width: Math.round(size * 1.2), // um pouco mais larga p/ o nome caber numa linha
         height: Math.round(size * 1.4),
         borderColor: c.color,
         background: `linear-gradient(160deg, ${c.color}26, #1c1917 60%)`,
@@ -40,7 +40,7 @@ export function Card({ type, size = 64, dim = false }: { type: string; size?: nu
       }}
     >
       <div style={{ fontSize: size * 0.4 }}>{c.emoji}</div>
-      <div className="text-[10px] font-semibold leading-none px-1 text-center" style={{ color: c.color }}>
+      <div className="text-[10px] font-semibold leading-none px-1 text-center whitespace-nowrap" style={{ color: c.color }}>
         {c.label}
       </div>
     </div>

@@ -5,6 +5,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import * as sfx from "./sound";
 import { Chest, tierLabel, tierLight } from "./Chest";
 import { Card, cardOf, CARDS } from "./Card";
+import { Gavel } from "./Gavel";
 
 const GATEWAY_URL = import.meta.env.VITE_GATEWAY_URL ?? "ws://localhost:8080";
 
@@ -135,6 +136,8 @@ export function App() {
   const [isHost, setIsHost] = useState(false);
   const [reconnecting, setReconnecting] = useState(false); // tentando voltar à sala salva
   const [playedCard, setPlayedCard] = useState(false); // já joguei 1 carta NESTE intervalo (1 por intervalo)
+  const [logsOpen, setLogsOpen] = useState(true); // painel de Eventos recolhível
+  const [copiedCode, setCopiedCode] = useState(false); // feedback do botão "copiar código"
   const [lobby, setLobby] = useState<{ status: string; host: string; players: string[] }>({ status: "WAITING", host: "", players: [] });
   const [ranking, setRanking] = useState<RankRow[]>([]);
   const [roundsToCreate, setRoundsToCreate] = useState(16);
@@ -406,8 +409,9 @@ export function App() {
             const who = msg.source === playerIdRef.current ? "Você" : nm(msg.source);
             const d = cardOf(msg.cardType);
             if (msg.source === playerIdRef.current) setPlayedCard(true); // 1 carta por intervalo
-            addLog(`${d.emoji} ${who} usou ${d.label}${msg.target ? ` em ${nm(msg.target)}` : ""}`);
-            enqueueOverlay({ kind: "flash", flashKind: "win", emoji: d.emoji, title: `${d.label}!`, sub: `${who}${msg.target ? ` → ${nm(msg.target)}` : ""}`, durationMs: 2200 });
+            const tgt = msg.target ? (msg.target === playerIdRef.current ? "você" : nm(msg.target)) : "";
+            addLog(`${d.emoji} ${who} usou ${d.label}${tgt ? ` em ${tgt}` : ""}`);
+            enqueueOverlay({ kind: "flash", flashKind: "win", emoji: d.emoji, title: `${d.label}!`, sub: `${who}${tgt ? ` → ${tgt}` : ""}`, durationMs: 2200 });
             break;
           }
           case "CARD_EFFECTS":
@@ -522,6 +526,15 @@ export function App() {
     setMutedState(m);
     sfx.setMuted(m);
   };
+  const copyCode = () => {
+    navigator.clipboard
+      ?.writeText(code)
+      .then(() => {
+        setCopiedCode(true);
+        setTimeout(() => setCopiedCode(false), 1500);
+      })
+      .catch(() => addLog("Não foi possível copiar — copie o código manualmente."));
+  };
 
   const boxCountdown = (b: Box): string => {
     if (!b.leader || !b.deadlineAt) return "—";
@@ -559,7 +572,9 @@ export function App() {
     <div className="max-w-6xl mx-auto px-5 py-7">
       <header className="flex items-end justify-between gap-3 border-b border-line pb-4">
         <div>
-          <h1 className="font-display text-4xl font-bold text-gold leading-none">🔨 Hammer Price</h1>
+          <h1 className="font-display text-4xl font-bold text-gold leading-none flex items-center gap-2">
+            <Gavel size={40} className="shrink-0" /> Hammer Price
+          </h1>
           <p className="text-muted text-sm mt-1">Leilão de caixas misteriosas em tempo real</p>
         </div>
         <div className="flex items-end gap-3">
@@ -729,7 +744,12 @@ export function App() {
         <div className="max-w-md mx-auto mt-8 flex flex-col gap-4">
           <div className={`${C.card} p-6 text-center`}>
           <p className="text-xs uppercase tracking-wide text-muted">Código da sala</p>
-          <div className="font-display text-5xl text-gold tracking-[0.25em] my-2">{code}</div>
+          <div className="flex items-center justify-center gap-2 my-2">
+            <div className="font-display text-5xl text-gold tracking-[0.25em]">{code}</div>
+            <button className={`${C.btnSmall} text-xs`} onClick={copyCode} title="Copiar o código">
+              {copiedCode ? "✓ copiado" : "📋 copiar"}
+            </button>
+          </div>
           <p className="text-muted text-sm mb-5">Compartilhe o código. A partida exige ao menos 2 jogadores.</p>
           <div className="text-left bg-surface-2 border border-line rounded-xl p-4 mb-5">
             <div className="text-sm text-muted mb-2">Jogadores ({lobby.players.length}/15)</div>
@@ -1075,12 +1095,24 @@ export function App() {
               </div>
             )}
 
-            {/* Eventos */}
+            {/* Eventos (recolhível) */}
             <div>
-              <div className="text-sm text-muted mb-1">Eventos</div>
-              <div className="font-mono text-xs max-h-56 overflow-y-auto bg-surface-2 border border-line rounded-xl p-3">
-                {log.map((l, i) => (<div key={i} className="py-0.5 border-b border-line/60 last:border-0">{l}</div>))}
-              </div>
+              <button
+                className="w-full flex items-center justify-between text-sm text-muted mb-1 hover:text-stone-200 transition"
+                onClick={() => setLogsOpen((o) => !o)}
+              >
+                <span>Eventos{log.length > 0 ? ` (${log.length})` : ""}</span>
+                <span className="text-xs">{logsOpen ? "▾ ocultar" : "▸ mostrar"}</span>
+              </button>
+              {logsOpen && (
+                <div className="font-mono text-xs max-h-56 overflow-y-auto bg-surface-2 border border-line rounded-xl p-3">
+                  {log.length === 0 ? (
+                    <div className="text-muted">Sem eventos ainda.</div>
+                  ) : (
+                    log.map((l, i) => <div key={i} className="py-0.5 border-b border-line/60 last:border-0">{l}</div>)
+                  )}
+                </div>
+              )}
             </div>
 
             {/* Chat da sala */}
