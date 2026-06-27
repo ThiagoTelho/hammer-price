@@ -24,8 +24,10 @@ const CARD_DISCOUNT_PCT = Number(process.env.CARD_DISCOUNT_PCT ?? 30); // Descon
 // Quem é NOTIFICADO ao jogar a carta (CARD_PLAYED): "self" (só quem jogou), "target" (quem jogou +
 // o alvo) ou "group" (toda a sala). Cartas que só afetam quem usou não incomodam os demais.
 const CARD_SCOPE: Record<string, "self" | "target" | "group"> = {
-  DOUBLE: "self", INSURANCE: "self", DISCOUNT: "self", INSIGHT: "self", SHIELD: "self",
-  BLOCK: "target", CURSE: "target",
+  // Maldição é "self": o ALVO NÃO é avisado — senão ele só evitaria dar lance (a maldição só
+  // dispara se ele vencer). Só quem lançou vê; o alvo descobre ao abrir o Mímico.
+  DOUBLE: "self", INSURANCE: "self", DISCOUNT: "self", INSIGHT: "self", SHIELD: "self", CURSE: "self",
+  BLOCK: "target",
   TAX: "group", GAVEL: "group", UPGRADE: "group",
 };
 // Heartbeat: termina conexões mortas (que não respondem ao ping) → libera o slot da sala.
@@ -339,11 +341,11 @@ async function resolveRoundCards(room: string): Promise<void> {
   m.blocked.clear();
   m.shielded.clear();
   for (const c of cards) if (c.cardType === "SHIELD") m.shielded.add(c.source); // Escudo anula ofensivas
-  const doubleLoot: string[] = [], insured: string[] = [], cursed: string[] = [], gavel: string[] = [];
+  const doubleLoot: string[] = [], insured: string[] = [], gavel: string[] = [];
   const insightSources: string[] = [];
+  // Maldição NÃO entra no CARD_EFFECTS (não revela ao alvo) — o efeito vai pelo auction.
   for (const c of cards) {
     if (c.cardType === "BLOCK" && c.target && !m.shielded.has(c.target)) m.blocked.add(c.target);
-    else if (c.cardType === "CURSE" && c.target && !m.shielded.has(c.target)) cursed.push(c.target);
     else if (c.cardType === "DOUBLE") doubleLoot.push(c.source);
     else if (c.cardType === "INSURANCE") insured.push(c.source);
     else if (c.cardType === "GAVEL") gavel.push(c.source);
@@ -372,7 +374,7 @@ async function resolveRoundCards(room: string): Promise<void> {
       console.error("gateway: peekDrop:", e);
     }
   }
-  m.effectsMsg = { type: "CARD_EFFECTS", blocked: [...m.blocked], doubleLoot, insured, cursed, shielded: [...m.shielded], gavel };
+  m.effectsMsg = { type: "CARD_EFFECTS", blocked: [...m.blocked], doubleLoot, insured, shielded: [...m.shielded], gavel };
   broadcastToRoom(room, m.effectsMsg);
   for (const c of clients) if (c.room === room) void sendWallet(c);
   void broadcastPlayersPanel(room);
