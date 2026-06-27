@@ -68,6 +68,7 @@ interface Match {
   shielded: Set<string>; // imunes a efeitos ofensivos (carta Escudo — fase 2)
   disconnected: Map<string, number>; // playerId → epoch da queda do socket (assento guardado p/ reconexão)
   effectsMsg: unknown | null; // último CARD_EFFECTS difundido (replay na reconexão)
+  playedThisInterval: Set<string>; // quem já jogou UMA carta neste intervalo (zera a cada intervalo)
 }
 const matches: Record<string, Match | null> = {};
 for (const r of ROOMS) matches[r] = null;
@@ -420,6 +421,7 @@ sub.on("message", (channel, message) => {
     } else {
       // Intervalo: jogadores gerenciam o inventário; abre a próxima ao "todos prontos" ou no teto.
       m.ready.clear();
+      m.playedThisInterval.clear(); // novo intervalo → cada jogador pode jogar 1 carta de novo
       m.intermissionEndsAt = Date.now() + INTERMISSION_MS;
       broadcastToRoom(room, { type: "ROUND_INTERMISSION", endsAt: m.intermissionEndsAt, roundsPlayed: m.roundsPlayed, totalRounds: m.totalRounds });
       broadcastToRoom(room, { type: "READY_STATE", ready: 0, total: activeBidders(room).length });
@@ -563,7 +565,7 @@ wss.on("connection", (ws, req) => {
       if (prev && codeToRoom.get(prev.code) === slot) codeToRoom.delete(prev.code);
       const code = genCode();
       const rounds = Math.max(8, Math.min(40, Number(msg.rounds) || 16));
-      matches[slot] = { status: "WAITING", code, host: playerId, totalRounds: rounds, roundsPlayed: 0, ready: new Set(), intermissionEndsAt: 0, folded: new Set(), spectators: new Set(), leader: "", pendingCards: [], blocked: new Set(), shielded: new Set(), lastActivity: Date.now(), disconnected: new Map(), effectsMsg: null };
+      matches[slot] = { status: "WAITING", code, host: playerId, totalRounds: rounds, roundsPlayed: 0, ready: new Set(), intermissionEndsAt: 0, folded: new Set(), spectators: new Set(), leader: "", pendingCards: [], blocked: new Set(), shielded: new Set(), lastActivity: Date.now(), disconnected: new Map(), effectsMsg: null, playedThisInterval: new Set() };
       codeToRoom.set(code, slot);
       client.room = slot;
       console.log(`gateway: ${playerId} criou a sala ${slot} (código ${code})`);
@@ -611,6 +613,7 @@ wss.on("connection", (ws, req) => {
       m.pendingCards = [];
       m.blocked.clear();
       m.shielded.clear();
+      m.playedThisInterval.clear();
       console.log(`gateway: partida iniciada na sala ${slot} (${playersIn(slot).length} jogadores, ${m.totalRounds} rodadas)`);
       broadcastToRoom(slot, { type: "MATCH_STARTED", totalRounds: m.totalRounds, roundsPlayed: 0 });
       broadcastToRoom(slot, roomStateMsg(slot));
@@ -744,6 +747,11 @@ wss.on("connection", (ws, req) => {
       const slot = client.room;
       const m = slot ? matches[slot] : null;
       if (!slot || !m || m.status !== "RUNNING" || m.intermissionEndsAt <= Date.now() || m.spectators.has(playerId)) return;
+      // Uma carta por intervalo: barra a 2ª jogada do mesmo jogador no mesmo intervalo.
+      if (m.playedThisInterval.has(playerId)) {
+        ws.send(JSON.stringify({ type: "ERROR", reason: "ALREADY_PLAYED_CARD" }));
+        return;
+      }
       const cardType = String(msg.cardType ?? "");
       const target = msg.target ? String(msg.target) : undefined;
       // Cartas ofensivas de alvo único exigem um alvo válido (jogador da sala, não você).
@@ -763,6 +771,7 @@ wss.on("connection", (ws, req) => {
         return;
       }
       m.pendingCards.push({ source: playerId, cardType, target });
+      m.playedThisInterval.add(playerId); // consumiu sua jogada deste intervalo
       broadcastToRoom(slot, { type: "CARD_PLAYED", source: playerId, cardType, target: target ?? "" });
       // Empurra os efeitos do Leilão (idempotente: o conjunto acumulado) p/ a próxima rodada.
       try {

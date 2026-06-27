@@ -32,6 +32,13 @@ interface RankRow {
   net: number;
 }
 type Phase = "menu" | "lobby" | "playing" | "ended";
+// Item da fila de overlays (destaques): flash (vitória/carta/mímico) ou abertura animada do baú.
+type OverlayItem =
+  | { id: number; kind: "flash"; flashKind: "win" | "mimic"; emoji: string; title: string; sub: string; durationMs: number }
+  | { id: number; kind: "open"; tier: string; item: string; qty: number; isMimic: boolean; sub: string; durationMs: number };
+// Omit distributivo: preserva os campos de CADA membro do union (Omit normal colapsaria nos comuns).
+type DistributiveOmit<T, K extends keyof any> = T extends unknown ? Omit<T, K> : never;
+type OverlayInput = DistributiveOmit<OverlayItem, "id">;
 
 function withDeadline(box: Box | null): Box | null {
   if (!box) return null;
@@ -41,6 +48,14 @@ function withDeadline(box: Box | null): Box | null {
 const CHEST_GLYPH = "🧰";
 // O playerId do backend é `nome#sufixo` (único por sessão). Para exibir, mostramos só o nome.
 const nm = (id: string): string => (id && id.includes("#") ? id.slice(0, id.indexOf("#")) : id);
+
+// Cor estável por jogador (chat): hash do playerId → uma das 9 cores. Independe da ordem de entrada.
+const CHAT_COLORS = ["#f5d77a", "#7dd3fc", "#86efac", "#fca5a5", "#c4b5fd", "#fcd34d", "#f9a8d4", "#5eead4", "#fdba74"];
+const colorOf = (id: string): string => {
+  let h = 0;
+  for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) | 0;
+  return CHAT_COLORS[Math.abs(h) % CHAT_COLORS.length];
+};
 
 // Sessão persistida (reconexão): permite voltar à sala após refresh/queda enquanto ela estiver aberta.
 const SESSION_KEY = "hammerprice.session";
@@ -105,6 +120,7 @@ export function App() {
   const [code, setCode] = useState("");
   const [isHost, setIsHost] = useState(false);
   const [reconnecting, setReconnecting] = useState(false); // tentando voltar à sala salva
+  const [playedCard, setPlayedCard] = useState(false); // já joguei 1 carta NESTE intervalo (1 por intervalo)
   const [lobby, setLobby] = useState<{ status: string; host: string; players: string[] }>({ status: "WAITING", host: "", players: [] });
   const [ranking, setRanking] = useState<RankRow[]>([]);
   const [roundsToCreate, setRoundsToCreate] = useState(16);
@@ -131,10 +147,11 @@ export function App() {
   const [lastBids, setLastBids] = useState<Record<string, number>>({});
   const [log, setLog] = useState<string[]>([]);
   const [bidAmount, setBidAmount] = useState("");
-  const [flash, setFlash] = useState<{ kind: "win" | "open" | "mimic"; emoji: string; title: string; sub: string } | null>(null);
+  // Fila de overlays: mostra UM destaque por vez, em ordem (sem sobreposição visual).
+  const [overlayQueue, setOverlayQueue] = useState<OverlayItem[]>([]);
+  const overlayIdRef = useRef(0);
   const [muted, setMutedState] = useState(false);
   const [sold, setSold] = useState<string | null>(null); // baú arrematado → carimbo no palco
-  const [opening, setOpening] = useState<{ tier: string; item: string; qty: number; isMimic: boolean; sub: string } | null>(null);
   const [confettiKey, setConfettiKey] = useState(0); // bump → dispara uma rajada de confete
   const fireConfetti = () => setConfettiKey((k) => k + 1);
   const wonBoxesRef = useRef<{ boxId: string; boxType: string }[]>([]);
@@ -233,6 +250,7 @@ export function App() {
             setCardEffects({ blocked: [], doubleLoot: [], insured: [], cursed: [], shielded: [], gavel: [] });
             setInsight(null);
             setTargeting(null);
+            setPlayedCard(false);
             setPhase("playing");
             addLog(`🚀 Partida iniciada! ${msg.totalRounds} rodadas.`);
             break;
@@ -268,6 +286,7 @@ export function App() {
             setCardEffects({ blocked: [], doubleLoot: [], insured: [], cursed: [], shielded: [], gavel: [] });
             setInsight(null);
             setTargeting(null);
+            setPlayedCard(false); // novo intervalo → posso jogar 1 carta de novo
             break;
           case "READY_STATE":
             setReadyState({ ready: msg.ready ?? 0, total: msg.total ?? 0 });
@@ -304,7 +323,7 @@ export function App() {
               fireConfetti();
             }
             setSold(msg.boxId); // carimbo ARREMATADO no baú do palco
-            setFlash({ kind: "win", emoji: "🏆", title: mine ? "Você arrematou!" : `${nm(msg.winner)} arrematou`, sub: `${tierLabel(msg.boxType)} por ${money(msg.price)}` });
+            enqueueOverlay({ kind: "flash", flashKind: "win", emoji: "🏆", title: mine ? "Você arrematou!" : `${nm(msg.winner)} arrematou`, sub: `${tierLabel(msg.boxType)} por ${money(msg.price)}`, durationMs: 2200 });
             break;
           }
           case "OPEN_RESULT":
@@ -312,8 +331,8 @@ export function App() {
               const tier = wonBoxesRef.current.find((b) => b.boxId === msg.boxId)?.boxType ?? "WOODEN";
               setWonBoxes((prev) => prev.filter((b) => b.boxId !== msg.boxId));
               const qty = msg.quantity ?? 1;
-              // Abertura animada do baú (substitui o flash "open").
-              setOpening({ tier, item: msg.item, qty, isMimic: msg.isMimic, sub: msg.isMimic ? "Cuidado…" : `${qty}× para o inventário` });
+              // Abertura animada do baú — entra na fila de overlays.
+              enqueueOverlay({ kind: "open", tier, item: msg.item, qty, isMimic: msg.isMimic, sub: msg.isMimic ? "Cuidado…" : `${qty}× para o inventário`, durationMs: 2800 });
               sfx.creak();
               if (msg.isMimic) sfx.thud();
               else {
@@ -328,10 +347,10 @@ export function App() {
             if (msg.isMimic) {
               const insured = msg.penaltyKind === "INSURED";
               addLog(`💀 ${mine ? "Você" : nm(msg.player)} abriu um MÍMICO — ${insured ? "Seguro evitou a penalidade 🛡️" : `perdeu ${msg.penaltyDetail || "—"}`}`);
-              if (mine) setOpening((o) => (o ? { ...o, sub: insured ? "Seguro evitou! 🛡️" : `Perdeu ${msg.penaltyDetail || "—"}` } : o));
+              if (mine) patchOpenSub(insured ? "Seguro evitou! 🛡️" : `Perdeu ${msg.penaltyDetail || "—"}`);
               else if (!insured) {
                 sfx.thud();
-                setFlash({ kind: "mimic", emoji: "💀", title: `${nm(msg.player)} pegou um MÍMICO!`, sub: `Perdeu ${msg.penaltyDetail || "—"}` });
+                enqueueOverlay({ kind: "flash", flashKind: "mimic", emoji: "💀", title: `${nm(msg.player)} pegou um MÍMICO!`, sub: `Perdeu ${msg.penaltyDetail || "—"}`, durationMs: 2600 });
               }
             } else if (!mine) addLog(`📦 ${nm(msg.player)} abriu: ${msg.quantity ?? 1}× ${msg.item}`);
             break;
@@ -372,8 +391,9 @@ export function App() {
           case "CARD_PLAYED": {
             const who = msg.source === playerIdRef.current ? "Você" : nm(msg.source);
             const d = cardOf(msg.cardType);
+            if (msg.source === playerIdRef.current) setPlayedCard(true); // 1 carta por intervalo
             addLog(`${d.emoji} ${who} usou ${d.label}${msg.target ? ` em ${nm(msg.target)}` : ""}`);
-            setFlash({ kind: "win", emoji: d.emoji, title: `${d.label}!`, sub: `${who}${msg.target ? ` → ${nm(msg.target)}` : ""}` });
+            enqueueOverlay({ kind: "flash", flashKind: "win", emoji: d.emoji, title: `${d.label}!`, sub: `${who}${msg.target ? ` → ${nm(msg.target)}` : ""}`, durationMs: 2200 });
             break;
           }
           case "CARD_EFFECTS":
@@ -414,6 +434,7 @@ export function App() {
               MATCH_ALREADY_STARTED: "A partida já começou.",
               NEED_2_PLAYERS: "São necessários ao menos 2 jogadores.",
               NO_ROOMS_AVAILABLE: "Não há salas livres no momento.",
+              ALREADY_PLAYED_CARD: "Você só pode jogar 1 carta por intervalo.",
             };
             addLog(`⚠️ ${errors[msg.reason] ?? msg.reason}`);
             break;
@@ -459,19 +480,24 @@ export function App() {
     return () => clearInterval(id);
   }, []);
 
-  // Overlay de destaque (vitória): some sozinho após alguns segundos.
+  // Enfileira um overlay (descarta excesso para um surto não prender a tela).
+  const enqueueOverlay = useCallback((item: OverlayInput) => {
+    setOverlayQueue((q) => (q.length >= 6 ? q : [...q, { ...item, id: ++overlayIdRef.current } as OverlayItem]));
+  }, []);
+  // Atualiza o subtítulo da abertura já enfileirada (ex.: penalidade do Mímico chega depois).
+  const patchOpenSub = useCallback((sub: string) => {
+    setOverlayQueue((q) => q.map((it) => (it.kind === "open" ? { ...it, sub } : it)));
+  }, []);
+  // Driver da fila: mostra a CABEÇA pelo seu tempo e então avança. Reinicia só quando a cabeça muda
+  // (enfileirar atrás não reinicia o timer do item atual).
+  const overlayHead = overlayQueue[0];
+  const headId = overlayHead?.id;
   useEffect(() => {
-    if (!flash) return;
-    const id = setTimeout(() => setFlash(null), flash.kind === "mimic" ? 2600 : 2200);
-    return () => clearTimeout(id);
-  }, [flash]);
-
-  // Abertura animada do baú: some após a animação.
-  useEffect(() => {
-    if (!opening) return;
-    const id = setTimeout(() => setOpening(null), 2800);
-    return () => clearTimeout(id);
-  }, [opening]);
+    if (!overlayHead) return;
+    const t = setTimeout(() => setOverlayQueue((q) => (q[0]?.id === headId ? q.slice(1) : q)), overlayHead.durationMs);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [headId]);
 
   useEffect(() => {
     wonBoxesRef.current = wonBoxes; // p/ resgatar o tier do baú aberto na abertura
@@ -738,8 +764,8 @@ export function App() {
                         {!spectating && (
                           <button
                             className={`${C.btnSmall} text-[11px] px-2 py-0.5`}
-                            disabled={!intermission}
-                            title={intermission ? "" : "jogue no intervalo"}
+                            disabled={!intermission || playedCard}
+                            title={!intermission ? "jogue no intervalo" : playedCard ? "1 carta por intervalo" : ""}
                             onClick={() => (cardOf(card).targeted ? setTargeting(card) : playCard(card))}
                           >
                             Usar
@@ -748,6 +774,9 @@ export function App() {
                       </div>
                     ))}
                   </div>
+                )}
+                {intermission && playedCard && !spectating && (
+                  <div className="text-[11px] text-amber-300/90">✓ Carta jogada — só 1 por intervalo.</div>
                 )}
                 {!intermission && wallet.cards.length > 0 && !spectating && (
                   <div className="text-[11px] text-muted">Jogue no intervalo (vale p/ a próxima rodada).</div>
@@ -784,6 +813,11 @@ export function App() {
               <div className="curtain-top" />
               <div className="stage-spot" />
               <div className="stage-floor" />
+              {box && !spectating && cardEffects.blocked.includes(playerId) && (
+                <div className="absolute inset-0 z-[6] flex items-start justify-center pt-3 bg-red-950/45 pointer-events-none">
+                  <span className="px-3 py-1 rounded-full bg-red-900/85 border border-red-600 text-red-100 text-xs font-semibold">🚫 Bloqueado nesta rodada</span>
+                </div>
+              )}
               <AnimatePresence mode="wait">
                 {box ? (
                   <motion.div
@@ -879,7 +913,17 @@ export function App() {
             )}
 
             {/* Controles de lance / passar — abaixo do palco. Espectador não vê. */}
-            {box && !spectating && (folded ? (
+            {box && !spectating && (cardEffects.blocked.includes(playerId) ? (
+              <motion.div
+                initial={{ opacity: 0, scale: 0.96 }}
+                animate={{ opacity: 1, scale: 1 }}
+                className="rounded-2xl border-2 border-red-700/70 bg-red-950/70 p-4 text-center shake"
+              >
+                <div className="text-4xl">🚫</div>
+                <div className="font-display text-xl text-red-300 mt-1">Você está BLOQUEADO</div>
+                <div className="text-sm text-red-200/80 mt-0.5">Um rival jogou Bloqueio — você não pode dar lances nesta rodada.</div>
+              </motion.div>
+            ) : folded ? (
               <div className={`${C.card} p-3 text-center text-sm text-muted`}>
                 🙅 Você passou nesta rodada · <b className="text-stone-300">{foldState.folded}/{foldState.total || "?"}</b> passaram
               </div>
@@ -1033,66 +1077,57 @@ export function App() {
         </div>
       )}
 
-      {/* ---------- Destaque (vitória / abertura / mímico) ---------- */}
-      <AnimatePresence>
-        {flash && (
+      {/* ---------- Destaques (fila: 1 por vez, em ordem) ---------- */}
+      <AnimatePresence mode="wait">
+        {overlayHead && (
           <motion.div
+            key={overlayHead.id}
             className="fixed inset-0 z-50 flex items-center justify-center pointer-events-none px-4"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
           >
-            <motion.div
-              className={`px-8 py-6 rounded-2xl text-center border ${
-                flash.kind === "mimic" ? "bg-red-950/90 border-red-700 shake" : "bg-surface/95 border-gold-dim box-glow"
-              }`}
-              initial={{ scale: 0.4, y: 20 }}
-              animate={{ scale: 1, y: 0 }}
-              exit={{ scale: 0.6, opacity: 0 }}
-              transition={{ type: "spring", stiffness: 320, damping: 18 }}
-            >
-              <div className="text-7xl">{flash.emoji}</div>
-              <div className={`font-display text-2xl mt-2 ${flash.kind === "mimic" ? "text-red-300" : "text-gold"}`}>{flash.title}</div>
-              <div className="text-muted text-sm mt-1">{flash.sub}</div>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* ---------- Abertura animada do baú ---------- */}
-      <AnimatePresence>
-        {opening && (
-          <motion.div
-            className="fixed inset-0 z-50 flex items-center justify-center pointer-events-none px-4"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-          >
-            <div className={`relative px-10 pt-20 pb-7 rounded-2xl text-center border ${opening.isMimic ? "bg-red-950/90 border-red-700 shake" : "bg-surface/95 border-gold-dim box-glow"}`}>
-              {/* raios clipados ao card; o card em si NÃO corta (os itens sobem livres) */}
-              {!opening.isMimic && (
-                <div className="absolute inset-0 rounded-2xl overflow-hidden pointer-events-none">
-                  <div className="rays" />
+            {overlayHead.kind === "flash" ? (
+              <motion.div
+                className={`px-8 py-6 rounded-2xl text-center border ${
+                  overlayHead.flashKind === "mimic" ? "bg-red-950/90 border-red-700 shake" : "bg-surface/95 border-gold-dim box-glow"
+                }`}
+                initial={{ scale: 0.4, y: 20 }}
+                animate={{ scale: 1, y: 0 }}
+                exit={{ scale: 0.6, opacity: 0 }}
+                transition={{ type: "spring", stiffness: 320, damping: 18 }}
+              >
+                <div className="text-7xl">{overlayHead.emoji}</div>
+                <div className={`font-display text-2xl mt-2 ${overlayHead.flashKind === "mimic" ? "text-red-300" : "text-gold"}`}>{overlayHead.title}</div>
+                <div className="text-muted text-sm mt-1">{overlayHead.sub}</div>
+              </motion.div>
+            ) : (
+              <div className={`relative px-10 pt-20 pb-7 rounded-2xl text-center border ${overlayHead.isMimic ? "bg-red-950/90 border-red-700 shake" : "bg-surface/95 border-gold-dim box-glow"}`}>
+                {/* raios clipados ao card; o card em si NÃO corta (os itens sobem livres) */}
+                {!overlayHead.isMimic && (
+                  <div className="absolute inset-0 rounded-2xl overflow-hidden pointer-events-none">
+                    <div className="rays" />
+                  </div>
+                )}
+                <div className="relative flex flex-col items-center">
+                  <Chest tier={overlayHead.tier} size={150} open />
+                  <motion.div
+                    className="absolute top-0 text-6xl flex gap-1 flex-wrap justify-center w-[260px]"
+                    initial={{ y: 20, scale: 0.2, opacity: 0 }}
+                    animate={{ y: -64, scale: 1, opacity: 1 }}
+                    transition={{ delay: 0.22, type: "spring", stiffness: 200, damping: 13 }}
+                  >
+                    {overlayHead.isMimic
+                      ? "💀"
+                      : Array.from({ length: Math.min(overlayHead.qty, 8) }).map((_, i) => <span key={i}>{ITEM_EMOJI[overlayHead.item] ?? "🎁"}</span>)}
+                  </motion.div>
+                  <div className={`font-display text-2xl mt-1 ${overlayHead.isMimic ? "text-red-300" : "text-gold"}`}>
+                    {overlayHead.isMimic ? "MÍMICO!" : `${overlayHead.qty}× ${overlayHead.item}`}
+                  </div>
+                  <div className="text-muted text-sm mt-1">{overlayHead.sub}</div>
                 </div>
-              )}
-              <div className="relative flex flex-col items-center">
-                <Chest tier={opening.tier} size={150} open />
-                <motion.div
-                  className="absolute top-0 text-6xl flex gap-1 flex-wrap justify-center w-[260px]"
-                  initial={{ y: 20, scale: 0.2, opacity: 0 }}
-                  animate={{ y: -64, scale: 1, opacity: 1 }}
-                  transition={{ delay: 0.22, type: "spring", stiffness: 200, damping: 13 }}
-                >
-                  {opening.isMimic
-                    ? "💀"
-                    : Array.from({ length: Math.min(opening.qty, 8) }).map((_, i) => <span key={i}>{ITEM_EMOJI[opening.item] ?? "🎁"}</span>)}
-                </motion.div>
-                <div className={`font-display text-2xl mt-1 ${opening.isMimic ? "text-red-300" : "text-gold"}`}>
-                  {opening.isMimic ? "MÍMICO!" : `${opening.qty}× ${opening.item}`}
-                </div>
-                <div className="text-muted text-sm mt-1">{opening.sub}</div>
               </div>
-            </div>
+            )}
           </motion.div>
         )}
       </AnimatePresence>
@@ -1245,7 +1280,7 @@ function ChatPanel({
         {messages.length === 0 && <div className="text-xs text-muted">Sem mensagens ainda. Diga oi! 👋</div>}
         {messages.map((m, i) => (
           <div key={i} className="leading-snug">
-            <span className={`font-semibold ${m.player === me ? "text-gold" : "text-stone-300"}`}>{m.player === me ? "Você" : nm(m.player)}:</span>{" "}
+            <span className="font-semibold" style={{ color: colorOf(m.player) }}>{m.player === me ? "Você" : nm(m.player)}:</span>{" "}
             <span className="text-stone-200 break-words">{m.text}</span>
           </div>
         ))}
