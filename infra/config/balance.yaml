@@ -42,6 +42,12 @@ open:                           # ao abrir, o baú rende N itens DO MESMO tipo s
   min_items: 1                  # (ex.: 3× Diamante) — camada extra de sorte; eleva o teto
   max_items: 4                  # de valor de um baú. Mímico continua penalidade única.
 
+box_card_chance:                # chance (%) de o baú vir TAMBÉM com uma carta (ALÉM dos itens).
+  WOODEN: 5                     # baús melhores trazem carta com mais frequência.
+  IRON:   12                    # 0 = nunca; 100 = sempre. Sorteada na abertura; só em baú com
+  ROYAL:  22                    # itens (Mímico não dá carta). A carta sorteada respeita os
+  VAULT:  35                    # mesmos pesos de `cards.weights` e vai para a mão (até hand_max).
+
 collections:                    # bônus ~2–3× o valor de mercado dos itens consumidos
   COPPER_TRIO:     { requires: { COPPER: 3 },                              bonus: 70 }
   SILVER_SET:      { requires: { SILVER: 3 },                              bonus: 230 }

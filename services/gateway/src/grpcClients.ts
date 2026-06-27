@@ -200,6 +200,7 @@ export interface OpenBoxReply {
   isMimic: boolean;
   quantity: number;
   cursed: boolean;
+  card: string;
 }
 
 export interface WalletItem {

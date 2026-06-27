@@ -377,6 +377,13 @@ export function App() {
                 sfx.fanfare();
                 fireConfetti();
               }
+              // Prêmio extra: a caixa também trouxe uma carta (vai p/ a mão; entra na fila após a abertura).
+              if (msg.card) {
+                const c = cardOf(msg.card);
+                addLog(`🃏 A caixa também trouxe uma carta: ${c.label}!`);
+                enqueueOverlay({ kind: "flash", flashKind: "win", emoji: c.emoji, title: "Carta bônus! 🃏", sub: c.label, durationMs: 2400 });
+                sfx.coin();
+              }
             } else addLog(`⚠️ Não foi possível abrir ${msg.boxId}: ${msg.reason}`);
             break;
           case "BOX_OPENED": {

@@ -68,6 +68,7 @@ message OpenBoxReply {
   bool   is_mimic = 4;   // armadilha (penalidade)
   int32  quantity = 5;   // 1..4 itens DO tipo sorteado (0 no Mímico)
   bool   cursed   = 6;   // o Mímico veio de uma Maldição (revela ao vencedor)
+  string card     = 7;   // carta-prêmio sorteada junto da caixa ("" = nenhuma)
 }
 
 message RoomQuery { string room_id = 1; }

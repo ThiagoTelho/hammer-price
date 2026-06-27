@@ -127,6 +127,15 @@ public final class WalletServer {
         }
 
         @Override
+        public void grantCard(PlayerQuery req, StreamObserver<BuyCardReply> obs) {
+            int handMax = (int) cfg.cardLong("hand_max", 6);
+            String card = store.grantCard(req.getPlayerId(), handMax, cfg.cardWeights()); // grátis (prêmio da caixa)
+            obs.onNext(BuyCardReply.newBuilder()
+                    .setOk(!card.isEmpty()).setReason(card.isEmpty() ? "HAND_FULL" : "OK").setCard(card).build());
+            obs.onCompleted();
+        }
+
+        @Override
         public void consumeCard(ConsumeCardRequest req, StreamObserver<Ack> obs) {
             boolean ok = store.consumeCard(req.getPlayerId(), req.getCard());
             obs.onNext(Ack.newBuilder().setOk(ok).build());

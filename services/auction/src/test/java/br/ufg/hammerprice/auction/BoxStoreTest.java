@@ -72,7 +72,7 @@ class BoxStoreTest {
     }
 
     private static BoxStore newStore(BoxStore.Wallet w) {
-        return new BoxStore(w, SETTINGS, testOpener(), weights(), new Random(42));
+        return new BoxStore(w, SETTINGS, testOpener(), weights(), java.util.Map.of(), new Random(42));
     }
 
     private static BoxOpener testOpener() {
@@ -271,8 +271,8 @@ class BoxStoreTest {
     @Test
     void randomTypeIsWeightedAndDeterministic() {
         Map<String, Integer> weights = weights();
-        BoxStore a = new BoxStore(new StubWallet(), SETTINGS, testOpener(), weights, new Random(7));
-        BoxStore b = new BoxStore(new StubWallet(), SETTINGS, testOpener(), weights, new Random(7));
+        BoxStore a = new BoxStore(new StubWallet(), SETTINGS, testOpener(), weights, java.util.Map.of(), new Random(7));
+        BoxStore b = new BoxStore(new StubWallet(), SETTINGS, testOpener(), weights, java.util.Map.of(), new Random(7));
         try {
             List<String> seqA = new ArrayList<>();
             List<String> seqB = new ArrayList<>();
@@ -376,6 +376,37 @@ class BoxStoreTest {
             BoxStore.OpenResult open = store.openBox(b, "ana");
             assertEquals(peek.item(), open.item(), "a Visão revela exatamente o item que a caixa dá");
             assertEquals(peek.quantity(), open.quantity(), "e a mesma quantidade");
+        } finally {
+            store.shutdown();
+        }
+    }
+
+    @Test
+    void boxAlsoDropsCardByChance() {
+        // chance 100 em todo tipo → toda caixa COM itens também traz carta.
+        Map<String, Integer> always = Map.of("WOODEN", 100, "IRON", 100, "ROYAL", 100, "VAULT", 100);
+        BoxStore store = new BoxStore(new StubWallet(), SETTINGS, testOpener(), weights(), always, new Random(42));
+        try {
+            String b = store.roomState().boxId();
+            assertTrue(store.placeBid(b, "ana", 100).accepted());
+            store.closeNow();
+            BoxStore.OpenResult r = store.openBox(b, "ana");
+            assertTrue(r.ok());
+            assertFalse(r.isMimic(), "o opener de teste nunca dá Mímico (peso 0)");
+            assertTrue(r.cardDropped(), "com chance 100, a caixa com itens também vem com carta");
+        } finally {
+            store.shutdown();
+        }
+    }
+
+    @Test
+    void boxWithoutChanceDropsNoCard() {
+        BoxStore store = newStore(new StubWallet()); // sem box_card_chance (Map.of())
+        try {
+            String b = store.roomState().boxId();
+            assertTrue(store.placeBid(b, "ana", 100).accepted());
+            store.closeNow();
+            assertFalse(store.openBox(b, "ana").cardDropped(), "sem chance configurada, nenhuma carta");
         } finally {
             store.shutdown();
         }

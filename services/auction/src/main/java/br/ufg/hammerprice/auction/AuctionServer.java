@@ -16,6 +16,7 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.Random;
 import br.ufg.hammerprice.wallet.grpc.AddItemRequest;
+import br.ufg.hammerprice.wallet.grpc.BuyCardReply;
 import br.ufg.hammerprice.wallet.grpc.MimicReply;
 import br.ufg.hammerprice.wallet.grpc.PlayerQuery;
 import br.ufg.hammerprice.wallet.grpc.ReleaseRequest;
@@ -83,6 +84,18 @@ public final class AuctionServer {
                                 .setPlayerId(playerId).setType(type).setQuantity(quantity).build());
             } catch (Exception e) {
                 System.err.println("auction: erro ao creditar item: " + e.getMessage());
+            }
+        }
+
+        /** Concede uma carta GRÁTIS à mão (prêmio da caixa). Retorna o tipo sorteado, ou "" (mão cheia). */
+        String grantCard(String playerId) {
+            try {
+                BuyCardReply r = stub.withDeadlineAfter(2, TimeUnit.SECONDS)
+                        .grantCard(PlayerQuery.newBuilder().setPlayerId(playerId).build());
+                return r.getCard();
+            } catch (Exception e) {
+                System.err.println("auction: erro ao conceder carta da caixa: " + e.getMessage());
+                return "";
             }
         }
 
@@ -154,6 +167,7 @@ public final class AuctionServer {
             // a penalidade quando o gateway reler a carteira do vencedor.
             String penKind = "";
             String penDetail = "";
+            String grantedCard = ""; // carta-prêmio sorteada junto da caixa (se houver)
             if (r.ok()) {
                 if (r.isMimic()) {
                     if (r.insured()) {
@@ -166,6 +180,9 @@ public final class AuctionServer {
                     }
                 } else {
                     wallet.addItem(req.getPlayerId(), r.item(), r.quantity()); // credita N itens do tipo
+                    if (r.cardDropped()) {
+                        grantedCard = wallet.grantCard(req.getPlayerId()); // prêmio: carta junto dos itens
+                    }
                 }
             }
             obs.onNext(OpenBoxReply.newBuilder()
@@ -175,6 +192,7 @@ public final class AuctionServer {
                     .setQuantity(r.quantity())
                     .setIsMimic(r.isMimic())
                     .setCursed(r.cursed())
+                    .setCard(grantedCard)
                     .build());
             obs.onCompleted();
             if (r.ok()) {
@@ -269,6 +287,7 @@ public final class AuctionServer {
         // Sorteio do tipo de caixa por rodada: pesos do balance.yaml; seed derivada do
         // RNG_SEED (distinta da seed de abertura) para rodadas reproduzíveis em teste.
         Map<String, Integer> typeWeights = cfg.boxTypeWeights();
+        Map<String, Integer> cardChances = cfg.boxCardChance(); // % de a caixa vir também com carta
         Random typeRng = (seedEnv == null || seedEnv.isBlank())
                 ? new Random()
                 : new Random(Long.parseLong(seedEnv.trim()) ^ 0x9E3779B97F4A7C15L);
@@ -278,7 +297,7 @@ public final class AuctionServer {
         EventPublisher events = new EventPublisher(roomId,
                 System.getenv("REDIS_URL"), System.getenv("RABBITMQ_URL"));
 
-        BoxStore store = new BoxStore(gw, settings, opener, typeWeights, typeRng);
+        BoxStore store = new BoxStore(gw, settings, opener, typeWeights, cardChances, typeRng);
         // A cada início/fim de rodada (thread do cronômetro), difunde os eventos do jogo.
         store.setRoundListener(new BoxStore.RoundListener() {
             @Override

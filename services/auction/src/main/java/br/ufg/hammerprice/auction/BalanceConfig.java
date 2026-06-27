@@ -85,6 +85,20 @@ public final class BalanceConfig {
     }
 
     /**
+     * Chance (%) de cada TIPO de caixa vir TAMBÉM com uma carta, de {@code box_card_chance}
+     * (ex.: {@code {WOODEN=5, ..., VAULT=35}}). Vazio se ausente (→ nenhuma caixa dá carta).
+     */
+    public Map<String, Integer> boxCardChance() {
+        Map<String, Integer> out = new LinkedHashMap<>();
+        for (Map.Entry<String, Object> e : section("box_card_chance").entrySet()) {
+            if (e.getValue() instanceof Number n) {
+                out.put(e.getKey(), n.intValue());
+            }
+        }
+        return out;
+    }
+
+    /**
      * Distribuição de drop (odds, em pontos percentuais) de um tipo de caixa, lida de
      * {@code box_odds.<tipo>}. Ex.: {@code {COPPER=60, SILVER=30, GOLD=9, DIAMOND=1, MIMIC=0}}.
      * Retorna mapa vazio se ausente — o chamador deve ter um fallback.

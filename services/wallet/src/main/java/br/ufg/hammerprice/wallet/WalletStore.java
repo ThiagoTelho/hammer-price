@@ -275,6 +275,22 @@ public final class WalletStore {
         return new BuyCardResult(true, "OK", card, price, p.balance);
     }
 
+    /**
+     * Concede uma carta GRÁTIS à mão (prêmio da caixa), respeitando o teto da mão.
+     * Retorna o tipo sorteado, ou "" se a mão está cheia (prêmio perdido) ou não há cartas.
+     */
+    public synchronized String grantCard(String playerId, int handMax, Map<String, Integer> weights) {
+        Player p = getOrCreate(playerId);
+        if (p.cards.size() >= handMax) {
+            return ""; // mão cheia: o prêmio se perde (sem furar o teto)
+        }
+        String card = drawCard(weights);
+        if (!card.isEmpty()) {
+            p.cards.add(card);
+        }
+        return card;
+    }
+
     /** Sorteio ponderado de um tipo de carta (cumulativo). */
     private String drawCard(Map<String, Integer> weights) {
         int total = 0;

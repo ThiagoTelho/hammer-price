@@ -19,6 +19,7 @@ service Wallet {
   rpc ResetPlayer (PlayerQuery)   returns (Ack);   // zera o jogador p/ uma nova partida (orçamento inicial)
   rpc ApplyMimic  (PlayerQuery)   returns (MimicReply);  // ao abrir 💀 Mímico: aplica 1 penalidade
   rpc BuyCard     (PlayerQuery)        returns (BuyCardReply);  // compra carta aleatória (preço crescente)
+  rpc GrantCard   (PlayerQuery)        returns (BuyCardReply);  // carta GRÁTIS (prêmio da caixa); card="" se mão cheia
   rpc ConsumeCard (ConsumeCardRequest) returns (Ack);          // remove 1 carta da mão (ao jogar)
   rpc Transfer    (TransferRequest)    returns (TransferReply); // move dinheiro entre jogadores (Imposto)
   rpc GetPlayer (PlayerQuery)     returns (PlayerState);
