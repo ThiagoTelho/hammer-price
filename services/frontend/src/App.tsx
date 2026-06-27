@@ -957,19 +957,24 @@ export function App() {
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
           >
-            <div className={`relative px-10 py-7 rounded-2xl text-center border overflow-hidden ${opening.isMimic ? "bg-red-950/90 border-red-700 shake" : "bg-surface/95 border-gold-dim box-glow"}`}>
-              {!opening.isMimic && <div className="rays" />}
+            <div className={`relative px-10 pt-20 pb-7 rounded-2xl text-center border ${opening.isMimic ? "bg-red-950/90 border-red-700 shake" : "bg-surface/95 border-gold-dim box-glow"}`}>
+              {/* raios clipados ao card; o card em si NÃO corta (os itens sobem livres) */}
+              {!opening.isMimic && (
+                <div className="absolute inset-0 rounded-2xl overflow-hidden pointer-events-none">
+                  <div className="rays" />
+                </div>
+              )}
               <div className="relative flex flex-col items-center">
                 <Chest tier={opening.tier} size={150} open />
                 <motion.div
-                  className="absolute top-0 text-6xl flex gap-1"
-                  initial={{ y: 30, scale: 0.2, opacity: 0 }}
-                  animate={{ y: -42, scale: 1, opacity: 1 }}
+                  className="absolute top-0 text-6xl flex gap-1 flex-wrap justify-center w-[260px]"
+                  initial={{ y: 20, scale: 0.2, opacity: 0 }}
+                  animate={{ y: -64, scale: 1, opacity: 1 }}
                   transition={{ delay: 0.22, type: "spring", stiffness: 200, damping: 13 }}
                 >
                   {opening.isMimic
                     ? "💀"
-                    : Array.from({ length: Math.min(opening.qty, 4) }).map((_, i) => <span key={i}>{ITEM_EMOJI[opening.item] ?? "🎁"}</span>)}
+                    : Array.from({ length: Math.min(opening.qty, 8) }).map((_, i) => <span key={i}>{ITEM_EMOJI[opening.item] ?? "🎁"}</span>)}
                 </motion.div>
                 <div className={`font-display text-2xl mt-1 ${opening.isMimic ? "text-red-300" : "text-gold"}`}>
                   {opening.isMimic ? "MÍMICO!" : `${opening.qty}× ${opening.item}`}
