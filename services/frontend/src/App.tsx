@@ -692,7 +692,7 @@ export function App() {
           className="mt-8 sm:mt-12 flex flex-col items-center gap-12 sm:gap-16 pb-16"
         >
           {/* ----- HERO ----- */}
-          <div className="text-center max-w-2xl">
+          <div className="text-center max-w-2xl order-1">
             <motion.h2
               initial={{ y: 16, opacity: 0 }}
               animate={{ y: 0, opacity: 1 }}
@@ -710,11 +710,10 @@ export function App() {
               Um <b className="text-gold-soft">leilão de baús misteriosos em tempo real</b>. Dispute cada lote, abra o que
               arrematar, jogue cartas para virar o jogo — e termine com o maior patrimônio da mesa.
             </motion.p>
-            <a href="#entrar" className="inline-block mt-6 text-gold-soft text-sm hover:text-gold transition">↓ entrar na mesa</a>
           </div>
 
           {/* ----- BAÚS (com dica de prêmio) ----- */}
-          <section className="w-full max-w-3xl">
+          <section className="w-full max-w-3xl order-3">
             <h3 className="text-center text-gold/80 font-semibold uppercase tracking-[0.2em] text-xs mb-5">Os baús</h3>
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
               {["WOODEN", "IRON", "ROYAL", "VAULT"].map((t, i) => (
@@ -738,7 +737,7 @@ export function App() {
           </section>
 
           {/* ----- COMO JOGAR (4 passos) ----- */}
-          <section className="w-full max-w-4xl">
+          <section className="w-full max-w-4xl order-4">
             <h3 className="text-center text-gold/80 font-semibold uppercase tracking-[0.2em] text-xs mb-5">Como jogar</h3>
             <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
               {HOW_TO_PLAY.map((s, i) => (
@@ -758,7 +757,7 @@ export function App() {
           </section>
 
           {/* ----- VITRINE DAS CARTAS ----- */}
-          <section className="w-full max-w-4xl">
+          <section className="w-full max-w-4xl order-5">
             <h3 className="text-center text-gold/80 font-semibold uppercase tracking-[0.2em] text-xs mb-1">Cartas de habilidade</h3>
             <p className="text-center text-xs text-muted mb-5">
               Compradas com dinheiro e guardadas na mão. Jogue <b className="text-stone-200">1 por intervalo</b> para virar a próxima rodada.
@@ -772,8 +771,8 @@ export function App() {
             </div>
           </section>
 
-          {/* ----- CTA: entrar / criar ----- */}
-          <section id="entrar" className={`${C.card} box-glow p-6 w-full max-w-md flex flex-col gap-4 scroll-mt-6`}>
+          {/* ----- CTA: entrar / criar (logo após o hero, visível ao abrir) ----- */}
+          <section className={`${C.card} box-glow p-6 w-full max-w-md flex flex-col gap-4 order-2`}>
             <div className="text-center">
               <div className="font-display text-2xl text-gold">Entre na mesa</div>
               <p className="text-xs text-muted mt-0.5">Crie uma sala e convide, ou entre com um código. 2 a 15 jogadores.</p>
