@@ -83,6 +83,20 @@ const clearSession = () => {
   }
 };
 
+// Homepage: dica qualitativa de prêmio por baú (não numérica, p/ não divergir do balance.yaml).
+const TIER_HINT: Record<string, string> = {
+  WOODEN: "Quase sempre Cobre — barato e seguro",
+  IRON: "Prata, com algum Ouro",
+  ROYAL: "Boas chances de Ouro",
+  VAULT: "Mais Diamante — e mais risco de Mímico",
+};
+const HOW_TO_PLAY = [
+  { icon: "🔨", title: "Dispute o lote", text: "O cronômetro só começa após o 1º lance; quem liderar quando ele zerar arremata. Sem interesse? Passe." },
+  { icon: "🎁", title: "Abra o baú", text: "Rende de 1 a 4 itens — de Cobre a Diamante — ou um 💀 Mímico, que aplica uma penalidade." },
+  { icon: "🃏", title: "Vire o jogo", text: "Compre cartas e forme coleções para multiplicar seus itens e atrapalhar os rivais." },
+  { icon: "🏆", title: "Maior patrimônio", text: "No fim das rodadas vence quem tiver mais dinheiro + itens + bônus de coleções." },
+];
+
 const BID_TIMER_MS = 20000; // espelha match.box_timer_seconds (escala do anel de contagem)
 const money = (n: number): string => `$${Math.round(n).toLocaleString("pt-BR")}`;
 const ITEM_ORDER = ["COPPER", "SILVER", "GOLD", "DIAMOND", "MIMIC"];
@@ -579,55 +593,97 @@ export function App() {
 
       {phase === "menu" && (
         <motion.div
-          initial={{ opacity: 0, y: 12 }}
-          animate={{ opacity: 1, y: 0 }}
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
           transition={{ duration: 0.5 }}
-          className="mt-6 grid lg:grid-cols-[1.1fr_minmax(0,400px)] gap-8 lg:gap-12 items-start"
+          className="mt-8 sm:mt-12 flex flex-col items-center gap-12 sm:gap-16 pb-16"
         >
-          {/* ----- Hero + como jogar ----- */}
-          <div className="order-2 lg:order-1">
-            <h2 className="font-display text-4xl sm:text-5xl text-gold leading-tight">Arremate. Abra. Enriqueça.</h2>
-            <p className="text-stone-300 mt-3 text-base sm:text-lg max-w-xl">
-              Um <b className="text-gold-soft">leilão de baús misteriosos em tempo real</b>. Dispute cada lote com os outros
-              jogadores, abra o que arrematar e termine com o maior patrimônio da mesa.
-            </p>
-
-            {/* fileira de baús (níveis) */}
-            <div className="flex flex-wrap gap-5 my-7 justify-center lg:justify-start">
-              {["WOODEN", "IRON", "ROYAL", "VAULT"].map((t) => (
-                <div key={t} className="flex flex-col items-center gap-1">
-                  <Chest tier={t} size={66} />
-                  <span className="text-[11px] text-muted">{tierLabel(t)}</span>
-                </div>
-              ))}
-            </div>
-
-            {/* como jogar */}
-            <h3 className="text-gold font-semibold uppercase tracking-wider text-xs mb-3">Como jogar</h3>
-            <ol className="flex flex-col gap-3">
-              {[
-                { icon: "🎲", title: "Um baú por rodada", text: "A cada rodada sobe um baú aleatório — com as probabilidades de prêmio à vista." },
-                { icon: "🔨", title: "Dispute no lance", text: "O cronômetro só começa após o 1º lance; quem liderar quando ele zerar arremata. Sem interesse? É só passar." },
-                { icon: "🎁", title: "Abra o que ganhar", text: "Pode sair Cobre, Prata, Ouro ou Diamante… ou um 💀 Mímico, que aplica uma penalidade." },
-                { icon: "💰", title: "Faça seu patrimônio", text: "Venda itens no mercado ou junte coleções para multiplicar o valor dos seus itens." },
-                { icon: "🏆", title: "Maior patrimônio vence", text: "No fim das rodadas, ganha quem tiver mais dinheiro + itens + bônus de coleções." },
-              ].map((s, i) => (
-                <li key={i} className="flex gap-3 items-start">
-                  <span className="text-2xl leading-none mt-0.5 w-7 text-center shrink-0">{s.icon}</span>
-                  <div>
-                    <div className="text-stone-100 font-semibold text-sm">{s.title}</div>
-                    <div className="text-muted text-sm">{s.text}</div>
-                  </div>
-                </li>
-              ))}
-            </ol>
+          {/* ----- HERO ----- */}
+          <div className="text-center max-w-2xl">
+            <motion.h2
+              initial={{ y: 16, opacity: 0 }}
+              animate={{ y: 0, opacity: 1 }}
+              transition={{ delay: 0.05, type: "spring", stiffness: 120, damping: 16 }}
+              className="font-display text-4xl sm:text-6xl text-gold leading-tight"
+            >
+              Arremate. Abra. Enriqueça.
+            </motion.h2>
+            <motion.p
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ delay: 0.25 }}
+              className="text-stone-300 mt-4 text-base sm:text-lg"
+            >
+              Um <b className="text-gold-soft">leilão de baús misteriosos em tempo real</b>. Dispute cada lote, abra o que
+              arrematar, jogue cartas para virar o jogo — e termine com o maior patrimônio da mesa.
+            </motion.p>
+            <a href="#entrar" className="inline-block mt-6 text-gold-soft text-sm hover:text-gold transition">↓ entrar na mesa</a>
           </div>
 
-          {/* ----- Card de entrar / criar ----- */}
-          <div className={`${C.card} box-glow p-6 flex flex-col gap-4 order-1 lg:order-2 lg:sticky lg:top-6`}>
+          {/* ----- BAÚS (com dica de prêmio) ----- */}
+          <section className="w-full max-w-3xl">
+            <h3 className="text-center text-gold/80 font-semibold uppercase tracking-[0.2em] text-xs mb-5">Os baús</h3>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+              {["WOODEN", "IRON", "ROYAL", "VAULT"].map((t, i) => (
+                <motion.div
+                  key={t}
+                  initial={{ y: 18, opacity: 0 }}
+                  animate={{ y: 0, opacity: 1 }}
+                  transition={{ delay: 0.1 + i * 0.07 }}
+                  className="flex flex-col items-center gap-2 rounded-2xl border border-line bg-surface/60 p-4"
+                  style={{ ["--rarity" as string]: tierLight(t) }}
+                >
+                  <motion.div animate={{ y: [0, -5, 0] }} transition={{ repeat: Infinity, duration: 2.6 + i * 0.2, ease: "easeInOut" }}>
+                    <Chest tier={t} size={64} />
+                  </motion.div>
+                  <div className="font-semibold text-sm text-stone-100">{tierLabel(t)}</div>
+                  <div className="text-[11px] text-muted text-center leading-snug">{TIER_HINT[t]}</div>
+                </motion.div>
+              ))}
+            </div>
+            <p className="text-center text-[11px] text-muted mt-3">Cada baú mostra as probabilidades reais de prêmio antes do lance.</p>
+          </section>
+
+          {/* ----- COMO JOGAR (4 passos) ----- */}
+          <section className="w-full max-w-4xl">
+            <h3 className="text-center text-gold/80 font-semibold uppercase tracking-[0.2em] text-xs mb-5">Como jogar</h3>
+            <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              {HOW_TO_PLAY.map((s, i) => (
+                <motion.div
+                  key={i}
+                  initial={{ y: 18, opacity: 0 }}
+                  animate={{ y: 0, opacity: 1 }}
+                  transition={{ delay: 0.12 + i * 0.07 }}
+                  className="rounded-2xl border border-line bg-surface/60 p-4 text-center"
+                >
+                  <div className="text-3xl">{s.icon}</div>
+                  <div className="font-semibold text-sm text-stone-100 mt-2">{s.title}</div>
+                  <div className="text-xs text-muted mt-1 leading-snug">{s.text}</div>
+                </motion.div>
+              ))}
+            </div>
+          </section>
+
+          {/* ----- VITRINE DAS CARTAS ----- */}
+          <section className="w-full max-w-4xl">
+            <h3 className="text-center text-gold/80 font-semibold uppercase tracking-[0.2em] text-xs mb-1">Cartas de habilidade</h3>
+            <p className="text-center text-xs text-muted mb-5">
+              Compradas com dinheiro e guardadas na mão. Jogue <b className="text-stone-200">1 por intervalo</b> para virar a próxima rodada.
+            </p>
+            <div className="flex flex-wrap justify-center gap-2">
+              {Object.keys(CARDS).map((c, i) => (
+                <motion.div key={c} initial={{ scale: 0.8, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} transition={{ delay: 0.1 + i * 0.04 }}>
+                  <Card type={c} size={52} />
+                </motion.div>
+              ))}
+            </div>
+          </section>
+
+          {/* ----- CTA: entrar / criar ----- */}
+          <section id="entrar" className={`${C.card} box-glow p-6 w-full max-w-md flex flex-col gap-4 scroll-mt-6`}>
             <div className="text-center">
-              <div className="font-display text-xl text-gold">Entre na mesa</div>
-              <p className="text-xs text-muted mt-0.5">Crie uma sala e convide, ou entre com um código.</p>
+              <div className="font-display text-2xl text-gold">Entre na mesa</div>
+              <p className="text-xs text-muted mt-0.5">Crie uma sala e convide, ou entre com um código. 2 a 15 jogadores.</p>
             </div>
             <div>
               <label className="text-xs uppercase tracking-wide text-muted">Seu nome</label>
@@ -663,8 +719,8 @@ export function App() {
                 Entrar
               </button>
             </div>
-            <p className="text-[11px] text-muted text-center">2 a 15 jogadores · partida começa quando o anfitrião iniciar.</p>
-          </div>
+            <p className="text-[11px] text-muted text-center">A partida começa quando o anfitrião iniciar.</p>
+          </section>
         </motion.div>
       )}
 
