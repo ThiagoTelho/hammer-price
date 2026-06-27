@@ -358,7 +358,8 @@ export function App() {
               fireConfetti();
             }
             setSold(msg.boxId); // carimbo ARREMATADO no baú do palco
-            enqueueOverlay({ kind: "flash", flashKind: "win", emoji: "🏆", title: mine ? "Você arrematou!" : `${nm(msg.winner)} arrematou`, sub: `${tierLabel(msg.boxType)} por ${money(msg.price)}`, durationMs: 2200 });
+            // Troféu só p/ quem venceu; aos demais, o martelo da casa (quem arrematou + preço), sem troféu.
+            enqueueOverlay({ kind: "flash", flashKind: "win", emoji: mine ? "🏆" : "🔨", title: mine ? "Você arrematou!" : `${nm(msg.winner)} arrematou`, sub: `${tierLabel(msg.boxType)} por ${money(msg.price)}`, durationMs: 2200 });
             break;
           }
           case "OPEN_RESULT":
