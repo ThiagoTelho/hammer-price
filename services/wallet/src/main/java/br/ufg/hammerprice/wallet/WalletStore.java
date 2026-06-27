@@ -180,9 +180,8 @@ public final class WalletStore {
 
     /**
      * Forma uma coleção: se o jogador tem os itens LIVRES exigidos, CONSOME-os (remove do
-     * inventário) e registra a coleção com seu bônus. Atômica. Itens excedentes continuam livres
-     * (podem formar outra coleção do mesmo tipo). O patrimônio não muda — os itens consumidos já
-     * não contavam como livres; o valor agora vem do bônus da coleção.
+     * inventário) e CREDITA o bônus no saldo na hora (a coleção "paga" imediatamente). Atômica.
+     * Itens excedentes continuam livres (podem formar outra coleção do mesmo tipo).
      */
     public synchronized FormResult formCollection(String playerId, String kind,
                                                   Map<String, Integer> requires, long bonus) {
@@ -207,6 +206,7 @@ public final class WalletStore {
             }
         }
         p.collections.add(new FormedCollection(kind, bonus));
+        p.balance += bonus; // o bônus vira dinheiro NA HORA (antes só contava no ranking)
         return new FormResult(true, "OK", bonus);
     }
 
@@ -240,6 +240,7 @@ public final class WalletStore {
             }
             case "COLLECTION": {
                 FormedCollection c = p.collections.remove(rng.nextInt(p.collections.size()));
+                p.balance = Math.max(0, p.balance - c.bonus()); // o bônus já foi creditado → anular tira do saldo
                 return new MimicResult("COLLECTION", "coleção " + c.kind() + " (-" + c.bonus() + ")", c.bonus());
             }
             default: { // MONEY

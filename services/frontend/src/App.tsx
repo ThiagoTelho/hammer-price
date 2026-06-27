@@ -459,7 +459,7 @@ export function App() {
               sfx.fanfare();
               fireConfetti();
             }
-            addLog(msg.ok ? `🏅 Coleção ${msg.kind} formada! +${money(msg.bonus)}` : `⚠️ Não deu para formar ${msg.kind}: ${msg.reason}`);
+            addLog(msg.ok ? `🏅 Coleção ${msg.kind} formada! +${money(msg.bonus)} no saldo` : `⚠️ Não deu para formar ${msg.kind}: ${msg.reason}`);
             break;
           case "ROOM_CLOSED":
             clearSession();
@@ -1216,7 +1216,6 @@ export function App() {
                   <th className="text-left px-3 py-2">Jogador</th>
                   <th className="text-right px-3 py-2">💰</th>
                   <th className="text-right px-3 py-2">🎒</th>
-                  <th className="text-right px-3 py-2">🏅</th>
                   <th className="text-right px-3 py-2">Patrimônio</th>
                 </tr>
               </thead>
@@ -1229,7 +1228,6 @@ export function App() {
                     </td>
                     <td className="px-3 py-2 text-right tabular-nums">{money(r.money)}</td>
                     <td className="px-3 py-2 text-right tabular-nums">{money(r.items)}</td>
-                    <td className="px-3 py-2 text-right tabular-nums">{money(r.bonus)}</td>
                     <td className="px-3 py-2 text-right tabular-nums font-bold text-gold">{money(r.net)}</td>
                   </tr>
                 ))}

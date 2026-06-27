@@ -257,8 +257,9 @@ async function endMatch(room: string): Promise<void> {
     try {
       const p = await getPlayer(WALLET_ROUTES[room], playerId);
       const items = p.inventory.filter((i) => i.state === "FREE").reduce((s, i) => s + (prices[i.type] ?? 0), 0);
+      // Bônus de coleção já está NO saldo (creditado ao formar) → não soma de novo no patrimônio.
       const bonus = p.collections.reduce((s, c) => s + c.bonus, 0);
-      ranking.push({ playerId, money: p.balance, items, bonus, net: p.balance + items + bonus });
+      ranking.push({ playerId, money: p.balance, items, bonus, net: p.balance + items });
     } catch {
       /* jogador indisponível */
     }
@@ -281,8 +282,7 @@ async function broadcastPlayersPanel(room: string): Promise<void> {
         const p = await getPlayer(WALLET_ROUTES[room], id);
         const free = p.inventory.filter((i) => i.state === "FREE");
         const items = free.reduce((s, i) => s + (prices[i.type] ?? 0), 0);
-        const bonus = p.collections.reduce((s, c) => s + c.bonus, 0);
-        return { id, money: p.balance, reserved: p.reserved, itemCount: free.length, net: p.balance + items + bonus, spectating };
+        return { id, money: p.balance, reserved: p.reserved, itemCount: free.length, net: p.balance + items, spectating };
       } catch {
         return { id, money: 0, reserved: 0, itemCount: 0, net: 0, spectating };
       }
