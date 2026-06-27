@@ -15,7 +15,7 @@ services:
   # ---------- Infraestrutura ----------
   redis:
     image: redis:7-alpine
-    profiles: ["local", "node-a"]
+    profiles: ["local", "node-a", "prod"]
     ports: ["6379:6379"]
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
@@ -27,7 +27,7 @@ services:
   # (`redis`) e são propagadas para cá; o gateway lê o snapshot de mercado DESTA réplica.
   redis-replica:
     image: redis:7-alpine
-    profiles: ["local", "node-b"]
+    profiles: ["local", "node-b", "prod"]
     command: ["redis-server", "--replicaof", "redis", "6379"]
     depends_on:
       redis:
@@ -40,7 +40,7 @@ services:
 
   rabbitmq:
     image: rabbitmq:3-management
-    profiles: ["local", "node-a"]
+    profiles: ["local", "node-a", "prod"]
     ports: ["5672:5672", "15672:15672"]   # 15672 = console de gestão
     healthcheck:
       test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
@@ -51,7 +51,7 @@ services:
 
   postgres-primary:
     image: postgres:16-alpine
-    profiles: ["local", "node-a"]
+    profiles: ["local", "node-a", "prod"]
     environment:
       POSTGRES_DB: hammerprice
       POSTGRES_USER: ${PG_USER:-hammer}
@@ -85,7 +85,7 @@ services:
     build:
       context: ..
       dockerfile: services/gateway/Dockerfile
-    profiles: ["local", "node-a"]
+    profiles: ["local", "node-a", "prod"]
     restart: unless-stopped
     environment:
       REDIS_URL: redis://redis:6379
@@ -114,7 +114,7 @@ services:
     build:
       context: ..
       dockerfile: services/auction/Dockerfile
-    profiles: ["local", "node-a"]
+    profiles: ["local", "node-a", "prod"]
     restart: unless-stopped
     environment:
       AUCTION_ADDR: "50051"
@@ -137,7 +137,7 @@ services:
     build:
       context: ..
       dockerfile: services/auction/Dockerfile
-    profiles: ["local", "node-b"]
+    profiles: ["local", "node-b", "prod"]
     restart: unless-stopped
     environment:
       AUCTION_ADDR: "50051"
@@ -160,7 +160,7 @@ services:
     build:
       context: ..
       dockerfile: services/wallet/Dockerfile
-    profiles: ["local", "node-a"]
+    profiles: ["local", "node-a", "prod"]
     restart: unless-stopped
     environment:
       WALLET_ADDR: "50052"
@@ -180,7 +180,7 @@ services:
     build:
       context: ..
       dockerfile: services/wallet/Dockerfile
-    profiles: ["local", "node-b"]
+    profiles: ["local", "node-b", "prod"]
     restart: unless-stopped
     environment:
       WALLET_ADDR: "50052"
@@ -193,7 +193,7 @@ services:
     build:
       context: ..
       dockerfile: services/worker/Dockerfile
-    profiles: ["local", "node-b"]
+    profiles: ["local", "node-b", "prod"]
     restart: unless-stopped
     environment:
       RABBITMQ_URL: amqp://rabbitmq:5672
@@ -225,7 +225,36 @@ services:
     depends_on:
       gateway:
         condition: service_started
-    # Em produção o frontend é build estático em S3+CloudFront (ver docs/08).
+    # Em produção o frontend é build estático servido pelo `web` (Caddy) — ver abaixo.
+
+  # ---------- Entrada pública de PRODUÇÃO (domínio + HTTPS) ----------
+  # Caddy com HTTPS automático: serve o build ESTÁTICO do frontend e faz proxy do WebSocket
+  # (/ws) ao gateway. Substitui o frontend Vite (dev) quando se sobe com o perfil `prod`.
+  # Requer DOMAIN e as portas 80/443 abertas no security group. Ver infra/deploy/start.sh.
+  web:
+    build:
+      context: ..
+      dockerfile: services/frontend/Dockerfile.prod
+      args:
+        # URLs fixadas no build do frontend (apontam para o próprio domínio, via start.sh).
+        VITE_GATEWAY_URL: ${VITE_GATEWAY_URL:-wss://localhost/ws}
+        VITE_PUBLIC_URL: ${VITE_PUBLIC_URL:-https://localhost}
+    profiles: ["prod"]
+    restart: unless-stopped
+    environment:
+      # DOMAIN é obrigatório no perfil `prod` — o start.sh garante isso. (Não usamos ${...:?}
+      # aqui porque o compose avalia a interpolação ANTES de filtrar perfis, o que quebraria o
+      # perfil `local`.) Sem DOMAIN, o Caddy falha ao subir (endereço de site vazio).
+      DOMAIN: "${DOMAIN:-}"
+    ports: ["80:80", "443:443"]
+    depends_on:
+      gateway:
+        condition: service_started
+    volumes:
+      - "caddy_data:/data"      # certificados Let's Encrypt (persistir evita rate limit)
+      - "caddy_config:/config"
 
 volumes:
   pg_primary:
+  caddy_data:
+  caddy_config:

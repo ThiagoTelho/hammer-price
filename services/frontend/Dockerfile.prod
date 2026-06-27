@@ -1,0 +1,23 @@
+# Frontend de PRODUÇÃO: build estático (Vite) servido pelo Caddy, que também faz o proxy do
+# WebSocket ao gateway e emite HTTPS automático. Usado no deploy com domínio próprio
+# (perfil `prod` no compose). Contexto de build = RAIZ do repositório.
+
+# ---- Stage 1: build estático ----
+FROM node:22-alpine AS build
+WORKDIR /app/services/frontend
+COPY services/frontend/package.json services/frontend/package-lock.json ./
+RUN npm ci
+COPY services/frontend ./
+# As URLs são FIXADAS no build (Vite as embute no bundle). Vêm do domínio (start.sh injeta
+# wss://<dominio>/ws e https://<dominio>).
+ARG VITE_GATEWAY_URL
+ARG VITE_PUBLIC_URL
+ENV VITE_GATEWAY_URL=$VITE_GATEWAY_URL
+ENV VITE_PUBLIC_URL=$VITE_PUBLIC_URL
+RUN npm run build
+
+# ---- Stage 2: Caddy servindo o estático + proxy + TLS ----
+FROM caddy:2-alpine
+COPY infra/deploy/Caddyfile /etc/caddy/Caddyfile
+COPY --from=build /app/services/frontend/dist /srv
+EXPOSE 80 443

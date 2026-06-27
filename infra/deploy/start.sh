@@ -2,15 +2,17 @@
 #
 # start.sh — sobe o stack do Hammer Price NA EC2 (executar dentro da instância).
 #
-# Faz a única coisa que difere do `docker compose up` local: descobre o DNS PÚBLICO
-# da instância (via IMDSv2) e injeta VITE_GATEWAY_URL=ws://<dns>:8080, para o navegador
-# do jogador — que roda fora da AWS — conseguir abrir o WebSocket do gateway. Sem isso
-# o frontend tentaria ws://localhost:8080 e o leilão "não conectaria".
+# DOIS modos:
+#   • SEM domínio (padrão): descobre o IP/DNS público da instância (IMDSv2) e injeta
+#     VITE_GATEWAY_URL=ws://<host>:8080. Joga-se em http://<host>:5173 (frontend Vite).
+#   • COM domínio (HTTPS): defina DOMAIN. Sobe o perfil `prod` (Caddy) com HTTPS automático
+#     (Let's Encrypt) servindo o build ESTÁTICO e fazendo proxy do WebSocket em wss://<dominio>/ws.
+#     Requer: o domínio apontando (A record) para esta instância e as portas 80/443 abertas.
 #
 # Uso (na EC2, após clonar o repo):
-#   ./infra/deploy/start.sh            # build + sobe em background
-#   ./infra/deploy/start.sh down       # derruba
-#   ./infra/deploy/start.sh logs [svc] # acompanha os logs
+#   ./infra/deploy/start.sh                          # simples (IP público, http)
+#   DOMAIN=seu-dominio.com ./infra/deploy/start.sh   # com domínio + HTTPS (Caddy)
+#   [DOMAIN=…] ./infra/deploy/start.sh down|logs|ps
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -25,28 +27,47 @@ imds() {
     "http://169.254.169.254/latest/meta-data/$1" 2>/dev/null || true
 }
 
-PUBLIC_HOST="$(imds public-hostname)"
-[[ -z "$PUBLIC_HOST" ]] && PUBLIC_HOST="$(imds public-ipv4)"
-[[ -z "$PUBLIC_HOST" ]] && PUBLIC_HOST="localhost"   # fallback (ex.: rodando fora da AWS)
-export VITE_GATEWAY_URL="ws://${PUBLIC_HOST}:8080"
-export VITE_PUBLIC_URL="http://${PUBLIC_HOST}:5173"   # base p/ as meta tags Open Graph (preview no WhatsApp)
+if [[ -n "${DOMAIN:-}" ]]; then
+  # Produção com domínio + HTTPS (perfil `prod`: Caddy serve estático + proxy do /ws).
+  # Aceita só o host: remove esquema (http/https) e qualquer caminho, se vierem por engano.
+  DOMAIN="${DOMAIN#http://}"; DOMAIN="${DOMAIN#https://}"; DOMAIN="${DOMAIN%%/*}"
+  export DOMAIN
+  export VITE_GATEWAY_URL="wss://${DOMAIN}/ws"
+  export VITE_PUBLIC_URL="https://${DOMAIN}"
+  PROFILE="prod"
+  PUBLIC_URL="https://${DOMAIN}"
+else
+  # Simples: IP/DNS público da instância (perfil `local`: frontend Vite em :5173).
+  PUBLIC_HOST="$(imds public-hostname)"
+  [[ -z "$PUBLIC_HOST" ]] && PUBLIC_HOST="$(imds public-ipv4)"
+  [[ -z "$PUBLIC_HOST" ]] && PUBLIC_HOST="localhost"   # fallback (ex.: rodando fora da AWS)
+  export VITE_GATEWAY_URL="ws://${PUBLIC_HOST}:8080"
+  export VITE_PUBLIC_URL="http://${PUBLIC_HOST}:5173"   # base p/ as meta tags Open Graph (WhatsApp)
+  PROFILE="local"
+  PUBLIC_URL="http://${PUBLIC_HOST}:5173"
+fi
 
-dc() { docker compose --profile local "$@"; }
+dc() { docker compose --profile "$PROFILE" "$@"; }
 
 cmd="${1:-up}"
 [[ $# -gt 0 ]] && shift || true
 
 case "$cmd" in
   up)
-    echo "→ VITE_GATEWAY_URL=$VITE_GATEWAY_URL"
+    echo "→ perfil=$PROFILE  ·  VITE_GATEWAY_URL=$VITE_GATEWAY_URL"
     echo "→ subindo o stack (build na primeira vez pode levar alguns minutos)…"
     dc up --build -d
     echo
-    echo "✓ No ar. Compartilhe com os jogadores:"
-    echo "   Game (frontend): http://${PUBLIC_HOST}:5173"
-    echo "   Gateway (WS):    ws://${PUBLIC_HOST}:8080"
-    echo "   RabbitMQ admin:  http://${PUBLIC_HOST}:15672  (se a porta estiver liberada)"
-    echo "→ Logs: ./infra/deploy/start.sh logs   ·   Derrubar: ./infra/deploy/start.sh down"
+    if [[ -n "${DOMAIN:-}" ]]; then
+      echo "✓ No ar (HTTPS): ${PUBLIC_URL}"
+      echo "   O Caddy emite o certificado no 1º acesso (~30s). Precisa das portas 80 e 443"
+      echo "   abertas e do domínio apontando para esta instância."
+    else
+      echo "✓ No ar. Compartilhe com os jogadores:"
+      echo "   Game (frontend): ${PUBLIC_URL}"
+      echo "   Gateway (WS):    $VITE_GATEWAY_URL"
+    fi
+    echo "→ Logs: [DOMAIN=…] ./infra/deploy/start.sh logs   ·   Derrubar: … down"
     ;;
   down)  dc down ;;
   logs)  dc logs -f "$@" ;;

@@ -94,8 +94,33 @@ Entram com nomes diferentes e dão lances — o estado aparece em tempo real par
 Isso já evidencia R1 (clientes remotos) + R3/R5 (lance concorrente síncrono + broadcast).
 
 > Servimos o frontend em **http** e o WebSocket em **ws** (sem TLS) de propósito: para um
-> smoke test não há mixed-content (página http → ws http). TLS/`wss` entra junto com o
-> domínio próprio (CloudFront/ACM) em [docs/08](../../docs/08-deploy-aws.md), se der tempo.
+> smoke test não há mixed-content (página http → ws http). Para um endereço bonito e seguro,
+> use o domínio próprio + HTTPS abaixo.
+
+---
+
+## Domínio próprio + HTTPS (Caddy)
+
+Para servir em `https://seu-dominio.com` (em vez de `http://<ip>:5173`), o stack tem o perfil
+**`prod`**: um **Caddy** com **HTTPS automático** (Let's Encrypt) que serve o **build estático**
+do frontend e faz **proxy do WebSocket** (`/ws`) para o gateway. O frontend passa a falar
+`wss://seu-dominio.com/ws` — sem mixed-content e com cadeado.
+
+1. **IP fixo:** aloque um **Elastic IP** e associe à instância (o IP público muda a cada
+   stop/start; o domínio quebraria sem isso).
+2. **DNS (GoDaddy):** registro **A** `@` (e `www`) → o Elastic IP.
+3. **Security group:** abra **80** e **443** (`0.0.0.0/0`), além do **22** (seu IP). As portas
+   5173/8080 **não** precisam mais ser públicas (o Caddy fala com o gateway pela rede interna).
+4. **Suba com o domínio** (na EC2):
+   ```bash
+   DOMAIN=seu-dominio.com ./infra/deploy/start.sh
+   ```
+   O `start.sh` injeta `VITE_GATEWAY_URL=wss://seu-dominio.com/ws` + `VITE_PUBLIC_URL=https://…`
+   e sobe o perfil `prod`. **No 1º acesso o Caddy emite o certificado (~30s)** — precisa do
+   domínio já apontando e das portas 80/443 abertas. Depois: `https://seu-dominio.com`.
+
+O `og:image` (preview do WhatsApp) passa a usar `https://seu-dominio.com/og.png` ✓.
+Derrubar/logs com o domínio: `DOMAIN=seu-dominio.com ./infra/deploy/start.sh down|logs`.
 
 ---
 
