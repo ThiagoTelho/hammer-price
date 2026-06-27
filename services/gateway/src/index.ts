@@ -718,6 +718,36 @@ wss.on("connection", (ws, req) => {
       return;
     }
 
+    // Sair da sala DE VEZ (volta ao menu): tira o jogador do ranking e NÃO guarda assento.
+    if (msg.type === "LEAVE_ROOM") {
+      const slot = client.room;
+      client.room = null;
+      ws.send(JSON.stringify({ type: "LEFT_ROOM" }));
+      const m = slot ? matches[slot] : null;
+      if (!slot || !m) return;
+      // Remove o jogador de todos os conjuntos da partida.
+      m.spectators.delete(playerId);
+      m.folded.delete(playerId);
+      m.ready.delete(playerId);
+      m.blocked.delete(playerId);
+      m.shielded.delete(playerId);
+      m.disconnected.delete(playerId);
+      m.playedThisInterval.delete(playerId);
+      // Sala sem ninguém vivo nem reconexão pendente → libera; senão, reatribui host e atualiza.
+      if (playersIn(slot).length === 0 && m.disconnected.size === 0) {
+        if (codeToRoom.get(m.code) === slot) codeToRoom.delete(m.code);
+        matches[slot] = null;
+        console.log(`gateway: ${playerId} saiu — sala ${slot} esvaziou e foi liberada`);
+      } else {
+        if (m.host === playerId) m.host = playersIn(slot)[0] ?? m.host; // host passa a alguém vivo
+        broadcastToRoom(slot, roomStateMsg(slot));
+        broadcastToRoom(slot, { type: "FOLD_STATE", folded: m.folded.size, total: activeBidders(slot).length });
+        void broadcastPlayersPanel(slot);
+        await maybeCloseByFold(slot); // sair pode deixar só o líder ativo
+      }
+      return;
+    }
+
     // Chat da sala (pub/sub Redis) — disponível no lobby, na partida e no fim; espectador também.
     if (msg.type === "CHAT_SEND") {
       const room = client.room;

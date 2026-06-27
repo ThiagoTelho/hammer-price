@@ -323,6 +323,15 @@ export function App() {
             setSpectating(true);
             addLog("👀 Você desistiu — agora está assistindo.");
             break;
+          case "LEFT_ROOM":
+            clearSession();
+            setSpectating(false);
+            setBox(null);
+            setIntermission(null);
+            setReconnecting(false);
+            setPhase("menu");
+            addLog("🚪 Você saiu da sala.");
+            break;
           case "BID_PLACED":
             addLog(`🔨 ${nm(msg.leader)} deu lance de ${money(msg.amount)} em ${msg.boxId}`);
             sfx.gavel();
@@ -562,6 +571,12 @@ export function App() {
     clearSession();
     setReconnecting(false);
     setPhase("menu");
+  };
+  // Sai da sala de vez e volta ao menu (o servidor responde LEFT_ROOM).
+  const leaveRoom = () => {
+    if (!confirm("Sair da sala e voltar ao menu? Você sairá do ranking desta partida.")) return;
+    send({ type: "LEAVE_ROOM" });
+    clearSession();
   };
 
   const boxCountdown = (b: Box): string => {
@@ -818,7 +833,10 @@ export function App() {
                   <div className="flex justify-between"><span className="text-muted">🟢 Gastável</span><b className="text-emerald-400">{money(wallet.balance - wallet.reserved)}</b></div>
                 </div>
                 {spectating ? (
-                  <div className="mt-3 text-center text-xs text-sky-300 bg-sky-500/10 border border-sky-500/30 rounded-lg py-1.5">👀 Assistindo</div>
+                  <div className="mt-3 flex flex-col gap-2">
+                    <div className="text-center text-xs text-sky-300 bg-sky-500/10 border border-sky-500/30 rounded-lg py-1.5">👀 Assistindo</div>
+                    <button className={`${C.btnSmall} w-full`} onClick={leaveRoom}>🚪 Sair da sala</button>
+                  </div>
                 ) : (
                   <div className="mt-3 flex flex-col gap-2">
                     {isHost && (
