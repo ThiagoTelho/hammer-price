@@ -612,25 +612,25 @@ export function App() {
   const canForm = (requires: Record<string, number>): boolean => Object.entries(requires).every(([t, n]) => freeCount(t) >= n);
 
   return (
-    <div className="max-w-6xl mx-auto px-5 py-7">
-      <header className="flex items-end justify-between gap-3 border-b border-line pb-4">
-        <div>
-          <h1 className="font-display text-4xl font-bold text-gold leading-none flex items-center gap-2">
-            <Gavel size={40} className="shrink-0" /> Hammer Price
+    <div className="max-w-6xl mx-auto px-3 sm:px-5 py-4 sm:py-7">
+      <header className="flex items-center sm:items-end justify-between gap-2 sm:gap-3 border-b border-line pb-3 sm:pb-4">
+        <div className="min-w-0">
+          <h1 className="font-display text-2xl sm:text-4xl font-bold text-gold leading-none flex items-center gap-1.5 sm:gap-2">
+            <Gavel size={40} className="shrink-0 w-7 h-7 sm:w-10 sm:h-10" /> <span className="truncate">Hammer Price</span>
           </h1>
-          <p className="text-muted text-sm mt-1">Leilão de caixas misteriosas em tempo real</p>
+          <p className="text-muted text-sm mt-1 hidden sm:block">Leilão de caixas misteriosas em tempo real</p>
         </div>
-        <div className="flex items-end gap-3">
+        <div className="flex items-center sm:items-end gap-2 sm:gap-3 shrink-0">
           {phase === "playing" && (
             <div className="text-right">
-              <div className="text-2xl font-bold text-gold tabular-nums">
-                Rodada {Math.min(matchRounds.played + 1, matchRounds.total)}/{matchRounds.total}
+              <div className="text-base sm:text-2xl font-bold text-gold tabular-nums whitespace-nowrap">
+                <span className="hidden sm:inline">Rodada </span>{Math.min(matchRounds.played + 1, matchRounds.total)}/{matchRounds.total}
               </div>
-              <div className="text-xs text-muted">Sala {code}</div>
+              <div className="text-xs text-muted hidden sm:block">Sala {code}</div>
             </div>
           )}
           <button className={C.btnSmall} onClick={() => setShowCheats(true)} title="Cartas (referência)">
-            🃏 Cartas
+            🃏<span className="hidden sm:inline"> Cartas</span>
           </button>
           <button className={C.btnSmall} onClick={toggleMute} title={muted ? "Ativar som" : "Silenciar"}>
             {muted ? "🔇" : "🔊"}
@@ -788,8 +788,8 @@ export function App() {
         <div className="max-w-md mx-auto mt-8 flex flex-col gap-4">
           <div className={`${C.card} p-6 text-center`}>
           <p className="text-xs uppercase tracking-wide text-muted">Código da sala</p>
-          <div className="flex items-center justify-center gap-2 my-2">
-            <div className="font-display text-5xl text-gold tracking-[0.25em]">{code}</div>
+          <div className="flex items-center justify-center flex-wrap gap-2 my-2">
+            <div className="font-display text-4xl sm:text-5xl text-gold tracking-[0.15em] sm:tracking-[0.25em]">{code}</div>
             <button className={`${C.btnSmall} text-xs`} onClick={copyCode} title="Copiar o código">
               {copiedCode ? "✓ copiado" : "📋 copiar"}
             </button>
@@ -1142,8 +1142,8 @@ export function App() {
               </div>
             )}
 
-            {/* Eventos (recolhível) */}
-            <div>
+            {/* Eventos (recolhível) — oculto no mobile (não essencial em telas pequenas) */}
+            <div className="hidden sm:block">
               <button
                 className="w-full flex items-center justify-between text-sm text-muted mb-1 hover:text-stone-200 transition"
                 onClick={() => setLogsOpen((o) => !o)}
@@ -1172,8 +1172,8 @@ export function App() {
       {phase === "ended" && (
         <div className="mt-8 max-w-xl mx-auto">
           <h2 className="font-display text-3xl text-gold text-center mb-5">🏁 Fim da partida</h2>
-          <div className={`${C.card} overflow-hidden`}>
-            <table className="w-full text-sm">
+          <div className={`${C.card} overflow-x-auto`}>
+            <table className="w-full text-sm min-w-[440px]">
               <thead className="bg-surface-2 text-muted">
                 <tr>
                   <th className="text-left px-3 py-2">#</th>
