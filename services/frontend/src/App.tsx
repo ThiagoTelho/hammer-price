@@ -674,7 +674,7 @@ export function App() {
 
       {/* ---------- MENU / BOAS-VINDAS ---------- */}
       {reconnecting && (
-        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-ink/92 px-4">
+        <div className="fixed inset-0 z-70 flex items-center justify-center bg-ink/92 px-4">
           <div className="text-center">
             <motion.div className="text-5xl" animate={{ rotate: 360 }} transition={{ repeat: Infinity, duration: 1.4, ease: "linear" }}>🔄</motion.div>
             <div className="text-gold font-display text-2xl mt-4">Reconectando à sua sala…</div>
@@ -955,7 +955,7 @@ export function App() {
           {/* ----- CENTRO: palco da casa de leilão ----- */}
           <main className="order-1 lg:order-2 flex flex-col gap-3">
             <div
-              className="stage min-h-[360px] flex items-center justify-center px-[15%] py-8"
+              className="stage min-h-90 flex items-center justify-center px-[15%] py-8"
               style={{ ["--rarity" as string]: tierLight(box?.boxType ?? "WOODEN") }}
             >
               <div className="curtain curtain-l" />
@@ -964,7 +964,7 @@ export function App() {
               <div className="stage-spot" />
               <div className="stage-floor" />
               {box && !spectating && cardEffects.blocked.includes(playerId) && (
-                <div className="absolute inset-0 z-[6] flex items-start justify-center pt-3 bg-red-950/45 pointer-events-none">
+                <div className="absolute inset-0 z-6 flex items-start justify-center pt-3 bg-red-950/45 pointer-events-none">
                   <span className="px-3 py-1 rounded-full bg-red-900/85 border border-red-600 text-red-100 text-xs font-semibold">🚫 Bloqueado nesta rodada</span>
                 </div>
               )}
@@ -976,10 +976,10 @@ export function App() {
                     animate={{ scale: 1, opacity: 1, y: 0 }}
                     exit={{ scale: 0.6, opacity: 0 }}
                     transition={{ type: "spring", stiffness: 260, damping: 20 }}
-                    className="relative z-[4] w-full max-w-[300px] text-center flex flex-col items-center gap-1.5"
+                    className="relative z-4 w-full max-w-75 text-center flex flex-col items-center gap-1.5"
                   >
                     {/* baú flutuando + anel de contagem + carimbo ARREMATADO */}
-                    <div className="relative w-[150px] h-[150px] flex items-center justify-center">
+                    <div className="relative w-37.5 h-37.5 flex items-center justify-center">
                       <motion.div animate={{ y: [0, -7, 0] }} transition={{ repeat: Infinity, duration: 2.4, ease: "easeInOut" }}>
                         <Chest tier={box.boxType} size={138} />
                       </motion.div>
@@ -1046,7 +1046,7 @@ export function App() {
                     initial={{ opacity: 0 }}
                     animate={{ opacity: 1 }}
                     exit={{ opacity: 0 }}
-                    className="relative z-[4] w-full max-w-[300px] text-center flex flex-col items-center gap-3"
+                    className="relative z-4 w-full max-w-75 text-center flex flex-col items-center gap-3"
                   >
                     <div className="text-muted">⏳ Intervalo — venda, forme coleções, jogue cartas</div>
                     <div className="text-5xl font-bold text-gold tabular-nums">{intermission ? intermissionCountdown(intermission.endsAt) : "—"}</div>
@@ -1209,7 +1209,7 @@ export function App() {
         <div className="mt-8 max-w-xl mx-auto">
           <h2 className="font-display text-3xl text-gold text-center mb-5">🏁 Fim da partida</h2>
           <div className={`${C.card} overflow-x-auto`}>
-            <table className="w-full text-sm min-w-[440px]">
+            <table className="w-full text-sm min-w-110">
               <thead className="bg-surface-2 text-muted">
                 <tr>
                   <th className="text-left px-3 py-2">#</th>
@@ -1283,7 +1283,7 @@ export function App() {
                 <div className="relative flex flex-col items-center">
                   <Chest tier={overlayHead.tier} size={150} open />
                   <motion.div
-                    className="absolute top-0 text-6xl flex gap-1 flex-wrap justify-center w-[260px]"
+                    className="absolute top-0 text-6xl flex gap-1 flex-wrap justify-center w-65"
                     initial={{ y: 20, scale: 0.2, opacity: 0 }}
                     animate={{ y: -64, scale: 1, opacity: 1 }}
                     transition={{ delay: 0.22, type: "spring", stiffness: 200, damping: 13 }}
@@ -1310,7 +1310,7 @@ export function App() {
       <AnimatePresence>
         {targeting && (
           <motion.div
-            className="fixed inset-0 z-[55] flex items-center justify-center bg-black/60 px-4"
+            className="fixed inset-0 z-55 flex items-center justify-center bg-black/60 px-4"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
@@ -1359,7 +1359,7 @@ export function App() {
       <AnimatePresence>
         {showCheats && (
           <motion.div
-            className="fixed inset-0 z-[55] flex items-center justify-center bg-black/70 px-4 py-8 overflow-y-auto"
+            className="fixed inset-0 z-55 flex items-center justify-center bg-black/70 px-4 py-8 overflow-y-auto"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
@@ -1396,7 +1396,7 @@ export function App() {
       {/* ---------- Confirmação (no estilo do jogo, no lugar do confirm() nativo) ---------- */}
       {confirmDialog && (
         <div
-          className="fixed inset-0 z-[65] flex items-center justify-center bg-black/70 px-4"
+          className="fixed inset-0 z-65 flex items-center justify-center bg-black/70 px-4"
           onClick={() => setConfirmDialog(null)}
         >
           <motion.div
@@ -1432,7 +1432,7 @@ function Confetti() {
   const N = 24;
   const colors = ["#e8b923", "#f5d77a", "#22d3ee", "#b06bf0", "#ef4444", "#34d399"];
   return (
-    <div className="fixed inset-0 z-[60] pointer-events-none flex items-center justify-center overflow-hidden">
+    <div className="fixed inset-0 z-60 pointer-events-none flex items-center justify-center overflow-hidden">
       {Array.from({ length: N }).map((_, i) => {
         const angle = (i / N) * Math.PI * 2 + Math.random() * 0.5;
         const dist = 140 + Math.random() * 200;
@@ -1483,7 +1483,7 @@ function ChatPanel({
         {messages.map((m, i) => (
           <div key={i} className="leading-snug">
             <span className="font-semibold" style={{ color: colorOf(m.player) }}>{m.player === me ? "Você" : nm(m.player)}:</span>{" "}
-            <span className="text-stone-200 break-words">{m.text}</span>
+            <span className="text-stone-200 wrap-break-word">{m.text}</span>
           </div>
         ))}
         <div ref={endRef} />
