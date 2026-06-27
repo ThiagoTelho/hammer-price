@@ -361,10 +361,16 @@ console.log(`gateway: WebSocket ouvindo em ws://localhost:${PORT} (slots: ${ROOM
 
 wss.on("connection", (ws, req) => {
   const url = new URL(req.url ?? "", "http://localhost");
-  const playerId = url.searchParams.get("player") || `player-${Math.floor(Math.random() * 9000 + 1000)}`;
+  // Identidade ÚNICA: nome (display, sem '#') + sufixo aleatório → `ana#a3f`. Evita que dois
+  // jogadores de mesmo nome colidam de sessão. O frontend mostra só o nome (antes do '#').
+  const rawName = (url.searchParams.get("player") || "").replace(/#/g, "").trim().slice(0, 20) || "jogador";
+  let playerId = "";
+  do {
+    playerId = `${rawName}#${Math.random().toString(36).slice(2, 6)}`;
+  } while ([...clients].some((c) => c.playerId === playerId));
   const client: Client = { ws, playerId, room: null };
   clients.add(client);
-  ws.send(JSON.stringify({ type: "HELLO", playerId, slotsTotal: ROOMS.length }));
+  ws.send(JSON.stringify({ type: "HELLO", playerId, name: rawName, slotsTotal: ROOMS.length }));
 
   ws.on("message", async (raw) => {
     let msg: any;

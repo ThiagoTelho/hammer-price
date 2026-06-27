@@ -4,7 +4,7 @@ import { useEffect, useRef, useState, useCallback } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import * as sfx from "./sound";
 import { Chest, tierLabel, tierLight } from "./Chest";
-import { Card, cardOf } from "./Card";
+import { Card, cardOf, CARDS } from "./Card";
 
 const GATEWAY_URL = import.meta.env.VITE_GATEWAY_URL ?? "ws://localhost:8080";
 
@@ -39,6 +39,8 @@ function withDeadline(box: Box | null): Box | null {
 }
 
 const CHEST_GLYPH = "🧰";
+// O playerId do backend é `nome#sufixo` (único por sessão). Para exibir, mostramos só o nome.
+const nm = (id: string): string => (id && id.includes("#") ? id.slice(0, id.indexOf("#")) : id);
 const BID_TIMER_MS = 20000; // espelha match.box_timer_seconds (escala do anel de contagem)
 const money = (n: number): string => `$${Math.round(n).toLocaleString("pt-BR")}`;
 const ITEM_ORDER = ["COPPER", "SILVER", "GOLD", "DIAMOND", "MIMIC"];
@@ -89,6 +91,7 @@ export function App() {
   const [nextCardPrice, setNextCardPrice] = useState(0);
   const [cardEffects, setCardEffects] = useState<{ blocked: string[]; doubleLoot: string[]; insured: string[] }>({ blocked: [], doubleLoot: [], insured: [] });
   const [targeting, setTargeting] = useState<string | null>(null); // cartType aguardando escolha de alvo
+  const [showCheats, setShowCheats] = useState(false); // overlay com todas as cartas
 
   const [round, setRound] = useState(0);
   const [box, setBox] = useState<Box | null>(null);
@@ -218,7 +221,7 @@ export function App() {
             addLog("👀 Você desistiu — agora está assistindo.");
             break;
           case "BID_PLACED":
-            addLog(`🔨 ${msg.leader} deu lance de ${money(msg.amount)} em ${msg.boxId}`);
+            addLog(`🔨 ${nm(msg.leader)} deu lance de ${money(msg.amount)} em ${msg.boxId}`);
             sfx.gavel();
             setLastBids((prev) => ({ ...prev, [msg.leader]: msg.amount }));
             setBox((prev) =>
@@ -228,7 +231,7 @@ export function App() {
             );
             break;
           case "BOX_SOLD": {
-            addLog(`🏆 ${msg.boxId} arrematada por ${msg.winner} (${money(msg.price)})`);
+            addLog(`🏆 ${msg.boxId} arrematada por ${nm(msg.winner)} (${money(msg.price)})`);
             sfx.gavel();
             const mine = msg.winner === playerIdRef.current;
             if (mine) {
@@ -236,7 +239,7 @@ export function App() {
               fireConfetti();
             }
             setSold(msg.boxId); // carimbo ARREMATADO no baú do palco
-            setFlash({ kind: "win", emoji: "🏆", title: mine ? "Você arrematou!" : `${msg.winner} arrematou`, sub: `${tierLabel(msg.boxType)} por ${money(msg.price)}` });
+            setFlash({ kind: "win", emoji: "🏆", title: mine ? "Você arrematou!" : `${nm(msg.winner)} arrematou`, sub: `${tierLabel(msg.boxType)} por ${money(msg.price)}` });
             break;
           }
           case "OPEN_RESULT":
@@ -259,13 +262,13 @@ export function App() {
             const mine = msg.player === playerIdRef.current;
             if (msg.isMimic) {
               const insured = msg.penaltyKind === "INSURED";
-              addLog(`💀 ${mine ? "Você" : msg.player} abriu um MÍMICO — ${insured ? "Seguro evitou a penalidade 🛡️" : `perdeu ${msg.penaltyDetail || "—"}`}`);
+              addLog(`💀 ${mine ? "Você" : nm(msg.player)} abriu um MÍMICO — ${insured ? "Seguro evitou a penalidade 🛡️" : `perdeu ${msg.penaltyDetail || "—"}`}`);
               if (mine) setOpening((o) => (o ? { ...o, sub: insured ? "Seguro evitou! 🛡️" : `Perdeu ${msg.penaltyDetail || "—"}` } : o));
               else if (!insured) {
                 sfx.thud();
-                setFlash({ kind: "mimic", emoji: "💀", title: `${msg.player} pegou um MÍMICO!`, sub: `Perdeu ${msg.penaltyDetail || "—"}` });
+                setFlash({ kind: "mimic", emoji: "💀", title: `${nm(msg.player)} pegou um MÍMICO!`, sub: `Perdeu ${msg.penaltyDetail || "—"}` });
               }
-            } else if (!mine) addLog(`📦 ${msg.player} abriu: ${msg.quantity ?? 1}× ${msg.item}`);
+            } else if (!mine) addLog(`📦 ${nm(msg.player)} abriu: ${msg.quantity ?? 1}× ${msg.item}`);
             break;
           }
           case "BID_ACCEPTED":
@@ -299,13 +302,13 @@ export function App() {
             } else addLog(msg.reason === "INSUFFICIENT" ? "⚠️ Dinheiro insuficiente para a carta." : "⚠️ Mão cheia.");
             break;
           case "CARD_NOTICE":
-            if (msg.player !== playerIdRef.current) addLog(`🃏 ${msg.player} comprou uma carta`);
+            if (msg.player !== playerIdRef.current) addLog(`🃏 ${nm(msg.player)} comprou uma carta`);
             break;
           case "CARD_PLAYED": {
-            const who = msg.source === playerIdRef.current ? "Você" : msg.source;
+            const who = msg.source === playerIdRef.current ? "Você" : nm(msg.source);
             const d = cardOf(msg.cardType);
-            addLog(`${d.emoji} ${who} usou ${d.label}${msg.target ? ` em ${msg.target}` : ""}`);
-            setFlash({ kind: "win", emoji: d.emoji, title: `${d.label}!`, sub: `${who}${msg.target ? ` → ${msg.target}` : ""}` });
+            addLog(`${d.emoji} ${who} usou ${d.label}${msg.target ? ` em ${nm(msg.target)}` : ""}`);
+            setFlash({ kind: "win", emoji: d.emoji, title: `${d.label}!`, sub: `${who}${msg.target ? ` → ${nm(msg.target)}` : ""}` });
             break;
           }
           case "CARD_EFFECTS":
@@ -434,6 +437,9 @@ export function App() {
               <div className="text-xs text-muted">Sala {code}</div>
             </div>
           )}
+          <button className={C.btnSmall} onClick={() => setShowCheats(true)} title="Cartas (referência)">
+            🃏 Cartas
+          </button>
           <button className={C.btnSmall} onClick={toggleMute} title={muted ? "Ativar som" : "Silenciar"}>
             {muted ? "🔇" : "🔊"}
           </button>
@@ -544,7 +550,7 @@ export function App() {
             <ul className="flex flex-col gap-1">
               {lobby.players.map((p) => (
                 <li key={p} className="flex items-center gap-2">
-                  <span className={p === playerId ? "text-gold font-semibold" : ""}>{p}</span>
+                  <span className={p === playerId ? "text-gold font-semibold" : ""}>{nm(p)}</span>
                   {p === lobby.host && <span title="host">👑</span>}
                   {p === playerId && <span className="text-xs text-muted">(você)</span>}
                 </li>
@@ -638,18 +644,6 @@ export function App() {
                 {!intermission && wallet.cards.length > 0 && !spectating && (
                   <div className="text-[11px] text-muted">Jogue no intervalo (vale p/ a próxima rodada).</div>
                 )}
-
-                {targeting && (
-                  <div className="bg-surface-2 border border-line rounded-lg p-2 flex flex-col gap-1">
-                    <div className="text-xs text-muted">{cardOf(targeting).label} — escolha o alvo:</div>
-                    <div className="flex flex-wrap gap-1">
-                      {players.filter((p) => p.id !== playerId && !p.spectating).map((p) => (
-                        <button key={p.id} className={`${C.btnSmall} text-xs`} onClick={() => playCard(targeting, p.id)}>{p.id}</button>
-                      ))}
-                      <button className={`${C.btnSmall} text-xs`} onClick={() => setTargeting(null)}>cancelar</button>
-                    </div>
-                  </div>
-                )}
               </div>
             )}
 
@@ -660,7 +654,7 @@ export function App() {
                 <div className="flex flex-col gap-1">
                   {[...players].sort((a, b) => b.net - a.net).map((p) => (
                     <div key={p.id} className={`flex items-center gap-2 text-sm rounded-lg px-2 py-1 ${p.id === playerId ? "bg-gold/10" : ""}`}>
-                      <span className={`flex-1 truncate ${p.id === playerId ? "text-gold font-semibold" : ""} ${p.spectating ? "opacity-50" : ""}`}>{p.id}{p.id === playerId ? " (você)" : ""}{p.spectating ? " 👀" : ""}</span>
+                      <span className={`flex-1 truncate ${p.id === playerId ? "text-gold font-semibold" : ""} ${p.spectating ? "opacity-50" : ""}`}>{nm(p.id)}{p.id === playerId ? " (você)" : ""}{p.spectating ? " 👀" : ""}</span>
                       <span className="whitespace-nowrap">💰 <b className="text-gold">{money(p.money)}</b></span>
                       <span className="whitespace-nowrap text-muted">🎒 {p.itemCount}</span>
                       <span className="whitespace-nowrap text-xs text-stone-400 w-16 text-right">{lastBids[p.id] ? `🔨 ${money(lastBids[p.id])}` : "—"}</span>
@@ -740,7 +734,7 @@ export function App() {
                     <motion.div key={box.currentBid} initial={{ scale: 1.35 }} animate={{ scale: 1 }} className="text-2xl font-bold text-gold mt-0.5">
                       {box.currentBid > 0 ? `💰 ${money(box.currentBid)}` : "sem lances"}
                     </motion.div>
-                    <div className="text-sm">líder: <b className={box.leader === playerId ? "text-gold" : ""}>{box.leader || "—"}</b></div>
+                    <div className="text-sm">líder: <b className={box.leader === playerId ? "text-gold" : ""}>{box.leader ? nm(box.leader) : "—"}</b></div>
                     {foldState.folded > 0 && <div className="text-xs text-stone-400">🙅 {foldState.folded}/{foldState.total} passaram</div>}
                     <div className="h-6 flex items-center">
                       {(() => {
@@ -899,7 +893,7 @@ export function App() {
                   <tr key={r.playerId} className={`border-t border-line ${i === 0 ? "bg-gold/10" : ""}`}>
                     <td className="px-3 py-2">{i === 0 ? "🥇" : i + 1}</td>
                     <td className={`px-3 py-2 ${r.playerId === playerId ? "text-gold font-semibold" : ""}`}>
-                      {r.playerId} {r.playerId === playerId && <span className="text-xs text-muted">(você)</span>}
+                      {nm(r.playerId)} {r.playerId === playerId && <span className="text-xs text-muted">(você)</span>}
                     </td>
                     <td className="px-3 py-2 text-right tabular-nums">{money(r.money)}</td>
                     <td className="px-3 py-2 text-right tabular-nums">{money(r.items)}</td>
@@ -988,6 +982,93 @@ export function App() {
 
       {/* ---------- Confete (vitória / coleção) ---------- */}
       {confettiKey > 0 && <Confetti key={confettiKey} />}
+
+      {/* ---------- Seleção de alvo (carta ofensiva) ---------- */}
+      <AnimatePresence>
+        {targeting && (
+          <motion.div
+            className="fixed inset-0 z-[55] flex items-center justify-center bg-black/60 px-4"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={() => setTargeting(null)}
+          >
+            <motion.div
+              className={`${C.card} p-5 w-full max-w-md`}
+              initial={{ scale: 0.9, y: 12 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-center gap-3 mb-3">
+                <Card type={targeting} size={50} />
+                <div>
+                  <div className="font-display text-lg text-gold">{cardOf(targeting).label}</div>
+                  <div className="text-xs text-muted">{cardOf(targeting).desc}</div>
+                </div>
+              </div>
+              <div className="text-sm text-muted mb-2">Escolha o alvo:</div>
+              {players.filter((p) => p.id !== playerId && !p.spectating).length === 0 ? (
+                <div className="text-xs text-muted">Sem alvos disponíveis.</div>
+              ) : (
+                <div className="grid grid-cols-2 gap-2">
+                  {players
+                    .filter((p) => p.id !== playerId && !p.spectating)
+                    .map((p) => (
+                      <button
+                        key={p.id}
+                        className="bg-surface-2 border border-line rounded-lg px-3 py-2 flex items-center justify-between hover:border-gold transition"
+                        onClick={() => playCard(targeting, p.id)}
+                      >
+                        <span className="font-semibold truncate">{nm(p.id)}</span>
+                        <span className="text-xs text-gold">{money(p.money)}</span>
+                      </button>
+                    ))}
+                </div>
+              )}
+              <button className={`${C.btnSmall} w-full mt-3`} onClick={() => setTargeting(null)}>Cancelar</button>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* ---------- Cheat sheet: todas as cartas ---------- */}
+      <AnimatePresence>
+        {showCheats && (
+          <motion.div
+            className="fixed inset-0 z-[55] flex items-center justify-center bg-black/70 px-4 py-8 overflow-y-auto"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={() => setShowCheats(false)}
+          >
+            <motion.div
+              className={`${C.card} p-5 w-full max-w-2xl my-auto`}
+              initial={{ scale: 0.95, y: 12 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="font-display text-xl text-gold">🃏 Cartas de habilidade</h3>
+                <button className={C.btnSmall} onClick={() => setShowCheats(false)}>Fechar</button>
+              </div>
+              <p className="text-xs text-muted mb-4">Compre cartas (preço sobe a cada uma na mão) e jogue no intervalo — o efeito vale para a próxima rodada.</p>
+              <div className="grid sm:grid-cols-2 gap-3">
+                {Object.keys(CARDS).map((t) => (
+                  <div key={t} className="flex gap-3 items-center">
+                    <Card type={t} size={50} />
+                    <div className="min-w-0">
+                      <div className="font-semibold text-sm" style={{ color: cardOf(t).color }}>{cardOf(t).label}</div>
+                      <div className="text-xs text-muted">{cardOf(t).desc}</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
@@ -1047,7 +1128,7 @@ function ChatPanel({
         {messages.length === 0 && <div className="text-xs text-muted">Sem mensagens ainda. Diga oi! 👋</div>}
         {messages.map((m, i) => (
           <div key={i} className="leading-snug">
-            <span className={`font-semibold ${m.player === me ? "text-gold" : "text-stone-300"}`}>{m.player === me ? "Você" : m.player}:</span>{" "}
+            <span className={`font-semibold ${m.player === me ? "text-gold" : "text-stone-300"}`}>{m.player === me ? "Você" : nm(m.player)}:</span>{" "}
             <span className="text-stone-200 break-words">{m.text}</span>
           </div>
         ))}

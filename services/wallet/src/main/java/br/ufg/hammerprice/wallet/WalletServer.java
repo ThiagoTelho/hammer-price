@@ -143,7 +143,7 @@ public final class WalletServer {
         @Override
         public void getPlayer(PlayerQuery req, StreamObserver<PlayerState> obs) {
             WalletStore.PlayerView v = store.get(req.getPlayerId());
-            long nextPrice = cfg.cardLong("base_price", 80) + cfg.cardLong("price_step", 40) * v.cardsBought();
+            long nextPrice = cfg.cardLong("base_price", 80) + cfg.cardLong("price_step", 40) * v.cards().size();
             PlayerState.Builder b = PlayerState.newBuilder()
                     .setPlayerId(req.getPlayerId())
                     .setBalance(v.balance())

@@ -59,7 +59,7 @@ mimic:                          # penalidade ao abrir uma caixa 💀 (sorteada n
 cards:                          # cartas de habilidade (compradas com dinheiro; carta sorteada)
   base_price: 80                # preço da 1ª carta; sobe a cada compra (preço CRESCENTE)
   price_step: 40                # +40 por carta já comprada na partida (80, 120, 160…)
-  hand_max: 6                   # teto da mão
+  hand_max: 4                   # teto da mão (máx. 4 cartas por vez)
   tax_amount: 25                # Imposto: cada rival paga isto ao autor
   double_loot_mult: 2           # Dobro: multiplicador de itens na abertura
   discount_pct: 30              # Desconto (fase 2): % de abatimento no arremate

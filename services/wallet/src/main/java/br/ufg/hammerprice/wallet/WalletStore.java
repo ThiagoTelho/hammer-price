@@ -35,8 +35,6 @@ public final class WalletStore {
         final List<FormedCollection> collections = new ArrayList<>();
         /** Mão de cartas de habilidade (tipos). */
         final List<String> cards = new ArrayList<>();
-        /** Quantas cartas o jogador já comprou na partida (preço crescente). */
-        int cardsBought = 0;
 
         Player(long balance) {
             this.balance = balance;
@@ -66,7 +64,7 @@ public final class WalletStore {
 
     /** Estado consultável de um jogador (saldo, reservas, inventário, coleções e cartas). */
     public record PlayerView(long balance, long reserved, List<Item> items,
-                             List<FormedCollection> collections, List<String> cards, int cardsBought) {}
+                             List<FormedCollection> collections, List<String> cards) {}
 
     private final Map<String, Player> players = new HashMap<>();
     private final AtomicLong itemSeq = new AtomicLong();
@@ -256,7 +254,8 @@ public final class WalletStore {
     public synchronized BuyCardResult buyCard(String playerId, long basePrice, long step,
                                               int handMax, Map<String, Integer> weights) {
         Player p = getOrCreate(playerId);
-        long price = basePrice + step * p.cardsBought;
+        // Preço CRESCENTE pelo tamanho da mão: comprar sobe; usar (consumir) faz cair de volta.
+        long price = basePrice + step * p.cards.size();
         if (p.cards.size() >= handMax) {
             return new BuyCardResult(false, "HAND_FULL", "", price, p.balance);
         }
@@ -268,7 +267,6 @@ public final class WalletStore {
             return new BuyCardResult(false, "NO_CARDS", "", price, p.balance);
         }
         p.balance -= price;
-        p.cardsBought++;
         p.cards.add(card);
         return new BuyCardResult(true, "OK", card, price, p.balance);
     }
@@ -323,6 +321,6 @@ public final class WalletStore {
     public synchronized PlayerView get(String playerId) {
         Player p = getOrCreate(playerId);
         return new PlayerView(p.balance, p.reserved, List.copyOf(p.items), List.copyOf(p.collections),
-                List.copyOf(p.cards), p.cardsBought);
+                List.copyOf(p.cards));
     }
 }
