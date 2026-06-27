@@ -108,6 +108,17 @@ const HAND_MAX = 4; // espelha cards.hand_max no balance.yaml (teto da mão; o s
 const money = (n: number): string => `$${Math.round(n).toLocaleString("pt-BR")}`;
 const ITEM_ORDER = ["COPPER", "SILVER", "GOLD", "DIAMOND", "MIMIC"];
 const ITEM_EMOJI: Record<string, string> = { COPPER: "🪙", SILVER: "🥈", GOLD: "🥇", DIAMOND: "💎", MIMIC: "💀" };
+const ITEM_NAME: Record<string, string> = { COPPER: "Cobre", SILVER: "Prata", GOLD: "Ouro", DIAMOND: "Diamante", MIMIC: "Mímico" };
+const PRICED = ["COPPER", "SILVER", "GOLD", "DIAMOND"]; // itens com cotação (Mímico não tem preço)
+const MAX_HIST = 24; // pontos do mini-gráfico do mercado
+// Acrescenta o snapshot atual ao histórico de cada item (mantém os últimos MAX_HIST).
+const pushHist = (hist: Record<string, number[]>, prices: Record<string, number>): Record<string, number[]> => {
+  const next: Record<string, number[]> = { ...hist };
+  for (const k of PRICED) {
+    if (typeof prices[k] === "number") next[k] = [...(hist[k] ?? []), prices[k]].slice(-MAX_HIST);
+  }
+  return next;
+};
 
 const COLLECTIONS: { kind: string; label: string; requires: Record<string, number>; bonus: number }[] = [
   { kind: "COPPER_TRIO", label: "Trinca de Cobre", requires: { COPPER: 3 }, bonus: 70 },
@@ -166,6 +177,7 @@ export function App() {
   const [round, setRound] = useState(0);
   const [box, setBox] = useState<Box | null>(null);
   const [prices, setPrices] = useState<Record<string, number>>({});
+  const [priceHist, setPriceHist] = useState<Record<string, number[]>>({}); // histórico p/ tendência + sparkline
   const [wallet, setWallet] = useState<Wallet | null>(null);
   const [wonBoxes, setWonBoxes] = useState<{ boxId: string; boxType: string }[]>([]);
   const [players, setPlayers] = useState<{ id: string; money: number; reserved: number; itemCount: number; net: number; spectating?: boolean }[]>([]);
@@ -287,7 +299,10 @@ export function App() {
           case "WELCOME":
             setRound(msg.round ?? 0);
             setBox(withDeadline(msg.box ?? null));
-            if (msg.market) setPrices(msg.market);
+            if (msg.market) {
+              setPrices(msg.market);
+              setPriceHist((h) => pushHist(h, msg.market));
+            }
             break;
           case "ROUND_STARTED":
             setRound(msg.round ?? 0);
@@ -414,6 +429,7 @@ export function App() {
             break;
           case "MARKET_UPDATED":
             setPrices(msg.prices ?? {});
+            setPriceHist((h) => pushHist(h, msg.prices ?? {}));
             break;
           case "WALLET_UPDATED":
             setWallet({
@@ -1132,11 +1148,34 @@ export function App() {
 
           {/* ----- DIREITA: mercado + inventário + coleções + eventos ----- */}
           <aside className="order-3 flex flex-col gap-4">
-            {Object.keys(prices).length > 0 && (
-              <div className="bg-surface-2 border border-line rounded-xl px-4 py-2 text-sm">
-                <span className="text-muted">📈 Mercado</span>
-                <div className="flex flex-wrap gap-x-3 gap-y-0.5 mt-1">
-                  {ITEM_ORDER.filter((k) => prices[k] != null).map((k) => (<span key={k}>{ITEM_EMOJI[k]} {money(prices[k])}</span>))}
+            {PRICED.some((k) => prices[k] != null) && (
+              <div className={`${C.card} p-4`}>
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-sm text-muted">📈 Mercado</span>
+                  <span className="text-[10px] text-emerald-400 flex items-center gap-1">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" /> ao vivo
+                  </span>
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  {PRICED.filter((k) => prices[k] != null).map((k) => {
+                    const hist = priceHist[k] ?? [prices[k]];
+                    const prev = hist.length > 1 ? hist[hist.length - 2] : prices[k];
+                    const delta = prices[k] - prev;
+                    const col = delta > 0 ? "#34d399" : delta < 0 ? "#f87171" : "#a8a29e"; // verde sobe, vermelho cai
+                    return (
+                      <div key={k} className="flex items-center gap-2 text-sm">
+                        <span className="w-5 text-center shrink-0">{ITEM_EMOJI[k]}</span>
+                        <span className="text-muted">{ITEM_NAME[k]}</span>
+                        <div className="ml-auto"><Sparkline values={hist} color={col} /></div>
+                        <motion.span key={prices[k]} initial={{ scale: 1.3 }} animate={{ scale: 1 }} transition={{ type: "spring", stiffness: 400, damping: 14 }} className="tabular-nums font-semibold w-12 text-right" style={{ color: col }}>
+                          {money(prices[k])}
+                        </motion.span>
+                        <span className="w-12 text-right text-xs tabular-nums shrink-0" style={{ color: col }}>
+                          {delta > 0 ? "▲" : delta < 0 ? "▼" : "–"}{delta !== 0 ? ` ${delta > 0 ? "+" : ""}${delta}` : ""}
+                        </span>
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
             )}
@@ -1430,6 +1469,24 @@ export function App() {
         </div>
       )}
     </div>
+  );
+}
+
+// Mini-gráfico (sparkline) da cotação recente de um item — mostra que o preço se move.
+function Sparkline({ values, color }: { values: number[]; color: string }) {
+  const w = 46;
+  const h = 16;
+  if (values.length < 2) return <div style={{ width: w, height: h }} className="shrink-0" />;
+  const min = Math.min(...values);
+  const max = Math.max(...values);
+  const range = max - min || 1;
+  const pts = values
+    .map((v, i) => `${((i / (values.length - 1)) * w).toFixed(1)},${(h - 1 - ((v - min) / range) * (h - 2)).toFixed(1)}`)
+    .join(" ");
+  return (
+    <svg width={w} height={h} className="shrink-0">
+      <polyline points={pts} fill="none" stroke={color} strokeWidth="1.5" strokeLinejoin="round" strokeLinecap="round" />
+    </svg>
   );
 }
 
