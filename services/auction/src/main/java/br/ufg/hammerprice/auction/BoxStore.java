@@ -61,8 +61,9 @@ public final class BoxStore {
                             Map<String, Integer> odds) {}
 
     /** Resultado de uma abertura de caixa (item sorteado + quantos). {@code quantity}=0 no Mímico.
-     *  {@code insured}: o vencedor tinha Seguro (o servidor não deve aplicar a penalidade). */
-    public record OpenResult(boolean ok, String reason, String item, int quantity, boolean isMimic, boolean insured) {}
+     *  {@code insured}: o vencedor tinha Seguro (o servidor não aplica a penalidade).
+     *  {@code cursed}: o Mímico veio de uma Maldição (revela ao vencedor que foi amaldiçoado). */
+    public record OpenResult(boolean ok, String reason, String item, int quantity, boolean isMimic, boolean insured, boolean cursed) {}
 
     /** Caixa arrematada à espera de abertura pelo vencedor (com efeitos de carta + drop pré-sorteado). */
     private record PendingOpen(String winner, String boxType, long price,
@@ -435,13 +436,13 @@ public final class BoxStore {
     public OpenResult openBox(String reqBoxId, String playerId) {
         PendingOpen po = pendingOpens.get(reqBoxId);
         if (po == null) {
-            return new OpenResult(false, opened.contains(reqBoxId) ? "ALREADY_OPENED" : "UNKNOWN_BOX", "", 0, false, false);
+            return new OpenResult(false, opened.contains(reqBoxId) ? "ALREADY_OPENED" : "UNKNOWN_BOX", "", 0, false, false, false);
         }
         if (!po.winner().equals(playerId)) {
-            return new OpenResult(false, "NOT_WINNER", "", 0, false, false);
+            return new OpenResult(false, "NOT_WINNER", "", 0, false, false, false);
         }
         if (!pendingOpens.remove(reqBoxId, po)) {
-            return new OpenResult(false, "ALREADY_OPENED", "", 0, false, false); // corrida: já aberta
+            return new OpenResult(false, "ALREADY_OPENED", "", 0, false, false, false); // corrida: já aberta
         }
         opened.add(reqBoxId);
         // Usa o drop PRÉ-SORTEADO da rodada (carta Visão revela esse mesmo item).
@@ -449,7 +450,7 @@ public final class BoxStore {
         boolean mimic = "MIMIC".equals(item);
         int quantity = mimic ? 0 : (po.doubleLoot() ? po.dropQty() * 2 : po.dropQty()); // Dobro = ×2
         // insured: o servidor de leilão pula a penalidade do Mímico (Seguro).
-        return new OpenResult(true, "OK", item, quantity, mimic, po.insured());
+        return new OpenResult(true, "OK", item, quantity, mimic, po.insured(), po.cursed());
     }
 
     /** Item pré-sorteado da caixa da rodada corrente (carta Visão). Vazio se não houver rodada ativa. */
@@ -457,9 +458,9 @@ public final class BoxStore {
         lock.lock();
         try {
             if (!active) {
-                return new OpenResult(false, "", "", 0, false, false);
+                return new OpenResult(false, "", "", 0, false, false, false);
             }
-            return new OpenResult(true, "OK", dropItem, dropQty, "MIMIC".equals(dropItem), false);
+            return new OpenResult(true, "OK", dropItem, dropQty, "MIMIC".equals(dropItem), false, false);
         } finally {
             lock.unlock();
         }

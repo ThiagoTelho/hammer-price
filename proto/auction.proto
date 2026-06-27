@@ -67,6 +67,7 @@ message OpenBoxReply {
   string item     = 3;   // COPPER | SILVER | GOLD | DIAMOND | MIMIC
   bool   is_mimic = 4;   // armadilha (penalidade)
   int32  quantity = 5;   // 1..4 itens DO tipo sorteado (0 no Mímico)
+  bool   cursed   = 6;   // o Mímico veio de uma Maldição (revela ao vencedor)
 }
 
 message RoomQuery { string room_id = 1; }

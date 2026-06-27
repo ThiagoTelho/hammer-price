@@ -199,6 +199,7 @@ export interface OpenBoxReply {
   item: string;
   isMimic: boolean;
   quantity: number;
+  cursed: boolean;
 }
 
 export interface WalletItem {

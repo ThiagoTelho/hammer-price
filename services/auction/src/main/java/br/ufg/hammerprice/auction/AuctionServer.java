@@ -174,6 +174,7 @@ public final class AuctionServer {
                     .setItem(r.item())
                     .setQuantity(r.quantity())
                     .setIsMimic(r.isMimic())
+                    .setCursed(r.cursed())
                     .build());
             obs.onCompleted();
             if (r.ok()) {

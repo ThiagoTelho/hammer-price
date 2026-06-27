@@ -876,7 +876,7 @@ wss.on("connection", (ws, req) => {
       try {
         const reply = await openBox(addr, room, msg.boxId, playerId);
         ws.send(
-          JSON.stringify({ type: "OPEN_RESULT", boxId: msg.boxId, ok: reply.ok, reason: reply.reason, item: reply.item, quantity: reply.quantity, isMimic: reply.isMimic }),
+          JSON.stringify({ type: "OPEN_RESULT", boxId: msg.boxId, ok: reply.ok, reason: reply.reason, item: reply.item, quantity: reply.quantity, isMimic: reply.isMimic, cursed: reply.cursed }),
         );
         if (reply.ok) void sendWallet(client);
       } catch (err) {
