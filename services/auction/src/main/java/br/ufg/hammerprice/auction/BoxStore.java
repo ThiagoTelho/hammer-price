@@ -60,11 +60,13 @@ public final class BoxStore {
                             long currentBid, String leader, long timerMs,
                             Map<String, Integer> odds) {}
 
-    /** Resultado de uma abertura de caixa (item sorteado + quantos). {@code quantity}=0 no Mímico. */
-    public record OpenResult(boolean ok, String reason, String item, int quantity, boolean isMimic) {}
+    /** Resultado de uma abertura de caixa (item sorteado + quantos). {@code quantity}=0 no Mímico.
+     *  {@code insured}: o vencedor tinha Seguro (o servidor não deve aplicar a penalidade). */
+    public record OpenResult(boolean ok, String reason, String item, int quantity, boolean isMimic, boolean insured) {}
 
-    /** Caixa arrematada à espera de abertura pelo vencedor. */
-    private record PendingOpen(String winner, String boxType, long price) {}
+    /** Caixa arrematada à espera de abertura pelo vencedor (com os efeitos de carta resolvidos). */
+    private record PendingOpen(String winner, String boxType, long price,
+                               boolean doubleLoot, boolean cursed, boolean insured) {}
 
     /** Pesos default do sorteio de tipo (fallback se o balance.yaml não trouxer). */
     private static final LinkedHashMap<String, Integer> DEFAULT_WEIGHTS = new LinkedHashMap<>();
@@ -107,6 +109,23 @@ public final class BoxStore {
     private volatile ScheduledFuture<?> nextRoundTask;  // fallback que abre a próxima rodada no teto de tempo
     private final AtomicInteger boxSeq = new AtomicInteger();
 
+    // Efeitos de cartas (sob `lock`). `pending` = empurrado pelo gateway p/ a próxima rodada;
+    // `round` = efeitos da rodada corrente (resolvidos por jogador no fechamento → PendingOpen).
+    private Effects pending = new Effects();
+    private Effects round = new Effects();
+
+    /** Conjuntos de jogadores afetados por cartas (Dobro, Seguro, Maldição…). */
+    private static final class Effects {
+        Set<String> doubleLoot = new java.util.HashSet<>();
+        Set<String> insured = new java.util.HashSet<>();
+        Set<String> cursed = new java.util.HashSet<>();
+        void clear() {
+            doubleLoot = new java.util.HashSet<>();
+            insured = new java.util.HashSet<>();
+            cursed = new java.util.HashSet<>();
+        }
+    }
+
     // Caixas arrematadas aguardando abertura pelo vencedor + ids já abertos.
     private final ConcurrentHashMap<String, PendingOpen> pendingOpens = new ConcurrentHashMap<>();
     private final Set<String> opened = ConcurrentHashMap.newKeySet();
@@ -143,6 +162,21 @@ public final class BoxStore {
         this.roundListener = (l == null) ? NO_OP : l;
     }
 
+    /** Efeitos de carta para a PRÓXIMA rodada (empurrados pelo gateway antes do advance). */
+    public void setPendingEffects(java.util.Collection<String> doubleLoot,
+                                  java.util.Collection<String> insured,
+                                  java.util.Collection<String> cursed) {
+        lock.lock();
+        try {
+            pending.clear();
+            pending.doubleLoot.addAll(doubleLoot);
+            pending.insured.addAll(insured);
+            pending.cursed.addAll(cursed);
+        } finally {
+            lock.unlock();
+        }
+    }
+
     /** Sorteia o tipo da caixa pelos pesos cumulativos (sob o lock). */
     private String pickType() {
         if (totalWeight <= 0) {
@@ -162,6 +196,9 @@ public final class BoxStore {
         RoomState snap;
         lock.lock();
         try {
+            // Efeitos de carta empurrados no intervalo passam a valer NESTA rodada.
+            round = pending;
+            pending = new Effects();
             roundNo++;
             boxId = "box-" + boxSeq.incrementAndGet();
             boxType = pickType();
@@ -249,6 +286,9 @@ public final class BoxStore {
         String endedType;
         String winner;
         long price;
+        boolean winDouble = false;   // Dobro: a abertura do vencedor rende o dobro
+        boolean winCursed = false;   // Maldição: a vitória abre como Mímico (fase 2)
+        boolean winInsured = false;  // Seguro: sem penalidade de Mímico
         boolean startNext = false;
         lock.lock();
         try {
@@ -266,6 +306,10 @@ public final class BoxStore {
             endedType = boxType;
             winner = leader; // "" se ninguém deu lance
             price = curBid;
+            // Resolve os efeitos de carta do vencedor (lidos sob o lock) p/ valerem na abertura.
+            winDouble = round.doubleLoot.contains(winner);
+            winCursed = round.cursed.contains(winner);
+            winInsured = round.insured.contains(winner);
             if (!winner.isEmpty()) {
                 wallet.settle(winner, endedBoxId, price); // o vencedor paga de fato
             }
@@ -283,8 +327,8 @@ public final class BoxStore {
             lock.unlock();
         }
         if (!winner.isEmpty()) {
-            // O vencedor poderá ABRIR a caixa arrematada (sorteio do item).
-            pendingOpens.put(endedBoxId, new PendingOpen(winner, endedType, price));
+            // O vencedor poderá ABRIR a caixa arrematada (sorteio do item) — com seus efeitos de carta.
+            pendingOpens.put(endedBoxId, new PendingOpen(winner, endedType, price, winDouble, winCursed, winInsured));
         }
         roundListener.onRoundEnded(endedRound, endedBoxId, endedType, winner, price); // fora do lock
         if (startNext) {
@@ -345,20 +389,27 @@ public final class BoxStore {
     public OpenResult openBox(String reqBoxId, String playerId) {
         PendingOpen po = pendingOpens.get(reqBoxId);
         if (po == null) {
-            return new OpenResult(false, opened.contains(reqBoxId) ? "ALREADY_OPENED" : "UNKNOWN_BOX", "", 0, false);
+            return new OpenResult(false, opened.contains(reqBoxId) ? "ALREADY_OPENED" : "UNKNOWN_BOX", "", 0, false, false);
         }
         if (!po.winner().equals(playerId)) {
-            return new OpenResult(false, "NOT_WINNER", "", 0, false);
+            return new OpenResult(false, "NOT_WINNER", "", 0, false, false);
         }
         if (!pendingOpens.remove(reqBoxId, po)) {
-            return new OpenResult(false, "ALREADY_OPENED", "", 0, false); // corrida: já aberta
+            return new OpenResult(false, "ALREADY_OPENED", "", 0, false, false); // corrida: já aberta
         }
         opened.add(reqBoxId);
         String item = opener.draw(po.boxType());
+        if (po.cursed()) {
+            item = "MIMIC"; // Maldição: a vitória do alvo abre como Mímico (fase 2)
+        }
         boolean mimic = "MIMIC".equals(item);
         // Mímico é penalidade única (sem itens); item real rende de min..max unidades.
         int quantity = mimic ? 0 : opener.drawQuantity(cfg.minItems(), cfg.maxItems());
-        return new OpenResult(true, "OK", item, quantity, mimic);
+        if (po.doubleLoot()) {
+            quantity *= 2; // Dobro: a abertura rende o dobro de itens
+        }
+        // insured: o servidor de leilão pula a penalidade do Mímico (Seguro).
+        return new OpenResult(true, "OK", item, quantity, mimic, po.insured());
     }
 
     /** Estado da sala: rodada atual + a caixa em leilão (odds públicas quando ativa). */

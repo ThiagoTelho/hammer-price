@@ -56,6 +56,20 @@ collections:                    # bônus ~2–3× o valor de mercado dos itens c
 mimic:                          # penalidade ao abrir uma caixa 💀 (sorteada na Carteira)
   steal_money_pct: 10           # quando a penalidade é MONEY: rouba 10% do saldo
 
+cards:                          # cartas de habilidade (compradas com dinheiro; carta sorteada)
+  base_price: 80                # preço da 1ª carta; sobe a cada compra (preço CRESCENTE)
+  price_step: 40                # +40 por carta já comprada na partida (80, 120, 160…)
+  hand_max: 6                   # teto da mão
+  tax_amount: 25                # Imposto: cada rival paga isto ao autor
+  double_loot_mult: 2           # Dobro: multiplicador de itens na abertura
+  discount_pct: 30              # Desconto (fase 2): % de abatimento no arremate
+  upgrade_tiers: 1              # Reforço (fase 2): quantos níveis o baú sobe
+  weights:                      # chance de sortear cada carta (igual por padrão; ajustável)
+    BLOCK: 10                   # Bloqueio: o alvo não dá lance na próxima rodada
+    DOUBLE: 10                  # Dobro: sua abertura rende o dobro de itens
+    TAX: 10                     # Imposto: cada rival te paga
+    INSURANCE: 10               # Seguro: sem penalidade de Mímico
+
 market:
   recalc_interval_seconds: 5
   sensitivity_k: 0.5

@@ -7,6 +7,7 @@ import br.ufg.hammerprice.auction.grpc.OpenBoxReply;
 import br.ufg.hammerprice.auction.grpc.OpenBoxRequest;
 import br.ufg.hammerprice.auction.grpc.PlaceBidReply;
 import br.ufg.hammerprice.auction.grpc.PlaceBidRequest;
+import br.ufg.hammerprice.auction.grpc.RoomEffects;
 import br.ufg.hammerprice.auction.grpc.RoomQuery;
 import br.ufg.hammerprice.auction.grpc.RoomState;
 import java.util.Map;
@@ -148,10 +149,18 @@ public final class AuctionServer {
             BoxStore.OpenResult r = store.openBox(req.getBoxId(), req.getPlayerId());
             // Aplica o efeito na Carteira ANTES de responder, para que o saldo já reflita
             // a penalidade quando o gateway reler a carteira do vencedor.
-            MimicReply pen = null;
+            String penKind = "";
+            String penDetail = "";
             if (r.ok()) {
                 if (r.isMimic()) {
-                    pen = wallet.applyMimic(req.getPlayerId()); // 💀 penaliza (não vira item)
+                    if (r.insured()) {
+                        penKind = "INSURED"; // 🛡️ Seguro: pula a penalidade do Mímico
+                        penDetail = "Seguro evitou a penalidade";
+                    } else {
+                        MimicReply pen = wallet.applyMimic(req.getPlayerId()); // 💀 penaliza (não vira item)
+                        penKind = pen.getKind();
+                        penDetail = pen.getDetail();
+                    }
                 } else {
                     wallet.addItem(req.getPlayerId(), r.item(), r.quantity()); // credita N itens do tipo
                 }
@@ -165,9 +174,9 @@ public final class AuctionServer {
                     .build());
             obs.onCompleted();
             if (r.ok()) {
-                // Difunde o resultado (+ penalidade do Mímico) e enfileira box.opened (RabbitMQ).
+                // Difunde o resultado (+ penalidade/Seguro) e enfileira box.opened (RabbitMQ).
                 events.boxOpened(req.getBoxId(), req.getPlayerId(), r.item(), r.quantity(), r.isMimic(),
-                        pen == null ? "" : pen.getKind(), pen == null ? "" : pen.getDetail());
+                        penKind, penDetail);
             }
         }
 
@@ -181,6 +190,14 @@ public final class AuctionServer {
         @Override
         public void forceClose(RoomQuery req, StreamObserver<AdvanceReply> obs) {
             store.forceClose(); // todos passaram -> fecha a rodada já (o líder vence)
+            obs.onNext(AdvanceReply.newBuilder().setStarted(true).build());
+            obs.onCompleted();
+        }
+
+        @Override
+        public void setRoundEffects(RoomEffects req, StreamObserver<AdvanceReply> obs) {
+            // Efeitos de carta para a PRÓXIMA rodada (empurrados pelo gateway antes do advance).
+            store.setPendingEffects(req.getDoubleLootList(), req.getInsuredList(), req.getCursedList());
             obs.onNext(AdvanceReply.newBuilder().setStarted(true).build());
             obs.onCompleted();
         }

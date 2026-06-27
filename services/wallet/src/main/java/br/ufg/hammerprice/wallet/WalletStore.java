@@ -33,6 +33,10 @@ public final class WalletStore {
         final List<Item> items = new ArrayList<>();
         /** Coleções formadas (itens travados + bônus). */
         final List<FormedCollection> collections = new ArrayList<>();
+        /** Mão de cartas de habilidade (tipos). */
+        final List<String> cards = new ArrayList<>();
+        /** Quantas cartas o jogador já comprou na partida (preço crescente). */
+        int cardsBought = 0;
 
         Player(long balance) {
             this.balance = balance;
@@ -57,9 +61,12 @@ public final class WalletStore {
     /** Resultado da penalidade do Mímico. {@code kind}: MONEY | ITEM | COLLECTION | NONE. */
     public record MimicResult(String kind, String detail, long value) {}
 
-    /** Estado consultável de um jogador (saldo, reservas, inventário e coleções). */
+    /** Resultado da compra de uma carta. {@code reason}: OK | INSUFFICIENT | HAND_FULL | NO_CARDS. */
+    public record BuyCardResult(boolean ok, String reason, String card, long price, long balance) {}
+
+    /** Estado consultável de um jogador (saldo, reservas, inventário, coleções e cartas). */
     public record PlayerView(long balance, long reserved, List<Item> items,
-                             List<FormedCollection> collections) {}
+                             List<FormedCollection> collections, List<String> cards, int cardsBought) {}
 
     private final Map<String, Player> players = new HashMap<>();
     private final AtomicLong itemSeq = new AtomicLong();
@@ -242,7 +249,72 @@ public final class WalletStore {
         }
     }
 
-    /** Zera o jogador para uma nova partida: orçamento inicial, sem itens/coleções. */
+    /**
+     * Compra uma carta aleatória (sorteada pelos {@code weights}). Preço CRESCENTE:
+     * {@code basePrice + step × cartas_já_compradas}. Debita e adiciona à mão. Atômica.
+     */
+    public synchronized BuyCardResult buyCard(String playerId, long basePrice, long step,
+                                              int handMax, Map<String, Integer> weights) {
+        Player p = getOrCreate(playerId);
+        long price = basePrice + step * p.cardsBought;
+        if (p.cards.size() >= handMax) {
+            return new BuyCardResult(false, "HAND_FULL", "", price, p.balance);
+        }
+        if (p.balance < price) {
+            return new BuyCardResult(false, "INSUFFICIENT", "", price, p.balance);
+        }
+        String card = drawCard(weights);
+        if (card.isEmpty()) {
+            return new BuyCardResult(false, "NO_CARDS", "", price, p.balance);
+        }
+        p.balance -= price;
+        p.cardsBought++;
+        p.cards.add(card);
+        return new BuyCardResult(true, "OK", card, price, p.balance);
+    }
+
+    /** Sorteio ponderado de um tipo de carta (cumulativo). */
+    private String drawCard(Map<String, Integer> weights) {
+        int total = 0;
+        for (int w : weights.values()) {
+            total += Math.max(0, w);
+        }
+        if (total <= 0) {
+            return "";
+        }
+        int r = rng.nextInt(total);
+        int acc = 0;
+        for (Map.Entry<String, Integer> e : weights.entrySet()) {
+            acc += Math.max(0, e.getValue());
+            if (r < acc) {
+                return e.getKey();
+            }
+        }
+        return weights.keySet().iterator().next();
+    }
+
+    /** Remove UMA carta do tipo da mão do jogador (ao jogar). Retorna false se não tiver. */
+    public synchronized boolean consumeCard(String playerId, String card) {
+        Player p = players.get(playerId);
+        return p != null && p.cards.remove(card);
+    }
+
+    /** Move até {@code amount} de {@code from} para {@code to} (sem deixar negativo). Retorna o movido. */
+    public synchronized long transfer(String from, String to, long amount) {
+        if (amount <= 0 || from.equals(to)) {
+            return 0;
+        }
+        Player f = getOrCreate(from);
+        long move = Math.min(amount, Math.max(0, f.balance));
+        if (move <= 0) {
+            return 0;
+        }
+        f.balance -= move;
+        getOrCreate(to).balance += move;
+        return move;
+    }
+
+    /** Zera o jogador para uma nova partida: orçamento inicial, sem itens/coleções/cartas. */
     public synchronized void reset(String playerId) {
         players.put(playerId, new Player(initialBudget));
     }
@@ -250,6 +322,7 @@ public final class WalletStore {
     /** Retorna o estado atual do jogador (saldo, reservas, inventário e coleções). */
     public synchronized PlayerView get(String playerId) {
         Player p = getOrCreate(playerId);
-        return new PlayerView(p.balance, p.reserved, List.copyOf(p.items), List.copyOf(p.collections));
+        return new PlayerView(p.balance, p.reserved, List.copyOf(p.items), List.copyOf(p.collections),
+                List.copyOf(p.cards), p.cardsBought);
     }
 }

@@ -18,6 +18,9 @@ service Wallet {
   rpc FormCollection (FormCollectionRequest) returns (FormReply);  // trava itens numa coleção -> bônus
   rpc ResetPlayer (PlayerQuery)   returns (Ack);   // zera o jogador p/ uma nova partida (orçamento inicial)
   rpc ApplyMimic  (PlayerQuery)   returns (MimicReply);  // ao abrir 💀 Mímico: aplica 1 penalidade
+  rpc BuyCard     (PlayerQuery)        returns (BuyCardReply);  // compra carta aleatória (preço crescente)
+  rpc ConsumeCard (ConsumeCardRequest) returns (Ack);          // remove 1 carta da mão (ao jogar)
+  rpc Transfer    (TransferRequest)    returns (TransferReply); // move dinheiro entre jogadores (Imposto)
   rpc GetPlayer (PlayerQuery)     returns (PlayerState);
 }
 
@@ -47,6 +50,18 @@ message SettleRequest {
 }
 
 message PlayerQuery { string player_id = 1; }
+
+// Compra de carta (aleatória, preço crescente). A Carteira debita, sorteia pelos pesos e guarda.
+message BuyCardReply {
+  bool   ok      = 1;
+  string reason  = 2;   // OK | INSUFFICIENT | HAND_FULL
+  string card    = 3;   // tipo sorteado (vazio se !ok)
+  int64  price   = 4;   // preço cobrado (ou o exigido, se INSUFFICIENT)
+  int64  balance = 5;
+}
+message ConsumeCardRequest { string player_id = 1; string card = 2; }
+message TransferRequest { string from_player = 1; string to_player = 2; int64 amount = 3; }
+message TransferReply { bool ok = 1; int64 moved = 2; }   // moved = quanto efetivamente transferiu
 
 // Penalidade do Mímico, sorteada entre roubar dinheiro, roubar um item ou anular uma coleção.
 message MimicReply {
@@ -107,6 +122,8 @@ message PlayerState {
   int64  reserved  = 3;             // saldo "gastável" = balance - reserved
   repeated Item       inventory   = 4;   // itens obtidos ao abrir caixas
   repeated Collection collections = 6;   // coleções formadas (bônus)
+  repeated string     cards          = 7;   // mão de cartas de habilidade (tipos)
+  int64               next_card_price = 8;   // preço da próxima compra (crescente)
 }
 
 message Ack { bool ok = 1; }

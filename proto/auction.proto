@@ -15,7 +15,21 @@ service Auction {
   rpc OpenBox      (OpenBoxRequest)  returns (OpenBoxReply); // sorteio server-side
   rpc AdvanceRound (RoomQuery)       returns (AdvanceReply); // encerra o intervalo e abre já a próxima rodada
   rpc ForceClose   (RoomQuery)       returns (AdvanceReply); // fecha JÁ a rodada (todos passaram): o líder vence
+  rpc SetRoundEffects (RoomEffects)  returns (AdvanceReply); // efeitos de cartas para a PRÓXIMA rodada
 }
+
+// Efeitos de cartas que valem para a próxima rodada (empurrados pelo gateway antes do advance).
+message RoomEffects {
+  string room_id = 1;
+  repeated string double_loot = 2;   // jogadores cuja abertura rende o dobro de itens (Dobro)
+  repeated string insured     = 3;   // jogadores sem penalidade de Mímico (Seguro)
+  repeated string cursed      = 4;   // jogadores cuja vitória abre como Mímico (Maldição) — fase 2
+  repeated string insight     = 5;   // jogadores que veem o drop antecipado (Visão) — fase 2
+  repeated string gavel       = 6;   // fontes que dobram o incremento dos rivais (Martelo) — fase 2
+  repeated DiscountEntry discounts = 7; // desconto no arremate por jogador (Desconto) — fase 2
+  int32  box_tier_boost = 8;         // sobe o nível do baú (Reforço) — fase 2
+}
+message DiscountEntry { string player = 1; int32 pct = 2; }
 
 message PlaceBidRequest {
   string room_id   = 1;

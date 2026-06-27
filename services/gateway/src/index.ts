@@ -9,7 +9,7 @@
 // - Fan-out ASSÍNCRONO: assina o canal Redis Pub/Sub de cada sala (só durante a partida).
 import { WebSocketServer, WebSocket } from "ws";
 import Redis from "ioredis";
-import { placeBid, getRoomState, openBox, getPlayer, sellItem, formCollection, advanceRound, forceClose, resetPlayer, type Box } from "./grpcClients.js";
+import { placeBid, getRoomState, openBox, getPlayer, sellItem, formCollection, advanceRound, forceClose, resetPlayer, buyCard, consumeCard, transfer, setRoundEffects, type Box } from "./grpcClients.js";
 
 const PORT = Number(process.env.GATEWAY_PORT ?? 8080);
 const REDIS_URL = process.env.REDIS_URL ?? "redis://localhost:6379";
@@ -18,6 +18,8 @@ const REDIS_REPLICA_URL = process.env.REDIS_REPLICA_URL ?? REDIS_URL;
 const INTERMISSION_MS = Number(process.env.INTERMISSION_MAX_SECONDS ?? 120) * 1000;
 // Capacidade máxima de jogadores por sala.
 const MAX_PLAYERS = Number(process.env.MAX_PLAYERS_PER_ROOM ?? 15);
+// Imposto (carta TAX): quanto cada rival paga ao autor (espelha cards.tax_amount do balance.yaml).
+const CARD_TAX = Number(process.env.CARD_TAX ?? 25);
 
 // Mapa slot de sala -> endereço da instância de Leilão dona da sala (a partição R6).
 function parseRoutes(s: string): Record<string, string> {
@@ -52,6 +54,9 @@ interface Match {
   folded: Set<string>; // quem passou a vez NESTA rodada (zera a cada rodada)
   spectators: Set<string>; // quem desistiu e só assiste (persiste a partida)
   leader: string; // líder atual da rodada (p/ decidir o fechamento por fold)
+  pendingCards: { source: string; cardType: string; target?: string }[]; // cartas jogadas p/ a próxima rodada
+  blocked: Set<string>; // bloqueados de dar lance NESTA rodada (carta Bloqueio)
+  shielded: Set<string>; // imunes a efeitos ofensivos (carta Escudo — fase 2)
 }
 const matches: Record<string, Match | null> = {};
 for (const r of ROOMS) matches[r] = null;
@@ -127,6 +132,8 @@ async function sendWallet(c: Client): Promise<void> {
           reserved: p.reserved,
           inventory: p.inventory,
           collections: p.collections,
+          cards: p.cards,
+          nextCardPrice: p.nextCardPrice,
         }),
       );
     }
@@ -240,6 +247,50 @@ async function maybeCloseByFold(room: string): Promise<void> {
   }
 }
 
+// Efeitos do LEILÃO acumulados a partir das cartas jogadas no intervalo (Dobro/Seguro/Maldição).
+function auctionEffectsOf(m: Match): { doubleLoot: string[]; insured: string[]; cursed: string[] } {
+  const doubleLoot: string[] = [];
+  const insured: string[] = [];
+  const cursed: string[] = [];
+  for (const c of m.pendingCards) {
+    if (c.cardType === "DOUBLE") doubleLoot.push(c.source);
+    else if (c.cardType === "INSURANCE") insured.push(c.source);
+    else if (c.cardType === "CURSE" && c.target) cursed.push(c.target);
+  }
+  return { doubleLoot, insured, cursed };
+}
+
+// Ao iniciar a rodada: aplica efeitos do gateway (Imposto, Bloqueio) e difunde os ativos p/ a UI.
+async function resolveRoundCards(room: string): Promise<void> {
+  const m = matches[room];
+  if (!m) return;
+  const cards = m.pendingCards;
+  m.pendingCards = [];
+  m.blocked.clear();
+  m.shielded.clear();
+  const doubleLoot: string[] = [];
+  const insured: string[] = [];
+  for (const c of cards) {
+    if (c.cardType === "BLOCK" && c.target) m.blocked.add(c.target);
+    else if (c.cardType === "DOUBLE") doubleLoot.push(c.source);
+    else if (c.cardType === "INSURANCE") insured.push(c.source);
+    else if (c.cardType === "TAX") {
+      for (const rival of activeBidders(room)) {
+        if (rival !== c.source) {
+          try {
+            await transfer(WALLET_ROUTES[room], rival, c.source, CARD_TAX);
+          } catch (e) {
+            console.error("gateway: imposto:", e);
+          }
+        }
+      }
+    }
+  }
+  broadcastToRoom(room, { type: "CARD_EFFECTS", blocked: [...m.blocked], doubleLoot, insured });
+  for (const c of clients) if (c.room === room) void sendWallet(c);
+  void broadcastPlayersPanel(room);
+}
+
 // Fan-out assíncrono por sala — só repassa eventos de jogo enquanto a partida está RUNNING.
 const sub = new Redis(REDIS_URL);
 // Conexão separada para PUBLICAR o chat (a `sub` está em modo subscribe e não publica).
@@ -281,6 +332,8 @@ sub.on("message", (channel, message) => {
     m.leader = ev.leader; // acompanha o líder p/ decidir o fechamento por fold
   }
   if (ev.type === "ROUND_ENDED") {
+    m.blocked.clear(); // efeitos de carta da rodada expiram
+    m.shielded.clear();
     m.roundsPlayed++;
     if (m.roundsPlayed >= m.totalRounds) {
       void endMatch(room); // última rodada → fim da partida
@@ -296,6 +349,7 @@ sub.on("message", (channel, message) => {
     m.ready.clear();
     m.folded.clear(); // novo lote → todos podem dar lance de novo
     m.leader = "";
+    void resolveRoundCards(room); // aplica Imposto/Bloqueio e difunde os efeitos ativos
   }
 });
 
@@ -331,7 +385,7 @@ wss.on("connection", (ws, req) => {
       if (prev && codeToRoom.get(prev.code) === slot) codeToRoom.delete(prev.code);
       const code = genCode();
       const rounds = Math.max(8, Math.min(40, Number(msg.rounds) || 16));
-      matches[slot] = { status: "WAITING", code, host: playerId, totalRounds: rounds, roundsPlayed: 0, ready: new Set(), intermissionEndsAt: 0, folded: new Set(), spectators: new Set(), leader: "" };
+      matches[slot] = { status: "WAITING", code, host: playerId, totalRounds: rounds, roundsPlayed: 0, ready: new Set(), intermissionEndsAt: 0, folded: new Set(), spectators: new Set(), leader: "", pendingCards: [], blocked: new Set(), shielded: new Set() };
       codeToRoom.set(code, slot);
       client.room = slot;
       console.log(`gateway: ${playerId} criou a sala ${slot} (código ${code})`);
@@ -376,6 +430,9 @@ wss.on("connection", (ws, req) => {
       m.folded.clear();
       m.spectators.clear();
       m.leader = "";
+      m.pendingCards = [];
+      m.blocked.clear();
+      m.shielded.clear();
       console.log(`gateway: partida iniciada na sala ${slot} (${playersIn(slot).length} jogadores, ${m.totalRounds} rodadas)`);
       broadcastToRoom(slot, { type: "MATCH_STARTED", totalRounds: m.totalRounds, roundsPlayed: 0 });
       broadcastToRoom(slot, roomStateMsg(slot));
@@ -410,6 +467,9 @@ wss.on("connection", (ws, req) => {
         m.folded.clear();
         m.spectators.clear();
         m.leader = "";
+        m.pendingCards = [];
+        m.blocked.clear();
+        m.shielded.clear();
         if (!codeToRoom.has(m.code)) codeToRoom.set(m.code, slot); // reabre o código
         broadcastToRoom(slot, roomStateMsg(slot));
         for (const c of clients) if (c.room === slot) void sendWallet(c);
@@ -477,6 +537,59 @@ wss.on("connection", (ws, req) => {
       return;
     }
 
+    // Comprar uma carta aleatória (preço crescente) — durante a partida, não-espectador.
+    if (msg.type === "BUY_CARD") {
+      const slot = client.room;
+      const m = slot ? matches[slot] : null;
+      if (!slot || !m || m.status !== "RUNNING" || m.spectators.has(playerId)) return;
+      try {
+        const r = await buyCard(WALLET_ROUTES[slot], playerId);
+        ws.send(JSON.stringify({ type: "CARD_BOUGHT", ok: r.ok, reason: r.reason, card: r.card, price: r.price }));
+        if (r.ok) {
+          void sendWallet(client);
+          broadcastToRoom(slot, { type: "CARD_NOTICE", player: playerId }); // público, sem revelar a carta
+        }
+      } catch (e) {
+        console.error("gateway: BUY_CARD:", e);
+      }
+      return;
+    }
+
+    // Jogar uma carta — SÓ no intervalo (o efeito vale para a próxima rodada). Revelada à mesa.
+    if (msg.type === "PLAY_CARD") {
+      const slot = client.room;
+      const m = slot ? matches[slot] : null;
+      if (!slot || !m || m.status !== "RUNNING" || m.intermissionEndsAt <= Date.now() || m.spectators.has(playerId)) return;
+      const cardType = String(msg.cardType ?? "");
+      const target = msg.target ? String(msg.target) : undefined;
+      // Cartas ofensivas de alvo único exigem um alvo válido (jogador da sala, não você).
+      const targeted = ["BLOCK", "CURSE"].includes(cardType);
+      if (targeted && (!target || target === playerId || !playersIn(slot).includes(target))) {
+        ws.send(JSON.stringify({ type: "ERROR", reason: "INVALID_TARGET" }));
+        return;
+      }
+      let consumed = false;
+      try {
+        consumed = (await consumeCard(WALLET_ROUTES[slot], playerId, cardType)).ok; // valida posse
+      } catch (e) {
+        console.error("gateway: consumeCard:", e);
+      }
+      if (!consumed) {
+        ws.send(JSON.stringify({ type: "ERROR", reason: "NO_SUCH_CARD" }));
+        return;
+      }
+      m.pendingCards.push({ source: playerId, cardType, target });
+      broadcastToRoom(slot, { type: "CARD_PLAYED", source: playerId, cardType, target: target ?? "" });
+      // Empurra os efeitos do Leilão (idempotente: o conjunto acumulado) p/ a próxima rodada.
+      try {
+        await setRoundEffects(ROUTES[slot], slot, auctionEffectsOf(m));
+      } catch (e) {
+        console.error("gateway: setRoundEffects:", e);
+      }
+      void sendWallet(client); // a mão diminuiu
+      return;
+    }
+
     // ---- Ações de jogo (só durante a partida e para quem NÃO é espectador) ----
     const GAME_ACTIONS = ["PLACE_BID", "OPEN_BOX", "SELL_ITEM", "FORM_COLLECTION"];
     if (!inRunningMatch(client)) {
@@ -492,6 +605,10 @@ wss.on("connection", (ws, req) => {
     const waddr = WALLET_ROUTES[room];
 
     if (msg.type === "PLACE_BID") {
+      if (matches[room]?.blocked.has(playerId)) {
+        ws.send(JSON.stringify({ type: "BID_REJECTED", boxId: msg.boxId, reason: "BLOCKED" }));
+        return;
+      }
       try {
         const reply = await placeBid(addr, room, msg.boxId, playerId, Number(msg.amount));
         ws.send(

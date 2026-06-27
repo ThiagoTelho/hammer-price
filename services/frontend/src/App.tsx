@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, useCallback } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import * as sfx from "./sound";
 import { Chest, tierLabel, tierLight } from "./Chest";
+import { Card, cardOf } from "./Card";
 
 const GATEWAY_URL = import.meta.env.VITE_GATEWAY_URL ?? "ws://localhost:8080";
 
@@ -21,6 +22,7 @@ interface Wallet {
   reserved: number;
   inventory: { id: string; type: string; state: string }[];
   collections: { kind: string; bonus: number }[];
+  cards: string[];
 }
 interface RankRow {
   playerId: string;
@@ -84,6 +86,9 @@ export function App() {
   const [foldState, setFoldState] = useState({ folded: 0, total: 0 });
   const [spectating, setSpectating] = useState(false); // desisti e só assisto
   const [chat, setChat] = useState<{ player: string; text: string; ts: number }[]>([]);
+  const [nextCardPrice, setNextCardPrice] = useState(0);
+  const [cardEffects, setCardEffects] = useState<{ blocked: string[]; doubleLoot: string[]; insured: string[] }>({ blocked: [], doubleLoot: [], insured: [] });
+  const [targeting, setTargeting] = useState<string | null>(null); // cartType aguardando escolha de alvo
 
   const [round, setRound] = useState(0);
   const [box, setBox] = useState<Box | null>(null);
@@ -159,6 +164,8 @@ export function App() {
             setFolded(false);
             setFoldState({ folded: 0, total: 0 });
             setSpectating(false);
+            setCardEffects({ blocked: [], doubleLoot: [], insured: [] });
+            setTargeting(null);
             setPhase("playing");
             addLog(`🚀 Partida iniciada! ${msg.totalRounds} rodadas.`);
             break;
@@ -191,6 +198,8 @@ export function App() {
             setIntermission({ endsAt: msg.endsAt ?? 0 });
             setMatchRounds({ played: msg.roundsPlayed ?? 0, total: msg.totalRounds ?? 0 });
             setIAmReady(false);
+            setCardEffects({ blocked: [], doubleLoot: [], insured: [] });
+            setTargeting(null);
             break;
           case "READY_STATE":
             setReadyState({ ready: msg.ready ?? 0, total: msg.total ?? 0 });
@@ -249,9 +258,10 @@ export function App() {
           case "BOX_OPENED": {
             const mine = msg.player === playerIdRef.current;
             if (msg.isMimic) {
-              addLog(`💀 ${mine ? "Você" : msg.player} abriu um MÍMICO — perdeu ${msg.penaltyDetail || "—"}`);
-              if (mine) setOpening((o) => (o ? { ...o, sub: `Perdeu ${msg.penaltyDetail || "—"}` } : o));
-              else {
+              const insured = msg.penaltyKind === "INSURED";
+              addLog(`💀 ${mine ? "Você" : msg.player} abriu um MÍMICO — ${insured ? "Seguro evitou a penalidade 🛡️" : `perdeu ${msg.penaltyDetail || "—"}`}`);
+              if (mine) setOpening((o) => (o ? { ...o, sub: insured ? "Seguro evitou! 🛡️" : `Perdeu ${msg.penaltyDetail || "—"}` } : o));
+              else if (!insured) {
                 sfx.thud();
                 setFlash({ kind: "mimic", emoji: "💀", title: `${msg.player} pegou um MÍMICO!`, sub: `Perdeu ${msg.penaltyDetail || "—"}` });
               }
@@ -278,7 +288,28 @@ export function App() {
               reserved: msg.reserved ?? 0,
               inventory: msg.inventory ?? [],
               collections: msg.collections ?? [],
+              cards: msg.cards ?? [],
             });
+            setNextCardPrice(msg.nextCardPrice ?? 0);
+            break;
+          case "CARD_BOUGHT":
+            if (msg.ok) {
+              sfx.coin();
+              addLog(`🃏 Você comprou: ${cardOf(msg.card).label}`);
+            } else addLog(msg.reason === "INSUFFICIENT" ? "⚠️ Dinheiro insuficiente para a carta." : "⚠️ Mão cheia.");
+            break;
+          case "CARD_NOTICE":
+            if (msg.player !== playerIdRef.current) addLog(`🃏 ${msg.player} comprou uma carta`);
+            break;
+          case "CARD_PLAYED": {
+            const who = msg.source === playerIdRef.current ? "Você" : msg.source;
+            const d = cardOf(msg.cardType);
+            addLog(`${d.emoji} ${who} usou ${d.label}${msg.target ? ` em ${msg.target}` : ""}`);
+            setFlash({ kind: "win", emoji: d.emoji, title: `${d.label}!`, sub: `${who}${msg.target ? ` → ${msg.target}` : ""}` });
+            break;
+          }
+          case "CARD_EFFECTS":
+            setCardEffects({ blocked: msg.blocked ?? [], doubleLoot: msg.doubleLoot ?? [], insured: msg.insured ?? [] });
             break;
           case "SELL_RESULT":
             if (msg.ok) sfx.coin();
@@ -378,6 +409,11 @@ export function App() {
   const sendOpen = (boxId: string) => send({ type: "OPEN_BOX", boxId });
   const sell = (itemId: string) => send({ type: "SELL_ITEM", itemId });
   const form = (kind: string) => send({ type: "FORM_COLLECTION", kind });
+  const buyCardAction = () => send({ type: "BUY_CARD" });
+  const playCard = (cardType: string, target?: string) => {
+    send({ type: "PLAY_CARD", cardType, target });
+    setTargeting(null);
+  };
 
   const freeCount = (type: string): number => wallet?.inventory.filter((i) => i.type === type && i.state === "FREE").length ?? 0;
   const canForm = (requires: Record<string, number>): boolean => Object.entries(requires).every(([t, n]) => freeCount(t) >= n);
@@ -553,6 +589,65 @@ export function App() {
                     >
                       Desistir (assistir)
                     </button>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Cartas de habilidade */}
+            {wallet && (
+              <div className={`${C.card} p-4 flex flex-col gap-2`}>
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-muted">🃏 Cartas</span>
+                  {!spectating && (
+                    <button className={C.btnSmall} disabled={wallet.balance - wallet.reserved < nextCardPrice} onClick={buyCardAction}>
+                      Comprar ({money(nextCardPrice)})
+                    </button>
+                  )}
+                </div>
+
+                {(cardEffects.blocked.includes(playerId) || cardEffects.doubleLoot.includes(playerId) || cardEffects.insured.includes(playerId)) && (
+                  <div className="flex flex-wrap gap-1 text-[11px]">
+                    {cardEffects.blocked.includes(playerId) && <span className="px-1.5 py-0.5 rounded bg-red-500/15 text-red-300 border border-red-500/30">🚫 Bloqueado</span>}
+                    {cardEffects.doubleLoot.includes(playerId) && <span className="px-1.5 py-0.5 rounded bg-cyan-500/15 text-cyan-300 border border-cyan-500/30">✖️2 Dobro</span>}
+                    {cardEffects.insured.includes(playerId) && <span className="px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">🛡️ Seguro</span>}
+                  </div>
+                )}
+
+                {wallet.cards.length === 0 ? (
+                  <div className="text-xs text-muted">Sem cartas. Compre uma — o efeito vale para a próxima rodada.</div>
+                ) : (
+                  <div className="flex flex-wrap gap-2">
+                    {wallet.cards.map((card, i) => (
+                      <div key={i} className="flex flex-col items-center gap-1">
+                        <Card type={card} size={54} dim={spectating} />
+                        {!spectating && (
+                          <button
+                            className={`${C.btnSmall} text-[11px] px-2 py-0.5`}
+                            disabled={!intermission}
+                            title={intermission ? "" : "jogue no intervalo"}
+                            onClick={() => (cardOf(card).targeted ? setTargeting(card) : playCard(card))}
+                          >
+                            Usar
+                          </button>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {!intermission && wallet.cards.length > 0 && !spectating && (
+                  <div className="text-[11px] text-muted">Jogue no intervalo (vale p/ a próxima rodada).</div>
+                )}
+
+                {targeting && (
+                  <div className="bg-surface-2 border border-line rounded-lg p-2 flex flex-col gap-1">
+                    <div className="text-xs text-muted">{cardOf(targeting).label} — escolha o alvo:</div>
+                    <div className="flex flex-wrap gap-1">
+                      {players.filter((p) => p.id !== playerId && !p.spectating).map((p) => (
+                        <button key={p.id} className={`${C.btnSmall} text-xs`} onClick={() => playCard(targeting, p.id)}>{p.id}</button>
+                      ))}
+                      <button className={`${C.btnSmall} text-xs`} onClick={() => setTargeting(null)}>cancelar</button>
+                    </div>
                   </div>
                 )}
               </div>

@@ -65,6 +65,27 @@ public final class BalanceConfig {
         return v instanceof Number ? ((Number) v).longValue() : def;
     }
 
+    /** Valor inteiro de {@code cards.<key>} (base_price, price_step, hand_max, tax_amount…). */
+    public long cardLong(String key, long def) {
+        Object v = section("cards").get(key);
+        return v instanceof Number ? ((Number) v).longValue() : def;
+    }
+
+    /** Pesos de sorteio das cartas, de {@code cards.weights} (tipo → peso). */
+    public Map<String, Integer> cardWeights() {
+        Object c = section("cards").get("weights");
+        if (!(c instanceof Map<?, ?> m)) {
+            return Collections.emptyMap();
+        }
+        Map<String, Integer> out = new LinkedHashMap<>();
+        for (Map.Entry<?, ?> e : m.entrySet()) {
+            if (e.getValue() instanceof Number n) {
+                out.put(String.valueOf(e.getKey()), n.intValue());
+            }
+        }
+        return out;
+    }
+
     /** Itens exigidos por uma coleção, de {@code collections.<kind>.requires}. */
     public Map<String, Integer> collectionRequires(String kind) {
         Object c = section("collections").get(kind);

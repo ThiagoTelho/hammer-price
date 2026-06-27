@@ -2,7 +2,9 @@ package br.ufg.hammerprice.wallet;
 
 import br.ufg.hammerprice.wallet.grpc.Ack;
 import br.ufg.hammerprice.wallet.grpc.AddItemRequest;
+import br.ufg.hammerprice.wallet.grpc.BuyCardReply;
 import br.ufg.hammerprice.wallet.grpc.Collection;
+import br.ufg.hammerprice.wallet.grpc.ConsumeCardRequest;
 import br.ufg.hammerprice.wallet.grpc.FormCollectionRequest;
 import br.ufg.hammerprice.wallet.grpc.FormReply;
 import br.ufg.hammerprice.wallet.grpc.Item;
@@ -15,6 +17,8 @@ import br.ufg.hammerprice.wallet.grpc.ReserveRequest;
 import br.ufg.hammerprice.wallet.grpc.SellItemRequest;
 import br.ufg.hammerprice.wallet.grpc.SellReply;
 import br.ufg.hammerprice.wallet.grpc.SettleRequest;
+import br.ufg.hammerprice.wallet.grpc.TransferReply;
+import br.ufg.hammerprice.wallet.grpc.TransferRequest;
 import br.ufg.hammerprice.wallet.grpc.WalletGrpc;
 import io.grpc.Server;
 import io.grpc.ServerBuilder;
@@ -112,12 +116,39 @@ public final class WalletServer {
         }
 
         @Override
+        public void buyCard(PlayerQuery req, StreamObserver<BuyCardReply> obs) {
+            long base = cfg.cardLong("base_price", 80);
+            long step = cfg.cardLong("price_step", 40);
+            int handMax = (int) cfg.cardLong("hand_max", 6);
+            WalletStore.BuyCardResult r = store.buyCard(req.getPlayerId(), base, step, handMax, cfg.cardWeights());
+            obs.onNext(BuyCardReply.newBuilder()
+                    .setOk(r.ok()).setReason(r.reason()).setCard(r.card()).setPrice(r.price()).setBalance(r.balance()).build());
+            obs.onCompleted();
+        }
+
+        @Override
+        public void consumeCard(ConsumeCardRequest req, StreamObserver<Ack> obs) {
+            boolean ok = store.consumeCard(req.getPlayerId(), req.getCard());
+            obs.onNext(Ack.newBuilder().setOk(ok).build());
+            obs.onCompleted();
+        }
+
+        @Override
+        public void transfer(TransferRequest req, StreamObserver<TransferReply> obs) {
+            long moved = store.transfer(req.getFromPlayer(), req.getToPlayer(), req.getAmount());
+            obs.onNext(TransferReply.newBuilder().setOk(moved > 0).setMoved(moved).build());
+            obs.onCompleted();
+        }
+
+        @Override
         public void getPlayer(PlayerQuery req, StreamObserver<PlayerState> obs) {
             WalletStore.PlayerView v = store.get(req.getPlayerId());
+            long nextPrice = cfg.cardLong("base_price", 80) + cfg.cardLong("price_step", 40) * v.cardsBought();
             PlayerState.Builder b = PlayerState.newBuilder()
                     .setPlayerId(req.getPlayerId())
                     .setBalance(v.balance())
-                    .setReserved(v.reserved());
+                    .setReserved(v.reserved())
+                    .setNextCardPrice(nextPrice);
             for (WalletStore.Item it : v.items()) {
                 b.addInventory(Item.newBuilder()
                         .setId(it.id())
@@ -127,6 +158,9 @@ public final class WalletServer {
             }
             for (WalletStore.FormedCollection c : v.collections()) {
                 b.addCollections(Collection.newBuilder().setKind(c.kind()).setBonus(c.bonus()).build());
+            }
+            for (String card : v.cards()) {
+                b.addCards(card);
             }
             obs.onNext(b.build());
             obs.onCompleted();

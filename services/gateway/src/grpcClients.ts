@@ -117,6 +117,38 @@ export function advanceRound(addr: string, roomId: string): Promise<{ started: b
   });
 }
 
+// ---- Cartas de habilidade ----
+export interface BuyCardReply { ok: boolean; reason: string; card: string; price: number; balance: number }
+// Compra uma carta aleatória (preço crescente; a Carteira debita e sorteia).
+export function buyCard(addr: string, playerId: string): Promise<BuyCardReply> {
+  return new Promise((res, rej) => {
+    walletAt(addr).BuyCard({ playerId }, callOpts(), (err: any, reply: BuyCardReply) => (err ? rej(err) : res(reply)));
+  });
+}
+// Remove 1 carta da mão (ao jogar). ok=false se o jogador não tinha a carta.
+export function consumeCard(addr: string, playerId: string, card: string): Promise<{ ok: boolean }> {
+  return new Promise((res, rej) => {
+    walletAt(addr).ConsumeCard({ playerId, card }, callOpts(), (err: any, reply: { ok: boolean }) => (err ? rej(err) : res(reply)));
+  });
+}
+// Move dinheiro entre jogadores (Imposto). Retorna quanto efetivamente moveu.
+export function transfer(addr: string, fromPlayer: string, toPlayer: string, amount: number): Promise<{ ok: boolean; moved: number }> {
+  return new Promise((res, rej) => {
+    walletAt(addr).Transfer({ fromPlayer, toPlayer, amount }, callOpts(), (err: any, reply: { ok: boolean; moved: number }) => (err ? rej(err) : res(reply)));
+  });
+}
+// Empurra os efeitos de carta para a PRÓXIMA rodada do Leilão.
+export interface RoundEffects { doubleLoot?: string[]; insured?: string[]; cursed?: string[] }
+export function setRoundEffects(addr: string, roomId: string, eff: RoundEffects): Promise<{ started: boolean }> {
+  return new Promise((res, rej) => {
+    auctionAt(addr).SetRoundEffects(
+      { roomId, doubleLoot: eff.doubleLoot ?? [], insured: eff.insured ?? [], cursed: eff.cursed ?? [] },
+      callOpts(),
+      (err: any, reply: { started: boolean }) => (err ? rej(err) : res(reply)),
+    );
+  });
+}
+
 // Fecha a rodada imediatamente (todos passaram/fold) — o líder vence sem esperar o cronômetro.
 export function forceClose(addr: string, roomId: string): Promise<{ started: boolean }> {
   return new Promise((res, rej) => {
@@ -149,6 +181,8 @@ export interface PlayerState {
   reserved: number;
   inventory: WalletItem[];
   collections: CollectionInfo[];
+  cards: string[];
+  nextCardPrice: number;
 }
 
 // Leitura do estado do jogador (saldo, reservas, inventário, coleções) na sua wallet shard.
