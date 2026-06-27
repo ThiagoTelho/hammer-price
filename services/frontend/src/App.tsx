@@ -58,12 +58,14 @@ const colorOf = (id: string): string => {
   return CHAT_COLORS[Math.abs(h) % CHAT_COLORS.length];
 };
 
-// Sessão persistida (reconexão): permite voltar à sala após refresh/queda enquanto ela estiver aberta.
+// Sessão persistida (reconexão): volta à sala após um refresh, enquanto ela estiver aberta.
+// Usa sessionStorage (NÃO localStorage): sobrevive ao reload, mas é POR ABA — assim duas abas
+// no mesmo navegador (cada jogador na sua) não compartilham a mesma sessão.
 const SESSION_KEY = "hammerprice.session";
 type Session = { playerId: string; room: string; code: string; name: string };
 const loadSession = (): Session | null => {
   try {
-    const r = localStorage.getItem(SESSION_KEY);
+    const r = sessionStorage.getItem(SESSION_KEY);
     return r ? (JSON.parse(r) as Session) : null;
   } catch {
     return null;
@@ -71,14 +73,14 @@ const loadSession = (): Session | null => {
 };
 const saveSession = (s: Session) => {
   try {
-    localStorage.setItem(SESSION_KEY, JSON.stringify(s));
+    sessionStorage.setItem(SESSION_KEY, JSON.stringify(s));
   } catch {
     /* storage indisponível */
   }
 };
 const clearSession = () => {
   try {
-    localStorage.removeItem(SESSION_KEY);
+    sessionStorage.removeItem(SESSION_KEY);
   } catch {
     /* ignora */
   }
@@ -463,7 +465,9 @@ export function App() {
     [name, addLog],
   );
 
-  useEffect(() => () => wsRef.current?.close(), []);
+  // NÃO fechar o socket no cleanup de desmontagem: em DEV o StrictMode monta→desmonta→remonta,
+  // e fechar aqui mataria o socket de reconexão recém-criado pelo efeito abaixo (ficava preso no
+  // "Reconectando…"). O navegador já fecha o socket ao descarregar a página.
 
   // Ao abrir o app: se há uma sessão salva, tenta voltar à sala (refresh/queda). Falha → menu.
   const autoResumed = useRef(false);
@@ -476,6 +480,19 @@ export function App() {
       connect({ kind: "resume", session: s });
     }
   }, [connect]);
+
+  // Rede de segurança: se a reconexão não concluir em alguns segundos (mensagem perdida,
+  // gateway indisponível, etc.), desiste sozinha — nunca trava no "Reconectando…" eterno.
+  useEffect(() => {
+    if (!reconnecting) return;
+    const t = setTimeout(() => {
+      clearSession();
+      setReconnecting(false);
+      setPhase("menu");
+      addLog("Não foi possível reconectar — comece uma nova sala.");
+    }, 8000);
+    return () => clearTimeout(t);
+  }, [reconnecting, addLog]);
 
   const [, setTick] = useState(0);
   const boxRef = useRef<Box | null>(null);
@@ -534,6 +551,17 @@ export function App() {
         setTimeout(() => setCopiedCode(false), 1500);
       })
       .catch(() => addLog("Não foi possível copiar — copie o código manualmente."));
+  };
+  // Aborta a reconexão e volta ao menu (limpa a sessão salva e fecha o socket).
+  const cancelReconnect = () => {
+    try {
+      wsRef.current?.close();
+    } catch {
+      /* nada a fechar */
+    }
+    clearSession();
+    setReconnecting(false);
+    setPhase("menu");
   };
 
   const boxCountdown = (b: Box): string => {
@@ -602,6 +630,7 @@ export function App() {
             <motion.div className="text-5xl" animate={{ rotate: 360 }} transition={{ repeat: Infinity, duration: 1.4, ease: "linear" }}>🔄</motion.div>
             <div className="text-gold font-display text-2xl mt-4">Reconectando à sua sala…</div>
             <div className="text-muted text-sm mt-1">Voltando de onde você parou.</div>
+            <button className={`${C.btnSmall} mt-6`} onClick={cancelReconnect}>Cancelar e começar de novo</button>
           </div>
         </div>
       )}
