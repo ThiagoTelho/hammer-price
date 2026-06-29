@@ -117,53 +117,47 @@ body {
   pointer-events: none;
   transition: background 0.6s ease;
 }
-/* Piso de madeira do palco. */
+/* Piso do palco: reflexo escuro com leve tom da raridade (sala de exposição, não madeira). */
 .stage-floor {
   position: absolute;
   left: 0;
   right: 0;
   bottom: 0;
-  height: 28%;
-  background:
-    linear-gradient(180deg, transparent, rgba(0, 0, 0, 0.35)),
-    repeating-linear-gradient(90deg, #3a2a1b 0 14px, #43301f 14px 28px);
-  opacity: 0.55;
+  height: 34%;
+  background: linear-gradient(180deg, transparent, color-mix(in srgb, var(--rarity, #e8b923) 12%, rgba(0, 0, 0, 0.55)));
   pointer-events: none;
 }
-
-/* Cortinas de veludo vermelho enquadrando o palco. */
+/* "Cortinas" viram FAIXAS DE LUZ laterais (moldura arcade, no lugar do veludo vermelho). */
 .curtain {
   position: absolute;
   top: 0;
   bottom: 0;
-  width: 14%;
+  width: 18%;
   z-index: 2;
   pointer-events: none;
-  background:
-    repeating-linear-gradient(90deg, #5c0f12 0 10px, #7a1418 10px 16px, #4a0c0f 16px 26px);
-  box-shadow: inset 0 0 40px rgba(0, 0, 0, 0.6);
+  background: linear-gradient(90deg, color-mix(in srgb, var(--rarity, #e8b923) 16%, rgba(0, 0, 0, 0.7)), transparent);
+  transition: background 0.6s ease;
 }
 .curtain-l {
   left: 0;
-  border-right: 2px solid #2c0608;
-  border-radius: 1rem 0 0 1rem;
+  border-radius: 1.25rem 0 0 1.25rem;
 }
 .curtain-r {
   right: 0;
-  border-left: 2px solid #2c0608;
-  border-radius: 0 1rem 1rem 0;
+  transform: scaleX(-1);
+  border-radius: 0 1.25rem 1.25rem 0;
 }
+/* Arco de luz no topo — a "fonte" do holofote. */
 .curtain-top {
   position: absolute;
   top: 0;
   left: 0;
   right: 0;
-  height: 11%;
-  z-index: 3;
+  height: 16%;
+  z-index: 1;
   pointer-events: none;
-  background:
-    radial-gradient(closest-side at 50% 0, #7a1418, #5c0f12) 0 0 / 9% 100% repeat-x;
-  box-shadow: inset 0 -10px 24px rgba(0, 0, 0, 0.55);
+  background: radial-gradient(60% 130% at 50% 0%, color-mix(in srgb, var(--rarity, #f5d77a) 30%, transparent), transparent 70%);
+  transition: background 0.6s ease;
 }
 
 /* Pedestal sob o lote. */

@@ -1,6 +1,6 @@
 // Mesa de leilão do Hammer Price — tema "casa de leilão" (escuro + dourado, Tailwind).
 // Fluxo: menu (criar/entrar) → lobby → partida (rodadas + HUD) → ranking final.
-import { useEffect, useRef, useState, useCallback, lazy } from "react";
+import { useEffect, useRef, useState, useCallback, lazy, type ReactNode } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import * as sfx from "./sound";
 import { Chest, tierLabel, tierLight } from "./Chest";
@@ -11,7 +11,8 @@ import { boxRarity } from "./rarity";
 import { ItemIcon } from "./icons";
 import {
   User, Lock, Wallet, CircleDollarSign, TrendingUp, Backpack, Medal, MessageSquare,
-  Layers, Users, Trophy, Dice5, Skull, Clock, Eye, Hand, TrendingDown, type LucideIcon,
+  Layers, Users, Trophy, Dice5, Skull, Clock, Eye, Hand, TrendingDown,
+  Gavel as GavelIcon, Ban, Copy, ShieldCheck, Shield, Package, type LucideIcon,
 } from "lucide-react";
 import { Lazy3D } from "./three/Lazy3D";
 
@@ -51,7 +52,7 @@ type OverlayItem =
       id: number;
       kind: "flash";
       flashKind: "win" | "mimic";
-      emoji: string;
+      icon: ReactNode;
       title: string;
       sub: string;
       durationMs: number;
@@ -77,7 +78,6 @@ function withDeadline(box: Box | null): Box | null {
   return { ...box, deadlineAt: box.timerMs > 0 ? Date.now() + box.timerMs : 0 };
 }
 
-const CHEST_GLYPH = "🧰";
 // O playerId do backend é `nome#sufixo` (único por sessão). Para exibir, mostramos só o nome.
 const nm = (id: string): string =>
   id && id.includes("#") ? id.slice(0, id.indexOf("#")) : id;
@@ -135,26 +135,26 @@ const TIER_HINT: Record<string, string> = {
   ROYAL: "Boas chances de Ouro",
   VAULT: "Mais Diamante — e mais risco de Mímico",
   JACKPOT: "Raro: muito Diamante — mas pode morder",
-  MYSTERY: "Odds ocultas — pura sorte 🎲",
+  MYSTERY: "Odds ocultas — pura sorte",
 };
-const HOW_TO_PLAY = [
+const HOW_TO_PLAY: { Icon: LucideIcon; title: string; text: string }[] = [
   {
-    icon: "🔨",
+    Icon: GavelIcon,
     title: "Dispute o lote",
     text: "O cronômetro só começa após o 1º lance; quem liderar quando ele zerar arremata. Sem interesse? Passe.",
   },
   {
-    icon: "🎁",
+    Icon: Package,
     title: "Abra o baú",
-    text: "Rende de 1 a 4 itens — de Cobre a Diamante — ou um 💀 Mímico, que aplica uma penalidade.",
+    text: "Rende de 1 a 4 itens — de Cobre a Diamante — ou um Mímico, que aplica uma penalidade.",
   },
   {
-    icon: "🃏",
+    Icon: Layers,
     title: "Vire o jogo",
     text: "Compre cartas e forme coleções para multiplicar seus itens e atrapalhar os rivais.",
   },
   {
-    icon: "🏆",
+    Icon: Trophy,
     title: "Maior patrimônio",
     text: "No fim das rodadas vence quem tiver mais dinheiro + itens + bônus de coleções.",
   },
@@ -670,7 +670,7 @@ export function App() {
             enqueueOverlay({
               kind: "flash",
               flashKind: "win",
-              emoji: mine ? "🏆" : "🔨",
+              icon: mine ? <Trophy size={72} className="text-gold" /> : <GavelIcon size={60} className="text-gold-soft" />,
               title: mine ? "Você arrematou!" : `${nm(msg.winner)} arrematou`,
               sub: `${tierLabel(msg.boxType)} por ${money(msg.price)}`,
               durationMs: 2200,
@@ -712,12 +712,12 @@ export function App() {
               // Prêmio extra: a caixa também trouxe uma carta (vai p/ a mão; entra na fila após a abertura).
               if (msg.card) {
                 const c = cardOf(msg.card);
-                addLog(`🃏 A caixa também trouxe uma carta: ${c.label}!`);
+                addLog(`A caixa também trouxe uma carta: ${c.label}!`);
                 enqueueOverlay({
                   kind: "flash",
                   flashKind: "win",
-                  emoji: c.emoji,
-                  title: "Carta bônus! 🃏",
+                  icon: <Card type={msg.card} size={80} />,
+                  title: "Carta bônus!",
                   sub: c.label,
                   durationMs: 2400,
                 });
@@ -750,7 +750,7 @@ export function App() {
                 enqueueOverlay({
                   kind: "flash",
                   flashKind: "mimic",
-                  emoji: "💀",
+                  icon: <Skull size={68} className="text-red-400" />,
                   title: `${nm(msg.player)} pegou um MÍMICO!`,
                   sub: `Perdeu ${pen}`,
                   durationMs: 2600,
@@ -834,12 +834,12 @@ export function App() {
                 : nm(msg.target)
               : "";
             addLog(
-              `${d.emoji} ${who} usou ${d.label}${tgt ? ` em ${tgt}` : ""}`,
+              `${who} usou ${d.label}${tgt ? ` em ${tgt}` : ""}`,
             );
             enqueueOverlay({
               kind: "flash",
               flashKind: "win",
-              emoji: d.emoji,
+              icon: <Card type={msg.cardType} size={80} />,
               title: `${d.label}!`,
               sub: `${who}${tgt ? ` → ${tgt}` : ""}`,
               durationMs: 2200,
@@ -1290,7 +1290,7 @@ export function App() {
                   transition={{ delay: 0.12 + i * 0.07 }}
                   className="rounded-2xl border border-line bg-surface/60 p-4 text-center"
                 >
-                  <div className="text-3xl">{s.icon}</div>
+                  <div className="flex justify-center text-gold"><s.Icon size={28} /></div>
                   <div className="font-semibold text-sm text-stone-100 mt-2">
                     {s.title}
                   </div>
@@ -1575,34 +1575,34 @@ export function App() {
                     cardEffects.gavel.length > 0) && (
                     <div className="flex flex-wrap gap-1 text-[11px]">
                       {cardEffects.blocked.includes(playerId) && (
-                        <span className="px-1.5 py-0.5 rounded bg-red-500/15 text-red-300 border border-red-500/30">
-                          🚫 Bloqueado
+                        <span className="px-1.5 py-0.5 rounded bg-red-500/15 text-red-300 border border-red-500/30 inline-flex items-center gap-1">
+                          <Ban size={11} /> Bloqueado
                         </span>
                       )}
                       {cardEffects.doubleLoot.includes(playerId) && (
-                        <span className="px-1.5 py-0.5 rounded bg-cyan-500/15 text-cyan-300 border border-cyan-500/30">
-                          ✖️2 Dobro
+                        <span className="px-1.5 py-0.5 rounded bg-cyan-500/15 text-cyan-300 border border-cyan-500/30 inline-flex items-center gap-1">
+                          <Copy size={11} /> Dobro
                         </span>
                       )}
                       {cardEffects.insured.includes(playerId) && (
-                        <span className="px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">
-                          🛡️ Seguro
+                        <span className="px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 inline-flex items-center gap-1">
+                          <ShieldCheck size={11} /> Seguro
                         </span>
                       )}
                       {cardEffects.shielded.includes(playerId) && (
-                        <span className="px-1.5 py-0.5 rounded bg-sky-500/15 text-sky-300 border border-sky-500/30">
-                          ⛓️ Escudo
+                        <span className="px-1.5 py-0.5 rounded bg-sky-500/15 text-sky-300 border border-sky-500/30 inline-flex items-center gap-1">
+                          <Shield size={11} /> Escudo
                         </span>
                       )}
                       {cardEffects.gavel.includes(playerId) && (
-                        <span className="px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-300 border border-amber-500/30">
-                          🔨 Martelo
+                        <span className="px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-300 border border-amber-500/30 inline-flex items-center gap-1">
+                          <GavelIcon size={11} /> Martelo
                         </span>
                       )}
                       {cardEffects.gavel.length > 0 &&
                         !cardEffects.gavel.includes(playerId) && (
-                          <span className="px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-200/80 border border-amber-500/20">
-                            🔨 incremento 2×
+                          <span className="px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-200/80 border border-amber-500/20 inline-flex items-center gap-1">
+                            <GavelIcon size={11} /> incremento 2×
                           </span>
                         )}
                     </div>
@@ -1704,8 +1704,8 @@ export function App() {
                   !spectating &&
                   cardEffects.blocked.includes(playerId) && (
                     <div className="absolute inset-0 z-6 flex items-start justify-center pt-3 bg-red-950/45 pointer-events-none">
-                      <span className="px-3 py-1 rounded-full bg-red-900/85 border border-red-600 text-red-100 text-xs font-semibold">
-                        🚫 Bloqueado nesta rodada
+                      <span className="px-3 py-1 rounded-full bg-red-900/85 border border-red-600 text-red-100 text-xs font-semibold inline-flex items-center gap-1.5">
+                        <Ban size={12} /> Bloqueado nesta rodada
                       </span>
                     </div>
                   )}
@@ -1746,7 +1746,7 @@ export function App() {
                           >
                             <Stage3D
                               boxType={box.boxType}
-                              mode={sold === box.boxId ? "open" : box.leader ? "tension" : "idle"}
+                              mode={box.leader ? "tension" : "idle"}
                             />
                           </Lazy3D>
                         </div>
@@ -1933,7 +1933,7 @@ export function App() {
                     animate={{ opacity: 1, scale: 1 }}
                     className="rounded-2xl border-2 border-red-700/70 bg-red-950/70 p-4 text-center shake"
                   >
-                    <div className="text-4xl">🚫</div>
+                    <div className="flex justify-center"><Ban size={40} className="text-red-400" /></div>
                     <div className="font-display text-xl text-red-300 mt-1">
                       Você está BLOQUEADO
                     </div>
@@ -2044,7 +2044,7 @@ export function App() {
                       disabled={spectating}
                       onClick={() => sendOpen(b.boxId)}
                     >
-                      Abrir {CHEST_GLYPH} {tierLabel(b.boxType)}
+                      Abrir {tierLabel(b.boxType)}
                     </button>
                   ))}
                 </motion.div>
@@ -2080,9 +2080,10 @@ export function App() {
                   </div>
                   {marketEvent && (
                     <div
-                      className={`mb-2 text-center text-[11px] rounded-md px-2 py-1 border ${marketEvent.kind === "CRASH" ? "bg-red-500/15 border-red-500/40 text-red-300" : "bg-amber-500/15 border-amber-500/40 text-amber-300"}`}
+                      className={`mb-2 text-[11px] rounded-md px-2 py-1 border flex items-center gap-1.5 ${marketEvent.kind === "CRASH" ? "bg-red-500/15 border-red-500/40 text-red-300" : "bg-amber-500/15 border-amber-500/40 text-amber-300"}`}
                     >
-                      {marketEvent.emoji} <b>{marketEvent.label}</b> — {marketEvent.desc}
+                      {marketEvent.kind === "CRASH" ? <TrendingDown size={13} className="shrink-0" /> : <TrendingUp size={13} className="shrink-0" />}
+                      <span><b>{marketEvent.label}</b> — {marketEvent.desc}</span>
                     </div>
                   )}
                   <div className="flex flex-col gap-1.5">
@@ -2460,17 +2461,20 @@ export function App() {
           >
             {overlayHead.kind === "flash" ? (
               <motion.div
-                className={`px-8 py-6 rounded-2xl text-center border ${
-                  overlayHead.flashKind === "mimic"
-                    ? "bg-red-950/90 border-red-700 shake"
-                    : "bg-surface/95 border-gold-dim box-glow"
-                }`}
+                className={`px-9 py-7 rounded-2xl text-center border-2 bg-gradient-to-b from-surface to-surface-2 ${overlayHead.flashKind === "mimic" ? "shake" : ""}`}
+                style={{
+                  borderColor: overlayHead.flashKind === "mimic" ? "rgba(239,68,68,0.6)" : "rgba(255,203,46,0.55)",
+                  boxShadow:
+                    overlayHead.flashKind === "mimic"
+                      ? "0 20px 50px -16px rgba(0,0,0,0.85), 0 0 60px -10px rgba(239,68,68,0.55)"
+                      : "0 20px 50px -16px rgba(0,0,0,0.85), 0 0 60px -10px rgba(255,203,46,0.5)",
+                }}
                 initial={{ scale: 0.4, y: 20 }}
                 animate={{ scale: 1, y: 0 }}
                 exit={{ scale: 0.6, opacity: 0 }}
                 transition={{ type: "spring", stiffness: 320, damping: 18 }}
               >
-                <div className="text-7xl">{overlayHead.emoji}</div>
+                <div className="flex items-center justify-center mb-1 drop-shadow-[0_4px_14px_rgba(0,0,0,0.5)]">{overlayHead.icon}</div>
                 <div
                   className={`font-display text-2xl mt-2 ${overlayHead.flashKind === "mimic" ? "text-red-300" : "text-gold"}`}
                 >
