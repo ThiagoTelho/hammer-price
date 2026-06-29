@@ -12,6 +12,7 @@ import { Lazy3D } from "./three/Lazy3D";
 
 // 3D carregado sob demanda (three.js só baixa quando o herói/palco monta).
 const MenuHero3D = lazy(() => import("./three/MenuHero3D"));
+const Stage3D = lazy(() => import("./three/Stage3D"));
 
 const GATEWAY_URL = import.meta.env.VITE_GATEWAY_URL ?? "ws://localhost:8080";
 
@@ -1713,18 +1714,28 @@ export function App() {
                       }}
                       className="relative z-4 w-full max-w-75 text-center flex flex-col items-center gap-1.5"
                     >
-                      {/* baú flutuando + anel de contagem + carimbo ARREMATADO */}
-                      <div className="relative w-37.5 h-37.5 flex items-center justify-center">
-                        <motion.div
-                          animate={{ y: [0, -7, 0] }}
-                          transition={{
-                            repeat: Infinity,
-                            duration: 2.4,
-                            ease: "easeInOut",
-                          }}
-                        >
-                          <Chest tier={box.boxType} size={138} />
-                        </motion.div>
+                      {/* baú 3D + anel de contagem + carimbo ARREMATADO */}
+                      <div className="relative w-52 h-52 flex items-center justify-center">
+                        {/* Baú 3D no palco (fallback 2D sem WebGL). Reage: idle → tension (lance)
+                            → open (arrematado). O anel e o carimbo ficam sobrepostos por cima. */}
+                        <div className="absolute inset-0">
+                          <Lazy3D
+                            fallback={
+                              <motion.div
+                                className="w-full h-full flex items-center justify-center"
+                                animate={{ y: [0, -7, 0] }}
+                                transition={{ repeat: Infinity, duration: 2.4, ease: "easeInOut" }}
+                              >
+                                <Chest tier={box.boxType} size={130} />
+                              </motion.div>
+                            }
+                          >
+                            <Stage3D
+                              boxType={box.boxType}
+                              mode={sold === box.boxId ? "open" : box.leader ? "tension" : "idle"}
+                            />
+                          </Lazy3D>
+                        </div>
                         {box.leader && box.deadlineAt
                           ? (() => {
                               const rem = Math.max(
@@ -1743,8 +1754,8 @@ export function App() {
                               return (
                                 <svg
                                   className="absolute inset-0 -rotate-90"
-                                  width="150"
-                                  height="150"
+                                  width="100%"
+                                  height="100%"
                                   viewBox="0 0 150 150"
                                 >
                                   <circle

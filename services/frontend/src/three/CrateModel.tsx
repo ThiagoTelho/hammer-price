@@ -3,7 +3,9 @@
 // "baú de tesouro" e a raridade aparece no metal (JACKPOT=ouro, VAULT=turquesa, MYSTERY=violeta…).
 // `open` (0..1) gira a tampa na dobradiça traseira; gema interna brilha ao abrir.
 import { RoundedBox } from "@react-three/drei";
-import { DoubleSide } from "three";
+import { useFrame } from "@react-three/fiber";
+import { useRef } from "react";
+import { DoubleSide, type Group } from "three";
 
 const D = 1.2; // profundidade
 const R = D / 2; // raio da tampa abaulada
@@ -14,7 +16,13 @@ const WOOD = "#6a4423"; // madeira (constante p/ todos os tiers)
 const WOOD_DK = "#4a2f17";
 
 export function CrateModel({ color, open = 0 }: { color: string; trim?: string; open?: number }) {
-  const lidAngle = -open * 1.95; // 0 = fechado, ~-112° = aberto
+  // A tampa é animada por useFrame (lerp até o alvo) → abrir/fechar fica suave sem re-render.
+  const lidRef = useRef<Group>(null);
+  useFrame((_, dt) => {
+    if (!lidRef.current) return;
+    const target = -open * 1.95; // 0 = fechado, ~-112° = aberto
+    lidRef.current.rotation.x += (target - lidRef.current.rotation.x) * Math.min(1, dt * 7);
+  });
   const wood = (dk = false) => <meshStandardMaterial color={dk ? WOOD_DK : WOOD} metalness={0.15} roughness={0.7} side={DoubleSide} />;
   const metal = () => <meshStandardMaterial color={color} metalness={0.92} roughness={0.24} />;
 
@@ -68,7 +76,7 @@ export function CrateModel({ color, open = 0 }: { color: string; trim?: string; 
       {/* ---------- TAMPA ABAULADA (barril), na dobradiça traseira ----------
           A tampa desce 0.06 DENTRO do corpo (sobreposição) p/ a base do barril não ficar
           COPLANAR com o topo do corpo — coplanaridade causa z-fighting (cintilação) ao girar. */}
-      <group position={[0, TOP - 0.06, -R]} rotation={[lidAngle, 0, 0]}>
+      <group ref={lidRef} position={[0, TOP - 0.06, -R]}>
         <group position={[0, 0, R]}>
           {/* meia-cilindro dome-para-cima ao longo de X (madeira); rz=90 já deixa o domo p/ cima */}
           <mesh rotation={[0, 0, Math.PI / 2]}>
