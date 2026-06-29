@@ -11,7 +11,7 @@ import { boxRarity } from "./rarity";
 import { ItemIcon } from "./icons";
 import {
   User, Lock, Wallet, CircleDollarSign, TrendingUp, Backpack, Medal, MessageSquare,
-  Layers, Users, Trophy, Dice5, Skull, Clock, Eye, Hand, type LucideIcon,
+  Layers, Users, Trophy, Dice5, Skull, Clock, Eye, Hand, TrendingDown, type LucideIcon,
 } from "lucide-react";
 import { Lazy3D } from "./three/Lazy3D";
 
@@ -2392,26 +2392,37 @@ export function App() {
 
       {/* ---------- Aviso DISCRETO de evento de mercado (canto, não o overlay central) ---------- */}
       <AnimatePresence>
-        {marketToast && (
-          <motion.div
-            initial={{ x: 48, opacity: 0 }}
-            animate={{ x: 0, opacity: 1 }}
-            exit={{ x: 48, opacity: 0 }}
-            transition={{ type: "spring", stiffness: 280, damping: 26 }}
-            className={`fixed top-20 right-4 z-40 ${C.card} px-3 py-2 max-w-64 pointer-events-none`}
-            style={{ borderColor: marketToast.kind === "CRASH" ? "rgba(239,68,68,0.45)" : "rgba(255,203,46,0.45)" }}
-          >
-            <div className="flex items-center gap-2">
-              <span className={`text-lg font-bold ${marketToast.kind === "CRASH" ? "text-red-400" : "text-emerald-400"}`}>
-                {marketToast.kind === "CRASH" ? "▼" : "▲"}
-              </span>
-              <div>
-                <div className="text-sm font-semibold leading-tight text-stone-100">{marketToast.label}</div>
-                <div className="text-[11px] text-muted leading-tight">{marketToast.desc}</div>
-              </div>
-            </div>
-          </motion.div>
-        )}
+        {marketToast &&
+          (() => {
+            const down = marketToast.kind === "CRASH";
+            const accent = down ? "#f87171" : "#ffcb2e";
+            return (
+              <motion.div
+                initial={{ x: -60, opacity: 0, scale: 0.95 }}
+                animate={{ x: 0, opacity: 1, scale: 1 }}
+                exit={{ x: -60, opacity: 0 }}
+                transition={{ type: "spring", stiffness: 300, damping: 24 }}
+                className="fixed bottom-4 left-4 z-40 pointer-events-none w-64"
+              >
+                <div
+                  className="rounded-xl border bg-gradient-to-b from-surface to-surface-2 overflow-hidden flex"
+                  style={{ borderColor: `${accent}66`, boxShadow: `0 12px 30px -12px rgba(0,0,0,0.85), 0 0 20px -8px ${accent}` }}
+                >
+                  <div className="w-1 shrink-0" style={{ background: accent }} />
+                  <div className="px-3 py-2.5 flex items-center gap-2.5">
+                    <div className="rounded-lg p-1.5 shrink-0" style={{ background: `${accent}22`, color: accent }}>
+                      {down ? <TrendingDown size={18} /> : <TrendingUp size={18} />}
+                    </div>
+                    <div className="min-w-0">
+                      <div className="text-[9px] uppercase tracking-[0.15em] text-muted leading-none">Mercado</div>
+                      <div className="text-sm font-bold leading-tight mt-0.5" style={{ color: accent }}>{marketToast.label}</div>
+                      <div className="text-[11px] text-muted leading-tight truncate">{marketToast.desc}</div>
+                    </div>
+                  </div>
+                </div>
+              </motion.div>
+            );
+          })()}
       </AnimatePresence>
 
       {/* ---------- Reações rápidas flutuantes (emotes) ---------- */}
@@ -2479,7 +2490,16 @@ export function App() {
                   </div>
                 )}
                 <div className="relative flex flex-col items-center">
-                  <Chest tier={overlayHead.tier} size={150} open />
+                  {/* baú 3D abrindo (a tampa estoura) — fallback 2D sem WebGL */}
+                  <div className="w-52 h-52 flex items-center justify-center">
+                    <Lazy3D fallback={<Chest tier={overlayHead.tier} size={150} open />}>
+                      <Stage3D
+                        boxType={overlayHead.tier}
+                        mode={overlayHead.isMimic ? "mimic" : "open"}
+                        spin={false}
+                      />
+                    </Lazy3D>
+                  </div>
                   <motion.div
                     className="absolute top-0 flex gap-2 flex-wrap justify-center w-65"
                     initial={{ y: 20, scale: 0.2, opacity: 0 }}
