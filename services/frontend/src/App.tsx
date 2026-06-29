@@ -1,11 +1,17 @@
 // Mesa de leilão do Hammer Price — tema "casa de leilão" (escuro + dourado, Tailwind).
 // Fluxo: menu (criar/entrar) → lobby → partida (rodadas + HUD) → ranking final.
-import { useEffect, useRef, useState, useCallback } from "react";
+import { useEffect, useRef, useState, useCallback, lazy } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import * as sfx from "./sound";
 import { Chest, tierLabel, tierLight } from "./Chest";
 import { Card, cardOf, CARDS } from "./Card";
 import { Gavel } from "./Gavel";
+import { Button, RarityBadge } from "./ui";
+import { boxRarity } from "./rarity";
+import { Lazy3D } from "./three/Lazy3D";
+
+// 3D carregado sob demanda (three.js só baixa quando o herói/palco monta).
+const MenuHero3D = lazy(() => import("./three/MenuHero3D"));
 
 const GATEWAY_URL = import.meta.env.VITE_GATEWAY_URL ?? "ws://localhost:8080";
 
@@ -1093,7 +1099,7 @@ export function App() {
     Object.entries(requires).every(([t, n]) => freeCount(t) >= n);
 
   return (
-    <div className="max-w-6xl mx-auto px-3 sm:px-5 py-4 sm:py-7">
+    <div className="max-w-6xl mx-auto px-3 sm:px-5 py-4 sm:py-7 overflow-x-hidden">
       <header className="flex items-center sm:items-end justify-between gap-2 sm:gap-3 border-b border-line pb-3 sm:pb-4">
         <div className="min-w-0">
           <h1 className="font-display text-2xl sm:text-4xl font-bold text-gold leading-none flex items-center gap-1.5 sm:gap-2">
@@ -1166,17 +1172,30 @@ export function App() {
           className="mt-8 sm:mt-12 flex flex-col items-center gap-12 sm:gap-16 pb-16"
         >
           {/* ----- HERO ----- */}
-          <div className="text-center max-w-2xl order-1">
+          <div className="text-center max-w-2xl order-1 flex flex-col items-center w-full">
+            {/* Baú 3D flutuante (fallback 2D sem WebGL). O glow radial em CSS "aterra" o baú
+                (substitui a sombra de contato 3D, que cintilava) e some sob o palco/headline. */}
+            <div
+              className="relative w-full h-56 sm:h-80 -mb-2"
+              style={{ background: "radial-gradient(45% 22% at 50% 86%, rgba(0,0,0,0.55), transparent 70%)" }}
+            >
+              <Lazy3D
+                fallback={
+                  <div className="h-full flex items-center justify-center">
+                    <motion.div animate={{ y: [0, -10, 0] }} transition={{ repeat: Infinity, duration: 3, ease: "easeInOut" }}>
+                      <Chest tier="JACKPOT" size={180} />
+                    </motion.div>
+                  </div>
+                }
+              >
+                <MenuHero3D boxType="JACKPOT" />
+              </Lazy3D>
+            </div>
             <motion.h2
               initial={{ y: 16, opacity: 0 }}
               animate={{ y: 0, opacity: 1 }}
-              transition={{
-                delay: 0.05,
-                type: "spring",
-                stiffness: 120,
-                damping: 16,
-              }}
-              className="font-display text-4xl sm:text-6xl text-gold leading-tight"
+              transition={{ delay: 0.05, type: "spring", stiffness: 120, damping: 16 }}
+              className="mx-auto max-w-[14ch] sm:max-w-none px-2 font-arcade text-2xl sm:text-4xl leading-tight tracking-tight bg-gradient-to-b from-gold-soft to-gold bg-clip-text text-transparent drop-shadow-[0_3px_14px_rgba(255,203,46,0.35)]"
             >
               Arremate. Abra. Enriqueça.
             </motion.h2>
@@ -1201,33 +1220,37 @@ export function App() {
               Os baús
             </h3>
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
-              {["WOODEN", "IRON", "ROYAL", "VAULT", "JACKPOT", "MYSTERY"].map((t, i) => (
-                <motion.div
-                  key={t}
-                  initial={{ y: 18, opacity: 0 }}
-                  animate={{ y: 0, opacity: 1 }}
-                  transition={{ delay: 0.1 + i * 0.07 }}
-                  className="flex flex-col items-center gap-2 rounded-2xl border border-line bg-surface/60 p-4"
-                  style={{ ["--rarity" as string]: tierLight(t) }}
-                >
+              {["WOODEN", "IRON", "ROYAL", "VAULT", "JACKPOT", "MYSTERY"].map((t, i) => {
+                const r = boxRarity(t);
+                return (
                   <motion.div
-                    animate={{ y: [0, -5, 0] }}
-                    transition={{
-                      repeat: Infinity,
-                      duration: 2.6 + i * 0.2,
-                      ease: "easeInOut",
+                    key={t}
+                    initial={{ y: 18, opacity: 0 }}
+                    animate={{ y: 0, opacity: 1 }}
+                    transition={{ delay: 0.1 + i * 0.07 }}
+                    className="flex flex-col items-center gap-2 rounded-2xl border bg-surface/60 p-4"
+                    style={{
+                      ["--rarity" as string]: tierLight(t),
+                      borderColor: `color-mix(in srgb, ${r.color} 35%, var(--color-line))`,
+                      boxShadow: `0 0 26px -12px ${r.glow}`,
                     }}
                   >
-                    <Chest tier={t} size={64} />
+                    <motion.div
+                      animate={{ y: [0, -5, 0] }}
+                      transition={{ repeat: Infinity, duration: 2.6 + i * 0.2, ease: "easeInOut" }}
+                    >
+                      <Chest tier={t} size={64} />
+                    </motion.div>
+                    <div className="font-display font-bold text-sm text-stone-100">
+                      {tierLabel(t)}
+                    </div>
+                    <RarityBadge type={t} />
+                    <div className="text-[11px] text-muted text-center leading-snug">
+                      {TIER_HINT[t]}
+                    </div>
                   </motion.div>
-                  <div className="font-semibold text-sm text-stone-100">
-                    {tierLabel(t)}
-                  </div>
-                  <div className="text-[11px] text-muted text-center leading-snug">
-                    {TIER_HINT[t]}
-                  </div>
-                </motion.div>
-              ))}
+                );
+              })}
             </div>
             <p className="text-center text-[11px] text-muted mt-3">
               Cada baú mostra as probabilidades reais de prêmio antes do lance.

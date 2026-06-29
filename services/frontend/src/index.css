@@ -1,18 +1,31 @@
 @import "tailwindcss";
 
-/* Tema "casa de leilão": fundo escuro quente + dourado. Tokens viram utilitários
-   (ex.: bg-ink, text-gold, border-line, font-display). */
+/* Tema "arcade loot-crate": base índigo profundo + ouro de loot + raridade neon.
+   Os nomes de token (ink/surface/gold/line…) são mantidos como aliases para a UI
+   existente migrar gradualmente; só os VALORES mudaram para a paleta arcade. */
 @theme {
-  --color-ink: #0c0a09;        /* fundo base */
-  --color-surface: #1c1917;    /* cards (stone-900) */
-  --color-surface-2: #292524;  /* superfícies elevadas (stone-800) */
-  --color-line: #44403c;       /* bordas (stone-700) */
-  --color-line-soft: #57534e;  /* bordas claras (stone-600) */
-  --color-muted: #a8a29e;      /* texto secundário (stone-400) */
-  --color-gold: #e8b923;       /* dourado principal */
-  --color-gold-soft: #f5d77a;  /* dourado claro */
-  --color-gold-dim: #8a6a1f;   /* dourado escuro (bordas/disabled) */
-  --font-display: Georgia, "Times New Roman", serif;
+  --color-ink: #0a0918;        /* fundo base (índigo quase preto) */
+  --color-surface: #15132e;    /* cards */
+  --color-surface-2: #211d43;  /* superfícies elevadas */
+  --color-line: #393166;       /* bordas */
+  --color-line-soft: #4c4486;  /* bordas claras */
+  --color-muted: #a39fc9;      /* texto secundário */
+  --color-gold: #ffcb2e;       /* acento principal (ouro de loot, mais vivo) */
+  --color-gold-soft: #ffe08a;  /* ouro claro */
+  --color-gold-dim: #9a7415;   /* ouro escuro (bordas/disabled) */
+  --color-accent: #7c5cff;     /* violeta elétrico (pop arcade) */
+  --color-accent-soft: #a98bff;
+
+  /* Paleta de raridade (loot tiers) — usada por rarity.ts e pelos glows. */
+  --color-rar-common: #8aa0b6;
+  --color-rar-uncommon: #46d39a;
+  --color-rar-rare: #4aa3ff;
+  --color-rar-epic: #c061ff;
+  --color-rar-legendary: #ffcb2e;
+  --color-rar-special: #ff5db1;
+
+  --font-display: "Baloo 2", system-ui, sans-serif;  /* títulos médios (arredondado, legível) */
+  --font-arcade: "Bungee", system-ui, sans-serif;    /* títulos-herói chunky */
 }
 
 html,
@@ -23,19 +36,61 @@ body,
 
 body {
   margin: 0;
-  color: #e7e5e4; /* stone-200 */
-  font-family: system-ui, -apple-system, sans-serif;
+  color: #ece9ff;
+  font-family: "Baloo 2", system-ui, -apple-system, sans-serif;
   background:
-    radial-gradient(1100px 560px at 50% -8%, rgba(232, 185, 35, 0.1), transparent 60%),
+    radial-gradient(1200px 600px at 50% -10%, rgba(124, 92, 255, 0.18), transparent 60%),
+    radial-gradient(900px 520px at 88% 8%, rgba(255, 93, 177, 0.1), transparent 60%),
     var(--color-ink);
 }
 
-/* Brilho sutil de "lote em destaque" para a caixa da rodada. */
+/* Brilho de "lote em destaque" para a caixa da rodada. */
 .box-glow {
   box-shadow:
-    0 0 0 1px rgba(232, 185, 35, 0.35),
-    0 10px 40px -12px rgba(232, 185, 35, 0.25);
+    0 0 0 1px rgba(255, 203, 46, 0.35),
+    0 12px 44px -12px rgba(255, 203, 46, 0.3);
 }
+
+/* ---------- Utilitários arcade (juice) ---------- */
+
+/* Botão/elemento "chunky": borda inferior escura (volume 3D) + afunda no clique. */
+.chunky {
+  box-shadow: 0 5px 0 0 rgba(0, 0, 0, 0.45), 0 12px 26px -10px rgba(0, 0, 0, 0.6);
+}
+.chunky-press:active {
+  transform: translateY(3px);
+  box-shadow: 0 2px 0 0 rgba(0, 0, 0, 0.45);
+}
+
+/* Glow por raridade — a cor vem da var inline --glow (setada por rarity.ts). */
+.glow {
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--glow, #7c5cff) 55%, transparent),
+    0 0 30px -4px var(--glow, #7c5cff);
+}
+
+@keyframes hp-pop {
+  0% { transform: scale(0.6); opacity: 0; }
+  60% { transform: scale(1.06); }
+  100% { transform: scale(1); opacity: 1; }
+}
+.animate-pop { animation: hp-pop 0.4s cubic-bezier(0.2, 0.9, 0.3, 1.3) both; }
+
+@keyframes hp-float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-7px); }
+}
+.animate-float { animation: hp-float 3.2s ease-in-out infinite; }
+
+@keyframes hp-shimmer { to { background-position: 200% center; } }
+/* Texto/realce "lendário" com varredura de brilho (use com bg-clip-text). */
+.shimmer { background-size: 200% auto; animation: hp-shimmer 3s linear infinite; }
+
+@keyframes hp-pulse-glow {
+  0%, 100% { box-shadow: 0 0 0 1px color-mix(in srgb, var(--glow, #7c5cff) 40%, transparent), 0 0 16px -6px var(--glow, #7c5cff); }
+  50% { box-shadow: 0 0 0 1px color-mix(in srgb, var(--glow, #7c5cff) 70%, transparent), 0 0 40px -2px var(--glow, #7c5cff); }
+}
+.animate-pulse-glow { animation: hp-pulse-glow 1.4s ease-in-out infinite; }
 
 /* ---------- Palco da casa de leilão ---------- */
 
