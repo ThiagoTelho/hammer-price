@@ -166,17 +166,18 @@ public final class AuctionServer {
             // Aplica o efeito na Carteira ANTES de responder, para que o saldo já reflita
             // a penalidade quando o gateway reler a carteira do vencedor.
             String penKind = "";
-            String penDetail = "";
+            String penDetail = "";    // TOKEN cru (tipo do item / kind da coleção / ""); o cliente formata em PT
+            long penValue = 0;        // dinheiro roubado ou bônus de coleção anulado
             String grantedCard = ""; // carta-prêmio sorteada junto da caixa (se houver)
             if (r.ok()) {
                 if (r.isMimic()) {
                     if (r.insured()) {
                         penKind = "INSURED"; // 🛡️ Seguro: pula a penalidade do Mímico
-                        penDetail = "Seguro evitou a penalidade";
                     } else {
                         MimicReply pen = wallet.applyMimic(req.getPlayerId()); // 💀 penaliza (não vira item)
                         penKind = pen.getKind();
                         penDetail = pen.getDetail();
+                        penValue = pen.getValue();
                     }
                 } else {
                     wallet.addItem(req.getPlayerId(), r.item(), r.quantity()); // credita N itens do tipo
@@ -198,7 +199,7 @@ public final class AuctionServer {
             if (r.ok()) {
                 // Difunde o resultado (+ penalidade/Seguro) e enfileira box.opened (RabbitMQ).
                 events.boxOpened(req.getBoxId(), req.getPlayerId(), r.item(), r.quantity(), r.isMimic(),
-                        penKind, penDetail);
+                        penKind, penDetail, penValue);
             }
         }
 

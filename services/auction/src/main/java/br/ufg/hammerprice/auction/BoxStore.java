@@ -77,6 +77,8 @@ public final class BoxStore {
         DEFAULT_WEIGHTS.put("IRON", 30);
         DEFAULT_WEIGHTS.put("ROYAL", 15);
         DEFAULT_WEIGHTS.put("VAULT", 5);
+        DEFAULT_WEIGHTS.put("JACKPOT", 3);  // Cofre Premiado: apex da escada (Reforço alcança), raro
+        DEFAULT_WEIGHTS.put("MYSTERY", 6);  // Caixa Surpresa: odds ocultas (fora da escada do Reforço)
     }
 
     private final Wallet wallet;
@@ -214,17 +216,21 @@ public final class BoxStore {
         return types[types.length - 1];
     }
 
-    /** Sobe o nível do baú em {@code boost} posições no ladder de raridade (cap no topo). */
+    /** Escada de raridade do Reforço (independente da ordem do balance.yaml). Baús especiais
+     * fora desta escada (ex.: Caixa Surpresa) NÃO sobem — o Reforço não os altera. */
+    private static final String[] TIER_LADDER = {"WOODEN", "IRON", "ROYAL", "VAULT", "JACKPOT"};
+
+    /** Sobe o nível do baú em {@code boost} posições na escada de raridade (cap em JACKPOT). */
     private String boostTier(String type, int boost) {
         if (boost <= 0) {
             return type;
         }
-        for (int i = 0; i < types.length; i++) {
-            if (types[i].equals(type)) {
-                return types[Math.min(types.length - 1, i + boost)];
+        for (int i = 0; i < TIER_LADDER.length; i++) {
+            if (TIER_LADDER[i].equals(type)) {
+                return TIER_LADDER[Math.min(TIER_LADDER.length - 1, i + boost)];
             }
         }
-        return type;
+        return type; // tipo fora da escada (ex.: MYSTERY) — Reforço não altera
     }
 
     /** Abre uma nova rodada com uma caixa de tipo sorteado e arma o cronômetro. */
@@ -487,7 +493,9 @@ public final class BoxStore {
 
     /** Constrói o estado da sala assumindo que o lock já é mantido pelo chamador. */
     private RoomState stateLocked() {
-        Map<String, Integer> odds = active ? opener.oddsFor(boxType) : Map.of();
+        // Caixa Surpresa: odds OCULTAS no estado público (vazias) — mas o sorteio segue usando as
+        // odds reais (BoxOpener.draw lê do BalanceConfig). Cobre GetRoomState e ROUND_STARTED.
+        Map<String, Integer> odds = (active && !"MYSTERY".equals(boxType)) ? opener.oddsFor(boxType) : Map.of();
         return new RoomState(roundNo, active, boxId, boxType, curBid, leader, remainingMs(), odds);
     }
 

@@ -20,6 +20,7 @@ export const CARDS: Record<string, CardDef> = {
   SHIELD: { label: "Escudo", emoji: "⛓️", color: "#60a5fa", desc: "Imune a Bloqueio/Maldição/Imposto." },
   GAVEL: { label: "Martelo", emoji: "🔨", color: "#fb923c", desc: "Incremento mínimo dobrado p/ rivais." },
   INSIGHT: { label: "Visão", emoji: "👁️", color: "#c084fc", desc: "Veja o item que a caixa vai dar." },
+  FALENCIA: { label: "Falência", emoji: "🆘", color: "#f43f5e", desc: "Com saldo ≤ $200, ganhe +$300 na hora." },
 };
 
 export const cardOf = (t: string): CardDef => CARDS[t] ?? { label: t, emoji: "🃏", color: "#a8a29e", desc: "" };

@@ -137,6 +137,13 @@ export function transfer(addr: string, fromPlayer: string, toPlayer: string, amo
     walletAt(addr).Transfer({ fromPlayer, toPlayer, amount }, callOpts(), (err: any, reply: { ok: boolean; moved: number }) => (err ? rej(err) : res(reply)));
   });
 }
+// Carta Falência: a Carteira valida posse da carta + saldo <= limite e credita o bônus na hora.
+export interface BankruptcyReply { ok: boolean; reason: string; balance: number; gained: number }
+export function playBankruptcy(addr: string, playerId: string): Promise<BankruptcyReply> {
+  return new Promise((res, rej) => {
+    walletAt(addr).PlayBankruptcy({ playerId }, callOpts(), (err: any, reply: BankruptcyReply) => (err ? rej(err) : res(reply)));
+  });
+}
 // Empurra os efeitos de carta para a PRÓXIMA rodada do Leilão.
 export interface RoundEffects {
   doubleLoot?: string[];

@@ -2,6 +2,7 @@ package br.ufg.hammerprice.wallet;
 
 import br.ufg.hammerprice.wallet.grpc.Ack;
 import br.ufg.hammerprice.wallet.grpc.AddItemRequest;
+import br.ufg.hammerprice.wallet.grpc.BankruptcyReply;
 import br.ufg.hammerprice.wallet.grpc.BuyCardReply;
 import br.ufg.hammerprice.wallet.grpc.Collection;
 import br.ufg.hammerprice.wallet.grpc.ConsumeCardRequest;
@@ -146,6 +147,16 @@ public final class WalletServer {
         public void transfer(TransferRequest req, StreamObserver<TransferReply> obs) {
             long moved = store.transfer(req.getFromPlayer(), req.getToPlayer(), req.getAmount());
             obs.onNext(TransferReply.newBuilder().setOk(moved > 0).setMoved(moved).build());
+            obs.onCompleted();
+        }
+
+        @Override
+        public void playBankruptcy(PlayerQuery req, StreamObserver<BankruptcyReply> obs) {
+            long threshold = cfg.cardLong("bankruptcy_threshold", 200);
+            long grant = cfg.cardLong("bankruptcy_grant", 300);
+            WalletStore.BankruptcyResult r = store.playBankruptcy(req.getPlayerId(), threshold, grant);
+            obs.onNext(BankruptcyReply.newBuilder()
+                    .setOk(r.ok()).setReason(r.reason()).setBalance(r.balance()).setGained(r.gained()).build());
             obs.onCompleted();
         }
 

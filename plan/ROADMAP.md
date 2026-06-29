@@ -7,7 +7,7 @@
 
 - **Disciplina:** Software Concorrente e Distribuído (SCD) — UFG, 2026.1
 - **Entrega:** 28/06/2026
-- **Última atualização deste arquivo:** 2026-06-26
+- **Última atualização deste arquivo:** 2026-06-29
 - **Marco atual:** **Reta final (entrega 28/06)** — **os 9 requisitos estão cobertos**
   (R1–R6, R8, R9 🟢; **R7 🟡**: invariante de saldo + isolamento de partição demonstrados,
   consistência forte/Postgres pendente). Núcleo distribuído completo: AWS, rodadas+odds,
@@ -408,3 +408,38 @@ As **fases** são por escopo; os **marcos**, por tempo — ajuste conforme a dat
   carteira + líder da rodada restaurados, resume inválido e pós-graça → `RESUME_FAILED`. `tsc`/`build`
   limpos.
 - 2026-06-26 — _(este commit)_ — **Sistema de cartas — Fase 2 (as outras 6).** Completa o baralho de 10. **Desconto** (`settle` aceita `discount_pct` → débito menor na Carteira), **Maldição** (vitória do alvo abre Mímico), **Reforço** (`box_tier_boost` sobe o nível do baú no `startRound`), **Escudo** (gateway anula Bloqueio/Maldição/Imposto sobre o portador), **Martelo** (incremento mínimo dobrado p/ rivais no `placeBid`; UI dobra o mínimo exibido), **Visão** (drop **pré-sorteado** no `startRound` + RPC `PeekDrop` → o gateway revela em privado a quem tem a carta). `RoomEffects`/`SetRoundEffects` carregam `gavel`/`insight`/`discounts`/`box_tier_boost`; `CARD_EFFECTS` ganha `cursed`/`shielded`/`gavel`. As 6 cartas entram nos `cards.weights`. Verificado: **`mvn` 17 verde** (+5 testes de efeito: Reforço→VAULT, Martelo 2× incremento, Desconto repassa %, Maldição→Mímico, `PeekDrop`==item aberto); live no stack — mão jogada ponta a ponta sem erro de proto, Visão entrega o drop, Imposto drena rival (1000→975), **Escudo anula o Bloqueio** (`blocked` vazio, `shielded` populado). `tsc`/`build` limpos. **Baralho de 10 cartas completo.**
+- 2026-06-29 — _(este commit)_ — **6 melhorias (mercado, convite, cartas, baú especial, Falência, PT).**
+  (1) **Mercado recupera:** o worker passou a **decair a oferta** a cada tick (`market.supply_decay_per_tick`=0.15),
+  então a escassez reverte à média e o preço **volta** depois de uma rajada — antes a oferta só crescia,
+  saturava o fator e travava todo item no piso. (2) **Link de convite:** `?join=CODE` (ou `?code=`) pré-aplica
+  o código no menu (banner + foco no nome) e o lobby ganhou botão **"🔗 convite"** (URL via `origin`). (3) **Cartas
+  mais baratas:** `cards.base_price` 80→50, `price_step` 40→25. (4) **Cofre Premiado (`JACKPOT`)**: 5º baú RARO
+  (~7%), odds 0/10/30/52/8 — só config + arte (`Chest.tsx`) + `DEFAULT_WEIGHTS` (apex do ladder do Reforço);
+  odds 0% deixam de aparecer na UI. (5) **Carta Falência:** RPC `PlayBankruptcy` (Carteira valida posse + saldo
+  ≤ `bankruptcy_threshold`=200 e credita `bankruptcy_grant`=300 na hora, atômico); gateway resolve **imediato**
+  (escopo `self`), frontend pré-valida + recusa amigável. (6) **Tudo em PT ao usuário:** itens roteados por
+  `ITEM_NAME`, coleções por `collLabel`; a penalidade do Mímico agora viaja como **token** (tipo/kind/"" + `value`)
+  e o **cliente** monta o texto PT (`penaltyText`) — fim dos `1 GOLD`/`coleção GOLD_TRIO`. Verificado: `mvn`
+  auction 19 verde + wallet empacota (stub `BankruptcyReply`), `tsc` gateway/`build` frontend limpos, `py_compile`
+  + simulação do mercado (dip→recuperação). **Live no stack** (rebuild dos 5 serviços, todos saudáveis): mercado
+  **oscila** ao vivo (worker GOLD 128→144→155→147; WS 4 snapshots distintos, sobe E desce); **carta 1ª = $50**
+  (era 80); **Falência** por gRPC — saldo 1000 → `MONEY_TOO_HIGH` (carta mantida), dreno p/ 150 → `+300` (saldo
+  450), carta consumida; regressão criar/entrar/iniciar OK. JACKPOT coberto por config + 19 testes (aparição
+  ~7%/rodada não forçada no smoke).
+- 2026-06-29 — _(este commit)_ — **5 melhorias de gameplay (dinamismo & engajamento).** (1) **Eventos de
+  mercado:** o worker (dono do mercado) sorteia swings temáticos de preço — Febre do Ouro 🔥, Corrida do
+  Diamante 💎, Bolha da Prata 🫧, Boom 📈, Crash 📉 (chance/duração em `market.*`); embutidos no
+  `MARKET_UPDATED.event` (sem novo canal); frontend mostra banner + selo no painel Mercado (reforça R4/R5).
+  (2) **Caixa Surpresa (`MYSTERY`):** 6º baú com **odds OCULTAS** — o estado público manda odds vazias, mas o
+  sorteio usa as odds reais (`BoxStore.stateLocked`); `boostTier` virou escada FIXA (`TIER_LADDER`, JACKPOT no
+  topo, MYSTERY fora dela). (3) **Emotes:** reações de 1 toque (👍🔥😂😱🤡💰🧂👀) via o pub/sub do chat
+  (`EMOTE`, whitelist + rate-limit, remetente autoritativo); flutuam e somem no cliente. (4) **Prêmios de fim de
+  partida:** `Match.stats` por jogador (wins/opens/mimics/soldValue/cardsPlayed/diamonds) alimentados no relay +
+  SELL/PLAY_CARD; `endMatch` calcula os **Destaques** (🔨 Leiloeiro-mor, 🍀 Garimpeiro, 🤡 Vítima do Mímico, 🦈
+  Tubarão, 🎴 Estrategista) no `MATCH_ENDED.awards` → bloco no ranking. (5) **Encerrar sala no lobby:**
+  `CLOSE_ROOM` (host, fora de RUNNING) difunde `ROOM_CLOSED` e libera o slot; botão "Encerrar sala" no lobby.
+  Verificado: `mvn` auction **20 verde** (+1 teste MYSTERY: odds vazias mas sorteia item; teste do Reforço
+  atualizado p/ JACKPOT), `tsc` gateway/`build` frontend limpos, `py_compile` + simulação do evento. **Live no
+  stack** (rebuild worker/auction/gateway/frontend): WS — CLOSE_ROOM→ROOM_CLOSED, EMOTE difunde (whitelist
+  filtra 💣), **Febre do Ouro** capturada ao vivo no `MARKET_UPDATED.event`, e **Leiloeiro-mor** populado
+  (host venceu um lote). Eventos que mudam regras da rodada (Rodada em Dobro, Imposto da Casa) ficam de follow-up.

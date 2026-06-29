@@ -22,6 +22,7 @@ service Wallet {
   rpc GrantCard   (PlayerQuery)        returns (BuyCardReply);  // carta GRÁTIS (prêmio da caixa); card="" se mão cheia
   rpc ConsumeCard (ConsumeCardRequest) returns (Ack);          // remove 1 carta da mão (ao jogar)
   rpc Transfer    (TransferRequest)    returns (TransferReply); // move dinheiro entre jogadores (Imposto)
+  rpc PlayBankruptcy (PlayerQuery)     returns (BankruptcyReply); // Falência: saldo <= limite -> crédito imediato
   rpc GetPlayer (PlayerQuery)     returns (PlayerState);
 }
 
@@ -64,6 +65,15 @@ message BuyCardReply {
 message ConsumeCardRequest { string player_id = 1; string card = 2; }
 message TransferRequest { string from_player = 1; string to_player = 2; int64 amount = 3; }
 message TransferReply { bool ok = 1; int64 moved = 2; }   // moved = quanto efetivamente transferiu
+
+// Carta Falência: se o jogador tem a carta FALENCIA e saldo <= limite, consome a carta e
+// credita o bônus de recuperação na hora (mecânica anti-falência). Tudo validado na Carteira.
+message BankruptcyReply {
+  bool   ok      = 1;
+  string reason  = 2;   // OK | NO_CARD | MONEY_TOO_HIGH
+  int64  balance = 3;   // saldo após o crédito
+  int64  gained  = 4;   // quanto creditou (0 se !ok)
+}
 
 // Penalidade do Mímico, sorteada entre roubar dinheiro, roubar um item ou anular uma coleção.
 message MimicReply {

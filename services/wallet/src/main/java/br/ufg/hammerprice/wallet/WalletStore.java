@@ -63,6 +63,9 @@ public final class WalletStore {
     /** Resultado da compra de uma carta. {@code reason}: OK | INSUFFICIENT | HAND_FULL | NO_CARDS. */
     public record BuyCardResult(boolean ok, String reason, String card, long price, long balance) {}
 
+    /** Resultado da carta Falência. {@code reason}: OK | NO_CARD | MONEY_TOO_HIGH. */
+    public record BankruptcyResult(boolean ok, String reason, long balance, long gained) {}
+
     /** Estado consultável de um jogador (saldo, reservas, inventário, coleções e cartas). */
     public record PlayerView(long balance, long reserved, List<Item> items,
                              List<FormedCollection> collections, List<String> cards) {}
@@ -232,21 +235,23 @@ public final class WalletStore {
             options.add("COLLECTION");
         }
         String kind = options.get(rng.nextInt(options.size()));
+        // {@code detail} carrega um TOKEN cru (tipo do item / kind da coleção / "" no dinheiro); o
+        // texto legível em PT é montado no cliente (fonte única de rótulos). {@code value} = dinheiro.
         switch (kind) {
             case "ITEM": {
                 Item victim = free.get(rng.nextInt(free.size()));
                 p.items.remove(victim);
-                return new MimicResult("ITEM", "1 " + victim.type(), 0);
+                return new MimicResult("ITEM", victim.type(), 0);   // token = tipo do item
             }
             case "COLLECTION": {
                 FormedCollection c = p.collections.remove(rng.nextInt(p.collections.size()));
                 p.balance = Math.max(0, p.balance - c.bonus()); // o bônus já foi creditado → anular tira do saldo
-                return new MimicResult("COLLECTION", "coleção " + c.kind() + " (-" + c.bonus() + ")", c.bonus());
+                return new MimicResult("COLLECTION", c.kind(), c.bonus());  // token = kind da coleção
             }
             default: { // MONEY
                 long stolen = Math.max(0, p.balance) * moneyPct / 100;
                 p.balance -= stolen;
-                return new MimicResult("MONEY", stolen + " de dinheiro", stolen);
+                return new MimicResult("MONEY", "", stolen);   // sem token; value = dinheiro roubado
             }
         }
     }
@@ -315,6 +320,24 @@ public final class WalletStore {
     public synchronized boolean consumeCard(String playerId, String card) {
         Player p = players.get(playerId);
         return p != null && p.cards.remove(card);
+    }
+
+    /**
+     * Carta Falência: exige a carta FALENCIA na mão E saldo <= {@code threshold}; consome a carta
+     * e credita {@code grant} na hora (recuperação). Atômico (synchronized) — invariante: só credita
+     * quem realmente está em apuros e tem a carta.
+     */
+    public synchronized BankruptcyResult playBankruptcy(String playerId, long threshold, long grant) {
+        Player p = getOrCreate(playerId);
+        if (!p.cards.contains("FALENCIA")) {
+            return new BankruptcyResult(false, "NO_CARD", p.balance, 0);
+        }
+        if (p.balance > threshold) {
+            return new BankruptcyResult(false, "MONEY_TOO_HIGH", p.balance, 0);
+        }
+        p.cards.remove("FALENCIA");
+        p.balance += grant;
+        return new BankruptcyResult(true, "OK", p.balance, grant);
     }
 
     /** Move até {@code amount} de {@code from} para {@code to} (sem deixar negativo). Retorna o movido. */

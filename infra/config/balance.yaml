@@ -20,10 +20,12 @@ round:                          # modelo round-based: UMA caixa por rodada
   intermission_max_seconds: 120 # TETO do intervalo entre rodadas; o gateway abre antes
                                 # se todos os jogadores marcarem "pronto"
   box_type_weights:             # sorteio do baú a cada rodada — PROBABILIDADE IGUAL entre os 4
-    WOODEN: 25                  # Baú de Madeira
-    IRON:   25                  # Baú de Ferro
-    ROYAL:  25                  # Baú Real
-    VAULT:  25                  # Cofre
+    WOODEN:  25                 # Baú de Madeira
+    IRON:    25                 # Baú de Ferro
+    ROYAL:   25                 # Baú Real
+    VAULT:   25                 # Cofre
+    JACKPOT: 8                  # Cofre Premiado — baú RARO (~7% das rodadas): alto risco/recompensa
+    MYSTERY: 10                 # Caixa Surpresa — odds OCULTAS (aposta no escuro)
 
 items:                          # valor base (preço de mercado flutua em torno disto)
   COPPER: 10                    # escada ~3×, acessível dentro do orçamento de 1000
@@ -37,16 +39,20 @@ box_odds:                       # soma de cada baú = 100
   IRON:    { COPPER: 35, SILVER: 40, GOLD: 20, DIAMOND: 4,  MIMIC: 1 }
   ROYAL:   { COPPER: 15, SILVER: 30, GOLD: 40, DIAMOND: 12, MIMIC: 3 }
   VAULT:   { COPPER: 5,  SILVER: 15, GOLD: 35, DIAMOND: 40, MIMIC: 5 }
+  JACKPOT: { COPPER: 0,  SILVER: 10, GOLD: 30, DIAMOND: 52, MIMIC: 8 }  # aposta alta: muito Diamante, mas morde
+  MYSTERY: { COPPER: 20, SILVER: 25, GOLD: 25, DIAMOND: 25, MIMIC: 5 }  # odds reais (usadas no sorteio), OCULTAS na UI
 
 open:                           # ao abrir, o baú rende N itens DO MESMO tipo sorteado
   min_items: 1                  # (ex.: 3× Diamante) — camada extra de sorte; eleva o teto
   max_items: 4                  # de valor de um baú. Mímico continua penalidade única.
 
 box_card_chance:                # chance (%) de o baú vir TAMBÉM com uma carta (ALÉM dos itens).
-  WOODEN: 5                     # baús melhores trazem carta com mais frequência.
-  IRON:   12                    # 0 = nunca; 100 = sempre. Sorteada na abertura; só em baú com
-  ROYAL:  22                    # itens (Mímico não dá carta). A carta sorteada respeita os
-  VAULT:  35                    # mesmos pesos de `cards.weights` e vai para a mão (até hand_max).
+  WOODEN:  5                    # baús melhores trazem carta com mais frequência.
+  IRON:    12                   # 0 = nunca; 100 = sempre. Sorteada na abertura; só em baú com
+  ROYAL:   22                   # itens (Mímico não dá carta). A carta sorteada respeita os
+  VAULT:   35                   # mesmos pesos de `cards.weights` e vai para a mão (até hand_max).
+  JACKPOT: 40                   # Cofre Premiado: a maior chance de carta bônus.
+  MYSTERY: 18                   # Caixa Surpresa: chance média de carta.
 
 collections:                    # bônus ~2–3× o valor de mercado dos itens consumidos
   COPPER_TRIO:     { requires: { COPPER: 3 },                              bonus: 70 }
@@ -61,11 +67,14 @@ collections:                    # bônus ~2–3× o valor de mercado dos itens c
 
 mimic:                          # penalidade ao abrir uma caixa 💀 (sorteada na Carteira)
   steal_money_pct: 10           # quando a penalidade é MONEY: rouba 10% do saldo
+  # outras penalidades possíveis (sem parâmetro): roubar item aleatório, anular bônus de coleção
 
 cards:                          # cartas de habilidade (compradas com dinheiro; carta sorteada)
-  base_price: 80                # preço da 1ª carta; sobe a cada compra (preço CRESCENTE)
-  price_step: 40                # +40 por carta já comprada na partida (80, 120, 160…)
+  base_price: 50                # preço da 1ª carta; sobe a cada compra (preço CRESCENTE)
+  price_step: 25                # +25 por carta já comprada na partida (50, 75, 100…)
   hand_max: 4                   # teto da mão (máx. 4 cartas por vez)
+  bankruptcy_threshold: 200     # Falência: só jogável com saldo <= isto
+  bankruptcy_grant: 300         # Falência: dinheiro recebido na hora ao jogar (recuperação)
   tax_amount: 25                # Imposto: cada rival paga isto ao autor
   double_loot_mult: 2           # Dobro: multiplicador de itens na abertura
   discount_pct: 30              # Desconto (fase 2): % de abatimento no arremate
@@ -81,6 +90,7 @@ cards:                          # cartas de habilidade (compradas com dinheiro; 
     SHIELD: 10                  # Escudo: imune a Bloqueio/Maldição/Imposto
     GAVEL: 10                   # Martelo: incremento mínimo dobrado p/ rivais
     INSIGHT: 10                 # Visão: vê o item que a caixa vai dar
+    FALENCIA: 10                # Falência: com saldo <= bankruptcy_threshold, ganhe bankruptcy_grant na hora
 
 market:
   recalc_interval_seconds: 5
@@ -88,10 +98,12 @@ market:
   floor_multiplier: 0.4
   ceil_multiplier: 1.8
   target_supply: 5              # oferta-alvo por item; acima dela o preço cai (escassez relativa)
-
-mimic:
-  steal_money_pct: 10           # uma das penalidades possíveis
-  # outras: roubar item aleatório, anular bônus de coleção
+  supply_decay_per_tick: 0.15   # a oferta é ABSORVIDA a cada tick (demanda): a escassez reverte à
+                                # média e o preço RECUPERA depois de uma rajada de aberturas — sem
+                                # isto a oferta só cresce e todo item trava no piso (sem recuperar)
+  event_chance_per_tick: 12     # % de começar um EVENTO DE MERCADO quando não há um ativo (swing temático)
+  event_min_ticks: 5            # duração do evento (em ticks de recalc) — mín/máx
+  event_max_ticks: 9
 
 insurance:
   cost_pct_of_bid: 20

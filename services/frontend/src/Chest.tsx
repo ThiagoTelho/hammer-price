@@ -17,6 +17,10 @@ export const TIERS: Record<string, TierStyle> = {
   IRON: { label: "Baú de Ferro", body: "#474d56", bodyLight: "#5b626d", band: "#272b31", trim: "#aab3bd", light: "#9fb4cc" },
   ROYAL: { label: "Baú Real", body: "#7a2230", bodyLight: "#97283b", band: "#511620", trim: "#e8b923", light: "#b06bf0" },
   VAULT: { label: "Cofre", body: "#1d2a33", bodyLight: "#284551", band: "#0e171d", trim: "#5eead4", light: "#34d6ee" },
+  // Cofre Premiado — baú RARO (apex): ouro maciço com joia radiante (alto risco/recompensa).
+  JACKPOT: { label: "Cofre Premiado", body: "#a9791b", bodyLight: "#e6b531", band: "#5e4108", trim: "#fff0b0", light: "#ffd24a" },
+  // Caixa Surpresa — odds OCULTAS: roxo enigmático com joia violeta (aposta no escuro).
+  MYSTERY: { label: "Caixa Surpresa", body: "#3b2a5e", bodyLight: "#5a3f8c", band: "#241a3a", trim: "#c4b5fd", light: "#a78bfa" },
 };
 
 export const tierOf = (t: string): TierStyle => TIERS[t] ?? TIERS.WOODEN;

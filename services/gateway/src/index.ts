@@ -9,7 +9,7 @@
 // - Fan-out ASSÍNCRONO: assina o canal Redis Pub/Sub de cada sala (só durante a partida).
 import { WebSocketServer, WebSocket } from "ws";
 import Redis from "ioredis";
-import { placeBid, getRoomState, openBox, getPlayer, sellItem, formCollection, advanceRound, forceClose, resetOpens, resetPlayer, buyCard, consumeCard, transfer, setRoundEffects, peekDrop, type Box } from "./grpcClients.js";
+import { placeBid, getRoomState, openBox, getPlayer, sellItem, formCollection, advanceRound, forceClose, resetOpens, resetPlayer, buyCard, consumeCard, transfer, playBankruptcy, setRoundEffects, peekDrop, type Box } from "./grpcClients.js";
 
 const PORT = Number(process.env.GATEWAY_PORT ?? 8080);
 const REDIS_URL = process.env.REDIS_URL ?? "redis://localhost:6379";
@@ -27,9 +27,12 @@ const CARD_SCOPE: Record<string, "self" | "target" | "group"> = {
   // Maldição é "self": o ALVO NÃO é avisado — senão ele só evitaria dar lance (a maldição só
   // dispara se ele vencer). Só quem lançou vê; o alvo descobre ao abrir o Mímico.
   DOUBLE: "self", INSURANCE: "self", DISCOUNT: "self", INSIGHT: "self", SHIELD: "self", CURSE: "self",
+  FALENCIA: "self", // efeito imediato no próprio saldo; ninguém mais precisa saber
   BLOCK: "target",
   TAX: "group", GAVEL: "group", UPGRADE: "group",
 };
+// Reações rápidas (emotes): whitelist de emojis difundidos pelo pub/sub do chat.
+const EMOTES = new Set(["👍", "🔥", "😂", "😱", "🤡", "💰", "🧂", "👀"]);
 // Heartbeat: termina conexões mortas (que não respondem ao ping) → libera o slot da sala.
 const HEARTBEAT_MS = Number(process.env.HEARTBEAT_SECONDS ?? 30) * 1000;
 // Reaper: libera salas sem nenhuma atividade de cliente por este tempo (lobbies/partidas abandonados).
@@ -55,6 +58,7 @@ interface Client {
   playerId: string;
   room: string | null; // slot da sala, definido ao criar/entrar
   lastChat?: number; // timestamp do último chat (anti-spam leve)
+  lastEmote?: number; // timestamp da última reação rápida (anti-spam)
   isAlive: boolean; // heartbeat: respondeu ao último ping? (conexões mortas são terminadas)
 }
 const clients = new Set<Client>();
@@ -78,6 +82,13 @@ interface Match {
   disconnected: Map<string, number>; // playerId → epoch da queda do socket (assento guardado p/ reconexão)
   effectsMsg: unknown | null; // último CARD_EFFECTS difundido (replay na reconexão)
   playedThisInterval: Set<string>; // quem já jogou UMA carta neste intervalo (zera a cada intervalo)
+  stats: Record<string, PlayerStats>; // estatísticas por jogador p/ os prêmios de fim de partida
+}
+// Estatísticas acumuladas durante a partida (base dos "Destaques" no ranking).
+interface PlayerStats { wins: number; opens: number; mimics: number; soldValue: number; cardsPlayed: number; diamonds: number }
+function bumpStat(m: Match, playerId: string, key: keyof PlayerStats, n = 1): void {
+  const s = (m.stats[playerId] ??= { wins: 0, opens: 0, mimics: 0, soldValue: 0, cardsPlayed: 0, diamonds: 0 });
+  s[key] += n;
 }
 const matches: Record<string, Match | null> = {};
 for (const r of ROOMS) matches[r] = null;
@@ -245,7 +256,29 @@ async function resumeSnapshot(c: Client): Promise<void> {
 }
 
 // Fim da partida: patrimônio = dinheiro + itens LIVRES a preço de mercado + bônus de
-// coleções (doc 03 §8). Ordena e difunde o ranking.
+// Prêmios de fim de partida ("Destaques"): categoria → maior estatística da partida.
+const AWARD_DEFS: { key: keyof PlayerStats; label: string; emoji: string }[] = [
+  { key: "wins", label: "Leiloeiro-mor", emoji: "🔨" },
+  { key: "diamonds", label: "Garimpeiro", emoji: "🍀" },
+  { key: "mimics", label: "Vítima do Mímico", emoji: "🤡" },
+  { key: "soldValue", label: "Tubarão do Mercado", emoji: "🦈" },
+  { key: "cardsPlayed", label: "Estrategista", emoji: "🎴" },
+];
+function computeAwards(m: Match, ids: string[]): { key: string; label: string; emoji: string; playerId: string; value: number }[] {
+  const awards = [];
+  for (const def of AWARD_DEFS) {
+    let best = "";
+    let bestV = 0;
+    for (const id of ids) {
+      const v = m.stats[id]?.[def.key] ?? 0;
+      if (v > bestV) { bestV = v; best = id; } // empate → 1º (ordem de playersIn)
+    }
+    if (best && bestV > 0) awards.push({ key: def.key, label: def.label, emoji: def.emoji, playerId: best, value: bestV });
+  }
+  return awards;
+}
+
+// coleções (doc 03 §8). Ordena e difunde o ranking + os prêmios (Destaques).
 async function endMatch(room: string): Promise<void> {
   const m = matches[room];
   if (!m || m.status !== "RUNNING") return;
@@ -265,7 +298,8 @@ async function endMatch(room: string): Promise<void> {
     }
   }
   ranking.sort((a, b) => b.net - a.net);
-  broadcastToRoom(room, { type: "MATCH_ENDED", ranking });
+  const awards = computeAwards(m, playersIn(room));
+  broadcastToRoom(room, { type: "MATCH_ENDED", ranking, awards });
   broadcastToRoom(room, roomStateMsg(room));
 }
 
@@ -417,6 +451,14 @@ sub.on("message", (channel, message) => {
     for (const c of clients) if (c.room === room) void sendWallet(c);
   }
   if (PANEL_EVENTS.has(ev.type)) void broadcastPlayersPanel(room);
+  // Estatísticas dos prêmios de fim de partida (acumuladas por jogador).
+  if (ev.type === "BOX_SOLD" && typeof ev.winner === "string" && ev.winner) {
+    bumpStat(m, ev.winner, "wins");
+  } else if (ev.type === "BOX_OPENED" && typeof ev.player === "string") {
+    bumpStat(m, ev.player, "opens");
+    if (ev.isMimic) bumpStat(m, ev.player, "mimics");
+    else if (ev.item === "DIAMOND") bumpStat(m, ev.player, "diamonds", Number(ev.quantity) || 1);
+  }
   if (ev.type === "BID_PLACED" && typeof ev.leader === "string") {
     m.leader = ev.leader; // acompanha o líder p/ decidir o fechamento por fold
   }
@@ -574,7 +616,7 @@ wss.on("connection", (ws, req) => {
       if (prev && codeToRoom.get(prev.code) === slot) codeToRoom.delete(prev.code);
       const code = genCode();
       const rounds = Math.max(8, Math.min(40, Number(msg.rounds) || 16));
-      matches[slot] = { status: "WAITING", code, host: playerId, totalRounds: rounds, roundsPlayed: 0, ready: new Set(), intermissionEndsAt: 0, folded: new Set(), spectators: new Set(), leader: "", pendingCards: [], blocked: new Set(), shielded: new Set(), lastActivity: Date.now(), disconnected: new Map(), effectsMsg: null, playedThisInterval: new Set() };
+      matches[slot] = { status: "WAITING", code, host: playerId, totalRounds: rounds, roundsPlayed: 0, ready: new Set(), intermissionEndsAt: 0, folded: new Set(), spectators: new Set(), leader: "", pendingCards: [], blocked: new Set(), shielded: new Set(), lastActivity: Date.now(), disconnected: new Map(), effectsMsg: null, playedThisInterval: new Set(), stats: {} };
       codeToRoom.set(code, slot);
       client.room = slot;
       console.log(`gateway: ${playerId} criou a sala ${slot} (código ${code})`);
@@ -623,6 +665,7 @@ wss.on("connection", (ws, req) => {
       m.blocked.clear();
       m.shielded.clear();
       m.playedThisInterval.clear();
+      m.stats = {}; // zera as estatísticas dos prêmios para esta partida
       console.log(`gateway: partida iniciada na sala ${slot} (${playersIn(slot).length} jogadores, ${m.totalRounds} rodadas)`);
       broadcastToRoom(slot, { type: "MATCH_STARTED", totalRounds: m.totalRounds, roundsPlayed: 0 });
       broadcastToRoom(slot, roomStateMsg(slot));
@@ -650,6 +693,20 @@ wss.on("connection", (ws, req) => {
       return;
     }
 
+    // Encerrar a sala ANTES de iniciar (host, no lobby/fim): avisa todos e libera o slot.
+    // Durante a partida o caminho é END_MATCH (que gera ranking).
+    if (msg.type === "CLOSE_ROOM") {
+      const slot = client.room;
+      const m = slot ? matches[slot] : null;
+      if (!slot || !m || m.host !== playerId || m.status === "RUNNING") return;
+      if (codeToRoom.get(m.code) === slot) codeToRoom.delete(m.code);
+      broadcastToRoom(slot, { type: "ROOM_CLOSED", reason: "HOST_CLOSED" });
+      matches[slot] = null;
+      for (const c of clients) if (c.room === slot) c.room = null; // todos voltam ao menu
+      console.log(`gateway: host encerrou a sala ${slot} (estado ${m.status})`);
+      return;
+    }
+
     // Jogar novamente na MESMA sala: zera as carteiras e volta ao lobby (host, partida encerrada).
     if (msg.type === "PLAY_AGAIN") {
       const slot = client.room;
@@ -666,6 +723,7 @@ wss.on("connection", (ws, req) => {
         m.pendingCards = [];
         m.blocked.clear();
         m.shielded.clear();
+        m.stats = {}; // zera as estatísticas dos prêmios
         if (!codeToRoom.has(m.code)) codeToRoom.set(m.code, slot); // reabre o código
         broadcastToRoom(slot, roomStateMsg(slot));
         for (const c of clients) if (c.room === slot) void sendWallet(c);
@@ -763,6 +821,19 @@ wss.on("connection", (ws, req) => {
       return;
     }
 
+    // Reação rápida (emote): difunde no pub/sub do chat (qualquer estado). Remetente autoritativo.
+    if (msg.type === "EMOTE") {
+      const room = client.room;
+      if (!room) return;
+      const emoji = String(msg.emoji ?? "");
+      if (!EMOTES.has(emoji)) return; // só emojis da whitelist
+      const now = Date.now();
+      if (now - (client.lastEmote ?? 0) < 600) return; // anti-spam
+      client.lastEmote = now;
+      pub.publish(`room:${room}:chat`, JSON.stringify({ type: "EMOTE", player: playerId, emoji, ts: now }));
+      return;
+    }
+
     // Comprar uma carta aleatória (preço crescente) — durante a partida, não-espectador.
     if (msg.type === "BUY_CARD") {
       const slot = client.room;
@@ -799,6 +870,27 @@ wss.on("connection", (ws, req) => {
         ws.send(JSON.stringify({ type: "ERROR", reason: "INVALID_TARGET" }));
         return;
       }
+      // Falência: efeito IMEDIATO (não vai p/ a próxima rodada). A Carteira valida posse da carta
+      // E saldo <= limite atomicamente; só então consome a carta e credita o bônus de recuperação.
+      if (cardType === "FALENCIA") {
+        let r: { ok: boolean; reason: string; balance: number; gained: number };
+        try {
+          r = await playBankruptcy(WALLET_ROUTES[slot], playerId);
+        } catch (e) {
+          console.error("gateway: playBankruptcy:", e);
+          ws.send(JSON.stringify({ type: "ERROR", reason: "UNAVAILABLE" }));
+          return;
+        }
+        if (!r.ok) {
+          ws.send(JSON.stringify({ type: "ERROR", reason: r.reason })); // MONEY_TOO_HIGH | NO_CARD
+          return;
+        }
+        m.playedThisInterval.add(playerId); // consumiu sua jogada deste intervalo
+        bumpStat(m, playerId, "cardsPlayed");
+        ws.send(JSON.stringify({ type: "CARD_PLAYED", source: playerId, cardType, target: "" })); // escopo self
+        void sendWallet(client); // saldo subiu, mão diminuiu
+        return;
+      }
       let consumed = false;
       try {
         consumed = (await consumeCard(WALLET_ROUTES[slot], playerId, cardType)).ok; // valida posse
@@ -811,6 +903,7 @@ wss.on("connection", (ws, req) => {
       }
       m.pendingCards.push({ source: playerId, cardType, target });
       m.playedThisInterval.add(playerId); // consumiu sua jogada deste intervalo
+      bumpStat(m, playerId, "cardsPlayed");
       // Notifica só quem a carta afeta: o próprio (self), o alvo (target) ou toda a sala (group).
       const cardPlayedMsg = { type: "CARD_PLAYED", source: playerId, cardType, target: target ?? "" };
       const scope = CARD_SCOPE[cardType] ?? "group";
@@ -890,7 +983,11 @@ wss.on("connection", (ws, req) => {
         const prices = await currentMarket();
         const reply = await sellItem(waddr, playerId, msg.itemId, prices);
         ws.send(JSON.stringify({ type: "SELL_RESULT", ok: reply.ok, reason: reply.reason, itemType: reply.type, price: reply.price }));
-        if (reply.ok) void sendWallet(client);
+        if (reply.ok) {
+          void sendWallet(client);
+          const m = matches[room];
+          if (m) bumpStat(m, playerId, "soldValue", reply.price);
+        }
       } catch (err) {
         console.error("gateway: erro no SELL_ITEM:", err);
         ws.send(JSON.stringify({ type: "ERROR", reason: "SELL_FAILED" }));

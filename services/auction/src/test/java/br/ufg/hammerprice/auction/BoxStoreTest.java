@@ -75,6 +75,13 @@ class BoxStoreTest {
         return new BoxStore(w, SETTINGS, testOpener(), weights(), java.util.Map.of(), new Random(42));
     }
 
+    /** Store cuja única opção de baú é a Caixa Surpresa (MYSTERY) — força esse tipo na rodada. */
+    private static BoxStore newMysteryStore(BoxStore.Wallet w) {
+        LinkedHashMap<String, Integer> mw = new LinkedHashMap<>();
+        mw.put("MYSTERY", 1);
+        return new BoxStore(w, SETTINGS, testOpener(), mw, java.util.Map.of(), new Random(42));
+    }
+
     private static BoxOpener testOpener() {
         BoxOpener.Odds odds = t -> Map.of("COPPER", 60, "SILVER", 30, "GOLD", 9, "DIAMOND", 1, "MIMIC", 0);
         return new BoxOpener(odds, 42L); // seed fixa: determinístico
@@ -269,6 +276,26 @@ class BoxStoreTest {
     }
 
     @Test
+    void mysteryBoxHidesOddsButStillDraws() {
+        StubWallet w = new StubWallet();
+        BoxStore store = newMysteryStore(w);
+        try {
+            BoxStore.RoomState r = store.roomState();
+            assertEquals("MYSTERY", r.boxType(), "a rodada é uma Caixa Surpresa");
+            assertTrue(r.odds().isEmpty(), "Caixa Surpresa: odds OCULTAS no estado público");
+            // O sorteio ainda funciona (usa as odds reais internamente, não as exibidas).
+            String b = r.boxId();
+            assertTrue(store.placeBid(b, "ana", 100).accepted());
+            store.closeNow();
+            BoxStore.OpenResult open = store.openBox(b, "ana");
+            assertTrue(open.ok(), "o vencedor abre a Caixa Surpresa");
+            assertFalse(open.item().isEmpty(), "a Caixa Surpresa sorteia um item válido");
+        } finally {
+            store.shutdown();
+        }
+    }
+
+    @Test
     void randomTypeIsWeightedAndDeterministic() {
         Map<String, Integer> weights = weights();
         BoxStore a = new BoxStore(new StubWallet(), SETTINGS, testOpener(), weights, java.util.Map.of(), new Random(7));
@@ -299,9 +326,9 @@ class BoxStoreTest {
         StubWallet w = new StubWallet();
         BoxStore store = newStore(w);
         try {
-            setEffects(store, List.of(), List.of(), Map.of(), 3); // Reforço alto → topo do ladder
+            setEffects(store, List.of(), List.of(), Map.of(), 5); // Reforço alto → topo da escada (de qualquer base)
             store.closeNow(); // abre a próxima rodada aplicando o pending
-            assertEquals("VAULT", store.roomState().boxType(), "Reforço sobe ao topo do ladder de raridade");
+            assertEquals("JACKPOT", store.roomState().boxType(), "Reforço sobe ao topo da escada de raridade (Cofre Premiado)");
         } finally {
             store.shutdown();
         }
