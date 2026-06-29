@@ -170,6 +170,14 @@ const inviteUrl = (c: string) =>
 const HAND_MAX = 4; // espelha cards.hand_max no balance.yaml (teto da mão; o servidor é a verdade)
 const BANKRUPTCY_THRESHOLD = 200; // espelha cards.bankruptcy_threshold (Falência só com saldo <= isto)
 const EMOTE_LIST = ["👍", "🔥", "😂", "😱", "🤡", "💰", "🧂", "👀"]; // espelha a whitelist do gateway
+// Abas do "dock" da direita na partida — só uma visível por vez (layout de janela única).
+type MatchTab = "market" | "inventory" | "collections" | "chat";
+const MATCH_TABS: { key: MatchTab; icon: string; label: string }[] = [
+  { key: "market", icon: "📈", label: "Mercado" },
+  { key: "inventory", icon: "🎒", label: "Inventário" },
+  { key: "collections", icon: "🏅", label: "Coleções" },
+  { key: "chat", icon: "💬", label: "Chat" },
+];
 const money = (n: number): string =>
   `$${Math.round(n).toLocaleString("pt-BR")}`;
 const ITEM_ORDER = ["COPPER", "SILVER", "GOLD", "DIAMOND", "MIMIC"];
@@ -303,6 +311,7 @@ export function App() {
   const [reconnecting, setReconnecting] = useState(false); // tentando voltar à sala salva
   const [playedCard, setPlayedCard] = useState(false); // já joguei 1 carta NESTE intervalo (1 por intervalo)
   const [logsOpen, setLogsOpen] = useState(true); // painel de Eventos recolhível
+  const [matchTab, setMatchTab] = useState<MatchTab>("market"); // aba ativa do dock da direita
   const [copiedCode, setCopiedCode] = useState(false); // feedback do botão "copiar código"
   const [copiedInvite, setCopiedInvite] = useState(false); // feedback do botão "copiar convite"
   // Confirmação no estilo do jogo (substitui o confirm() nativo). null = fechado.
@@ -1482,9 +1491,11 @@ export function App() {
       {/* ---------- PARTIDA ---------- */}
       {phase === "playing" && (
         <>
-          <div className="mt-5 grid gap-4 lg:grid-cols-[260px_minmax(0,1fr)_300px]">
-            {/* ----- ESQUERDA: você + mesa ----- */}
-            <aside className="order-2 lg:order-1 flex flex-col gap-4">
+          {/* Shell de JANELA ÚNICA no desktop: altura fixa (~viewport) e SCROLL INTERNO por coluna —
+              a página não rola; o dock da direita usa abas p/ não mostrar tudo de uma vez. */}
+          <div className="mt-3 grid gap-3 lg:grid-cols-[230px_minmax(0,1fr)_340px] lg:h-[calc(100vh-9.5rem)]">
+            {/* ----- ESQUERDA: você + cartas + mesa ----- */}
+            <aside className="order-2 lg:order-1 flex flex-col gap-3 lg:min-h-0 lg:overflow-y-auto lg:pr-1">
               {wallet && (
                 <div className={`${C.card} p-4`}>
                   <div className="text-sm text-muted mb-2">💼 Você</div>
@@ -1667,7 +1678,7 @@ export function App() {
             </aside>
 
             {/* ----- CENTRO: palco da casa de leilão ----- */}
-            <main className="order-1 lg:order-2 flex flex-col gap-3">
+            <main className="order-1 lg:order-2 flex flex-col gap-3 lg:min-h-0 lg:overflow-y-auto">
               <div
                 className="stage min-h-90 flex items-center justify-center px-[15%] py-8"
                 style={{
@@ -2009,9 +2020,25 @@ export function App() {
               )}
             </main>
 
-            {/* ----- DIREITA: mercado + inventário + coleções + eventos ----- */}
-            <aside className="order-3 flex flex-col gap-4">
-              {PRICED.some((k) => prices[k] != null) && (
+            {/* ----- DIREITA: DOCK com ABAS (só uma visível por vez) + emotes fixos ----- */}
+            <aside className="order-3 flex flex-col gap-2 lg:min-h-0">
+              {/* barra de abas */}
+              <div className="flex gap-1 rounded-xl bg-surface-2/60 border border-line p-1 shrink-0">
+                {MATCH_TABS.map((t) => (
+                  <button
+                    key={t.key}
+                    onClick={() => setMatchTab(t.key)}
+                    className={`flex-1 rounded-lg py-1.5 text-xs font-semibold transition ${matchTab === t.key ? "bg-gold text-ink" : "text-muted hover:text-stone-200"}`}
+                    title={t.label}
+                  >
+                    <span className="lg:hidden">{t.icon}</span>
+                    <span className="hidden lg:inline">{t.icon} {t.label}</span>
+                  </button>
+                ))}
+              </div>
+              {/* conteúdo da aba ativa — rola internamente (a página não rola) */}
+              <div className="flex-1 lg:min-h-0 lg:overflow-y-auto flex flex-col gap-3 pr-0.5">
+              {matchTab === "market" && PRICED.some((k) => prices[k] != null) && (
                 <div className={`${C.card} p-4`}>
                   <div className="flex items-center justify-between mb-2">
                     <span className="text-sm text-muted">📈 Mercado</span>
@@ -2082,7 +2109,10 @@ export function App() {
               )}
 
               {/* Inventário */}
-              {wallet && wallet.inventory.length > 0 && (
+              {matchTab === "inventory" && wallet && wallet.inventory.length === 0 && (
+                <div className={`${C.card} p-4 text-sm text-muted`}>🎒 Sem itens ainda — arremate e abra um baú.</div>
+              )}
+              {matchTab === "inventory" && wallet && wallet.inventory.length > 0 && (
                 <div className={`${C.card} p-4 flex flex-col gap-2`}>
                   <div className="text-sm text-muted">🎒 Inventário</div>
                   {ITEM_ORDER.filter((t) =>
@@ -2121,7 +2151,7 @@ export function App() {
               )}
 
               {/* Coleções */}
-              {wallet && (
+              {matchTab === "collections" && wallet && (
                 <div className="bg-surface border border-gold-dim rounded-2xl p-4 flex flex-col gap-1.5">
                   <div className="text-gold font-semibold text-sm">
                     🏅 Coleções
@@ -2201,15 +2231,24 @@ export function App() {
                 </div>
               )}
 
-              {/* Reações rápidas (emotes) — difundidas a todos da sala */}
-              <div className={`${C.card} p-3`}>
-                <div className="text-xs text-muted mb-2">Reações</div>
-                <div className="flex flex-wrap gap-1.5">
+              {/* Chat (aba) */}
+              {matchTab === "chat" && (
+                <ChatPanel
+                  messages={chat}
+                  me={playerId}
+                  onSend={(t) => send({ type: "CHAT_SEND", text: t })}
+                />
+              )}
+              </div>{/* fim do conteúdo rolável das abas */}
+
+              {/* Reações rápidas (emotes) — FIXAS no rodapé do dock (sempre visíveis) */}
+              <div className={`${C.card} p-2.5 shrink-0`}>
+                <div className="flex flex-wrap gap-1.5 justify-center">
                   {EMOTE_LIST.map((e) => (
                     <button
                       key={e}
                       onClick={() => sendEmote(e)}
-                      className="text-xl leading-none rounded-lg border border-line bg-surface-2 px-2 py-1 hover:border-gold active:scale-90 transition"
+                      className="text-xl leading-none rounded-lg border border-line bg-surface-2 px-2.5 py-1 hover:border-gold active:scale-90 transition"
                       title="Enviar reação"
                     >
                       {e}
@@ -2217,13 +2256,6 @@ export function App() {
                   ))}
                 </div>
               </div>
-
-              {/* Chat da sala */}
-              <ChatPanel
-                messages={chat}
-                me={playerId}
-                onSend={(t) => send({ type: "CHAT_SEND", text: t })}
-              />
             </aside>
           </div>
           {/* Rodapé MOBILE: controles da partida no FIM da página (evita toque acidental no topo). */}
