@@ -8,6 +8,11 @@ import { Card, cardOf, CARDS } from "./Card";
 import { Gavel } from "./Gavel";
 import { Button, RarityBadge } from "./ui";
 import { boxRarity } from "./rarity";
+import { ItemIcon } from "./icons";
+import {
+  User, Lock, Wallet, CircleDollarSign, TrendingUp, Backpack, Medal, MessageSquare,
+  Layers, Users, Trophy, Dice5, Skull, Clock, Eye, Hand, type LucideIcon,
+} from "lucide-react";
 import { Lazy3D } from "./three/Lazy3D";
 
 // 3D carregado sob demanda (three.js só baixa quando o herói/palco monta).
@@ -173,11 +178,11 @@ const BANKRUPTCY_THRESHOLD = 200; // espelha cards.bankruptcy_threshold (Falênc
 const EMOTE_LIST = ["👍", "🔥", "😂", "😱", "🤡", "💰", "🧂", "👀"]; // espelha a whitelist do gateway
 // Abas do "dock" da direita na partida — só uma visível por vez (layout de janela única).
 type MatchTab = "market" | "inventory" | "collections" | "chat";
-const MATCH_TABS: { key: MatchTab; icon: string; label: string }[] = [
-  { key: "market", icon: "📈", label: "Mercado" },
-  { key: "inventory", icon: "🎒", label: "Inventário" },
-  { key: "collections", icon: "🏅", label: "Coleções" },
-  { key: "chat", icon: "💬", label: "Chat" },
+const MATCH_TABS: { key: MatchTab; icon: LucideIcon; label: string }[] = [
+  { key: "market", icon: TrendingUp, label: "Mercado" },
+  { key: "inventory", icon: Backpack, label: "Inventário" },
+  { key: "collections", icon: Medal, label: "Coleções" },
+  { key: "chat", icon: MessageSquare, label: "Chat" },
 ];
 const money = (n: number): string =>
   `$${Math.round(n).toLocaleString("pt-BR")}`;
@@ -292,13 +297,15 @@ function penaltyText(kind: string, token: string, value: number): string {
 
 // Classes reutilizáveis do tema.
 const C = {
-  card: "bg-surface border border-line rounded-2xl",
+  // Cards com PROFUNDIDADE (gradiente + sombra + brilho interno no topo) p/ casar com o baú 3D.
+  card: "bg-gradient-to-b from-surface to-surface-2 border border-line/70 rounded-2xl shadow-[0_8px_22px_-14px_rgba(0,0,0,0.85),inset_0_1px_0_0_rgba(255,255,255,0.05)]",
+  // Botão dourado CHUNKY (volume 3D + afunda no clique).
   btnGold:
-    "bg-gold text-ink font-semibold rounded-lg px-4 py-2 hover:bg-gold-soft active:scale-[0.98] disabled:opacity-40 disabled:cursor-not-allowed transition",
+    "bg-gradient-to-b from-gold-soft to-gold text-ink font-bold rounded-xl px-4 py-2 chunky chunky-press disabled:opacity-40 disabled:cursor-not-allowed disabled:shadow-none transition",
   btnSmall:
-    "bg-surface-2 border border-line text-stone-200 rounded-md px-2.5 py-1 text-sm hover:border-gold disabled:opacity-30 disabled:cursor-not-allowed transition",
+    "bg-gradient-to-b from-surface-2 to-surface border border-line text-stone-200 rounded-lg px-2.5 py-1 text-sm font-medium hover:border-gold active:translate-y-px disabled:opacity-30 disabled:cursor-not-allowed transition",
   input:
-    "bg-surface-2 border border-line rounded-lg px-3 py-2 text-stone-100 placeholder:text-stone-500 outline-none focus:border-gold w-full",
+    "bg-surface-2 border border-line rounded-lg px-3 py-2 text-stone-100 placeholder:text-stone-500 outline-none focus:border-gold w-full shadow-[inset_0_2px_6px_rgba(0,0,0,0.35)]",
   chip: "px-3 py-1.5 rounded-lg bg-surface-2 border border-line text-sm whitespace-nowrap",
 };
 
@@ -372,7 +379,9 @@ export function App() {
   const [prices, setPrices] = useState<Record<string, number>>({});
   const [priceHist, setPriceHist] = useState<Record<string, number[]>>({}); // histórico p/ tendência + sparkline
   const [marketEvent, setMarketEvent] = useState<{ kind: string; label: string; emoji: string; desc: string; endsAt: number } | null>(null);
-  const lastEventKindRef = useRef<string>(""); // p/ disparar o banner só quando um evento NOVO começa
+  const lastEventKindRef = useRef<string>(""); // p/ disparar o aviso só quando um evento NOVO começa
+  const [marketToast, setMarketToast] = useState<{ kind: string; label: string; desc: string } | null>(null); // aviso DISCRETO de canto
+  const marketToastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [wallet, setWallet] = useState<Wallet | null>(null);
   const [wonBoxes, setWonBoxes] = useState<
     { boxId: string; boxType: string }[]
@@ -779,12 +788,12 @@ export function App() {
             setMarketEvent(ev);
             const kind = ev?.kind ?? "";
             if (kind && kind !== lastEventKindRef.current) {
-              // Evento de mercado NOVO → banner + som (vermelho se for queda/Crash).
-              const down = kind === "CRASH";
-              enqueueOverlay({ kind: "flash", flashKind: down ? "mimic" : "win", emoji: ev.emoji, title: `${ev.label}!`, sub: ev.desc, durationMs: 2400 });
-              if (down) sfx.thud();
-              else sfx.coin();
-              addLog(`${ev.emoji} Evento de mercado: ${ev.label} — ${ev.desc}`);
+              // Evento de mercado NOVO → aviso DISCRETO de canto (NÃO o overlay central das outras
+              // ações). Some sozinho; o selo persistente fica no painel Mercado do dock.
+              setMarketToast({ kind, label: ev.label, desc: ev.desc });
+              if (marketToastTimer.current) clearTimeout(marketToastTimer.current);
+              marketToastTimer.current = setTimeout(() => setMarketToast(null), 5000);
+              addLog(`Evento de mercado: ${ev.label} — ${ev.desc}`);
             }
             lastEventKindRef.current = kind;
             break;
@@ -1499,26 +1508,26 @@ export function App() {
             <aside className="order-2 lg:order-1 flex flex-col gap-3 lg:min-h-0 lg:overflow-y-auto lg:pr-1">
               {wallet && (
                 <div className={`${C.card} p-4`}>
-                  <div className="text-sm text-muted mb-2">💼 Você</div>
+                  <div className="text-sm text-muted mb-2 flex items-center gap-1.5"><User size={14} /> Você</div>
                   <div className="flex flex-col gap-1.5 text-sm">
                     <div className="flex justify-between">
-                      <span className="text-muted">💰 Saldo</span>
+                      <span className="text-muted flex items-center gap-1.5"><Wallet size={13} /> Saldo</span>
                       <b className="text-gold">{money(wallet.balance)}</b>
                     </div>
                     <div className="flex justify-between">
-                      <span className="text-muted">🔒 Reservado</span>
+                      <span className="text-muted flex items-center gap-1.5"><Lock size={13} /> Reservado</span>
                       <span>{money(wallet.reserved)}</span>
                     </div>
                     <div className="flex justify-between">
-                      <span className="text-muted">🟢 Gastável</span>
+                      <span className="text-muted flex items-center gap-1.5"><CircleDollarSign size={13} className="text-emerald-400" /> Gastável</span>
                       <b className="text-emerald-400">
                         {money(wallet.balance - wallet.reserved)}
                       </b>
                     </div>
                   </div>
                   {spectating && (
-                    <div className="mt-3 text-center text-xs text-sky-300 bg-sky-500/10 border border-sky-500/30 rounded-lg py-1.5">
-                      👀 Assistindo
+                    <div className="mt-3 text-center text-xs text-sky-300 bg-sky-500/10 border border-sky-500/30 rounded-lg py-1.5 flex items-center justify-center gap-1.5">
+                      <Eye size={13} /> Assistindo
                     </div>
                   )}
                   {/* Botões: no desktop ficam aqui; no mobile vão p/ o rodapé (ver abaixo). */}
@@ -1532,7 +1541,7 @@ export function App() {
               {wallet && (
                 <div className={`${C.card} p-4 flex flex-col gap-2`}>
                   <div className="flex items-center justify-between">
-                    <span className="text-sm text-muted">🃏 Cartas</span>
+                    <span className="text-sm text-muted flex items-center gap-1.5"><Layers size={14} /> Cartas</span>
                     {!spectating &&
                       (() => {
                         const handFull = wallet.cards.length >= HAND_MAX;
@@ -1652,7 +1661,7 @@ export function App() {
               {/* Mesa — só nome + dinheiro de cada jogador (sem revelar itens/lances) */}
               {players.length > 0 && (
                 <div className={`${C.card} p-4`}>
-                  <div className="text-sm text-muted mb-2">🃏 Mesa</div>
+                  <div className="text-sm text-muted mb-2 flex items-center gap-1.5"><Users size={14} /> Mesa</div>
                   <div className="flex flex-col gap-1">
                     {[...players]
                       .sort((a, b) => b.money - a.money)
@@ -1666,10 +1675,10 @@ export function App() {
                           >
                             {nm(p.id)}
                             {p.id === playerId ? " (você)" : ""}
-                            {p.spectating ? " 👀" : ""}
+                            {p.spectating ? <Eye size={12} className="inline-block ml-1 align-[-0.1em]" /> : ""}
                           </span>
                           <span className="whitespace-nowrap">
-                            💰 <b className="text-gold">{money(p.money)}</b>
+                            <b className="text-gold">{money(p.money)}</b>
                           </span>
                         </div>
                       ))}
@@ -1715,7 +1724,12 @@ export function App() {
                       className="relative z-4 w-full max-w-75 text-center flex flex-col items-center gap-1.5"
                     >
                       {/* baú 3D + anel de contagem + carimbo ARREMATADO */}
-                      <div className="relative w-52 h-52 flex items-center justify-center">
+                      <div className="relative w-72 h-72 flex items-center justify-center">
+                        {/* pedestal de luz da raridade — "aterra" o baú e o integra ao palco */}
+                        <div
+                          className="absolute left-1/2 -translate-x-1/2 bottom-3 w-3/5 h-10 rounded-[100%] blur-lg pointer-events-none"
+                          style={{ background: "radial-gradient(closest-side, var(--rarity), transparent 72%)", opacity: 0.55 }}
+                        />
                         {/* Baú 3D no palco (fallback 2D sem WebGL). Reage: idle → tension (lance)
                             → open (arrematado). O anel e o carimbo ficam sobrepostos por cima. */}
                         <div className="absolute inset-0">
@@ -1801,12 +1815,16 @@ export function App() {
                       <div className="font-display text-xl text-gold">
                         {tierLabel(box.boxType)}
                       </div>
-                      <div className="text-[11px] text-stone-400">
-                        {box.boxType === "MYSTERY"
-                          ? "🎲 Odds ocultas — pura sorte"
-                          : ITEM_ORDER.filter((k) => (box.odds?.[k] ?? 0) > 0)
-                              .map((k) => `${ITEM_EMOJI[k]} ${box.odds[k]}%`)
-                              .join("  ")}
+                      <div className="text-[11px] text-stone-400 flex items-center justify-center flex-wrap gap-x-2.5 gap-y-0.5">
+                        {box.boxType === "MYSTERY" ? (
+                          <span className="flex items-center gap-1.5"><Dice5 size={13} /> Odds ocultas — pura sorte</span>
+                        ) : (
+                          ITEM_ORDER.filter((k) => (box.odds?.[k] ?? 0) > 0).map((k) => (
+                            <span key={k} className="flex items-center gap-1">
+                              <ItemIcon type={k} size={13} /> {box.odds[k]}%
+                            </span>
+                          ))
+                        )}
                       </div>
                       <motion.div
                         key={box.currentBid}
@@ -1827,8 +1845,8 @@ export function App() {
                         </b>
                       </div>
                       {foldState.folded > 0 && (
-                        <div className="text-xs text-stone-400">
-                          🙅 {foldState.folded}/{foldState.total} passaram
+                        <div className="text-xs text-stone-400 flex items-center justify-center gap-1.5">
+                          <Hand size={12} /> {foldState.folded}/{foldState.total} passaram
                         </div>
                       )}
                       <div className="h-6 flex items-center">
@@ -1846,10 +1864,12 @@ export function App() {
                               </motion.div>
                             );
                           return (
-                            <div className="text-sm text-muted tabular-nums">
-                              {box.leader
-                                ? `⏱ ${boxCountdown(box)}`
-                                : "aguardando o 1º lance…"}
+                            <div className="text-sm text-muted tabular-nums flex items-center gap-1.5 justify-center">
+                              {box.leader ? (
+                                <><Clock size={13} /> {boxCountdown(box)}</>
+                              ) : (
+                                "aguardando o 1º lance…"
+                              )}
                             </div>
                           );
                         })()}
@@ -1891,10 +1911,10 @@ export function App() {
 
               {/* Carta Visão: o item pré-sorteado da caixa desta rodada (só o portador recebe). */}
               {box && insight && !spectating && (
-                <div className="rounded-lg border border-fuchsia-500/40 bg-fuchsia-500/10 px-3 py-2 text-center text-sm text-fuchsia-200">
-                  👁️ Visão: esta caixa vai dar{" "}
+                <div className="rounded-lg border border-fuchsia-500/40 bg-fuchsia-500/10 px-3 py-2 text-center text-sm text-fuchsia-200 flex items-center justify-center gap-1.5 flex-wrap">
+                  <Eye size={14} /> Visão: esta caixa vai dar{" "}
                   {insight.item === "MIMIC" ? (
-                    <b className="text-red-300">um MÍMICO 💀</b>
+                    <b className="text-red-300 inline-flex items-center gap-1">um MÍMICO <Skull size={13} /></b>
                   ) : (
                     <b className="text-fuchsia-100">
                       {insight.quantity}×{" "}
@@ -1924,9 +1944,9 @@ export function App() {
                   </motion.div>
                 ) : folded ? (
                   <div
-                    className={`${C.card} p-3 text-center text-sm text-muted`}
+                    className={`${C.card} p-3 text-center text-sm text-muted flex items-center justify-center gap-1.5 flex-wrap`}
                   >
-                    🙅 Você passou nesta rodada ·{" "}
+                    <Hand size={13} /> Você passou nesta rodada ·{" "}
                     <b className="text-stone-300">
                       {foldState.folded}/{foldState.total || "?"}
                     </b>{" "}
@@ -2016,7 +2036,7 @@ export function App() {
                   animate={{ scale: 1, opacity: 1 }}
                   className="bg-gold/10 border border-gold-dim rounded-xl px-4 py-3 flex flex-wrap items-center gap-2 justify-center"
                 >
-                  <b className="text-gold">🎉 Você arrematou! Abra:</b>
+                  <b className="text-gold flex items-center gap-1.5"><Trophy size={16} /> Você arrematou! Abra:</b>
                   {wonBoxes.map((b) => (
                     <button
                       key={b.boxId}
@@ -2039,11 +2059,11 @@ export function App() {
                   <button
                     key={t.key}
                     onClick={() => setMatchTab(t.key)}
-                    className={`flex-1 rounded-lg py-1.5 text-xs font-semibold transition ${matchTab === t.key ? "bg-gold text-ink" : "text-muted hover:text-stone-200"}`}
+                    className={`flex-1 rounded-lg py-1.5 text-xs font-semibold transition flex items-center justify-center gap-1.5 ${matchTab === t.key ? "bg-gold text-ink" : "text-muted hover:text-stone-200"}`}
                     title={t.label}
                   >
-                    <span className="lg:hidden">{t.icon}</span>
-                    <span className="hidden lg:inline">{t.icon} {t.label}</span>
+                    <t.icon size={15} />
+                    <span className="hidden lg:inline">{t.label}</span>
                   </button>
                 ))}
               </div>
@@ -2052,7 +2072,7 @@ export function App() {
               {matchTab === "market" && PRICED.some((k) => prices[k] != null) && (
                 <div className={`${C.card} p-4`}>
                   <div className="flex items-center justify-between mb-2">
-                    <span className="text-sm text-muted">📈 Mercado</span>
+                    <span className="text-sm text-muted flex items-center gap-1.5"><TrendingUp size={14} /> Mercado</span>
                     <span className="text-[10px] text-emerald-400 flex items-center gap-1">
                       <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />{" "}
                       ao vivo
@@ -2083,7 +2103,7 @@ export function App() {
                           className="flex items-center gap-2 text-sm"
                         >
                           <span className="w-5 text-center shrink-0">
-                            {ITEM_EMOJI[k]}
+                            <ItemIcon type={k} size={16} />
                           </span>
                           <span className="text-muted">{ITEM_NAME[k]}</span>
                           <div className="ml-auto">
@@ -2121,11 +2141,11 @@ export function App() {
 
               {/* Inventário */}
               {matchTab === "inventory" && wallet && wallet.inventory.length === 0 && (
-                <div className={`${C.card} p-4 text-sm text-muted`}>🎒 Sem itens ainda — arremate e abra um baú.</div>
+                <div className={`${C.card} p-4 text-sm text-muted flex items-center gap-2`}><Backpack size={15} /> Sem itens ainda — arremate e abra um baú.</div>
               )}
               {matchTab === "inventory" && wallet && wallet.inventory.length > 0 && (
                 <div className={`${C.card} p-4 flex flex-col gap-2`}>
-                  <div className="text-sm text-muted">🎒 Inventário</div>
+                  <div className="text-sm text-muted flex items-center gap-1.5"><Backpack size={14} /> Inventário</div>
                   {ITEM_ORDER.filter((t) =>
                     wallet.inventory.some((i) => i.type === t),
                   ).map((t) => {
@@ -2140,10 +2160,10 @@ export function App() {
                     );
                     return (
                       <div key={t} className="flex items-center gap-2 text-sm">
-                        <span className="flex-1">
-                          {ITEM_EMOJI[t]} {t} ×{count}
+                        <span className="flex-1 flex items-center gap-1.5">
+                          <ItemIcon type={t} size={15} /> {ITEM_NAME[t]} ×{count}
                           {locked > 0 ? (
-                            <span className="text-muted"> ({locked}🔒)</span>
+                            <span className="text-muted"> ({locked} travado{locked > 1 ? "s" : ""})</span>
                           ) : (
                             ""
                           )}
@@ -2164,23 +2184,27 @@ export function App() {
               {/* Coleções */}
               {matchTab === "collections" && wallet && (
                 <div className="bg-surface border border-gold-dim rounded-2xl p-4 flex flex-col gap-1.5">
-                  <div className="text-gold font-semibold text-sm">
-                    🏅 Coleções
+                  <div className="text-gold font-semibold text-sm flex items-center gap-1.5">
+                    <Medal size={14} /> Coleções
                   </div>
                   {COLLECTIONS.map((c) => {
                     const formed = wallet.collections.filter(
                       (f) => f.kind === c.kind,
                     ).length;
-                    const reqStr = Object.entries(c.requires)
-                      .map(([t, n]) => `${ITEM_EMOJI[t]}×${n}`)
-                      .join(" ");
                     return (
                       <div
                         key={c.kind}
                         className="flex items-center gap-2 text-xs"
                       >
-                        <span className="flex-1">
-                          {c.label} <span className="text-muted">{reqStr}</span>
+                        <span className="flex-1 flex items-center gap-1 flex-wrap">
+                          {c.label}
+                          <span className="text-muted inline-flex items-center gap-1.5">
+                            {Object.entries(c.requires).map(([t, n]) => (
+                              <span key={t} className="inline-flex items-center gap-0.5">
+                                <ItemIcon type={t} size={12} />×{n}
+                              </span>
+                            ))}
+                          </span>
                         </span>
                         <span className="text-gold">+{money(c.bonus)}</span>
                         {formed > 0 && (
@@ -2366,6 +2390,30 @@ export function App() {
         </div>
       )}
 
+      {/* ---------- Aviso DISCRETO de evento de mercado (canto, não o overlay central) ---------- */}
+      <AnimatePresence>
+        {marketToast && (
+          <motion.div
+            initial={{ x: 48, opacity: 0 }}
+            animate={{ x: 0, opacity: 1 }}
+            exit={{ x: 48, opacity: 0 }}
+            transition={{ type: "spring", stiffness: 280, damping: 26 }}
+            className={`fixed top-20 right-4 z-40 ${C.card} px-3 py-2 max-w-64 pointer-events-none`}
+            style={{ borderColor: marketToast.kind === "CRASH" ? "rgba(239,68,68,0.45)" : "rgba(255,203,46,0.45)" }}
+          >
+            <div className="flex items-center gap-2">
+              <span className={`text-lg font-bold ${marketToast.kind === "CRASH" ? "text-red-400" : "text-emerald-400"}`}>
+                {marketToast.kind === "CRASH" ? "▼" : "▲"}
+              </span>
+              <div>
+                <div className="text-sm font-semibold leading-tight text-stone-100">{marketToast.label}</div>
+                <div className="text-[11px] text-muted leading-tight">{marketToast.desc}</div>
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* ---------- Reações rápidas flutuantes (emotes) ---------- */}
       {floatingEmotes.length > 0 && (
         <div className="fixed inset-x-0 bottom-24 z-50 flex justify-center pointer-events-none">
@@ -2421,7 +2469,8 @@ export function App() {
               </motion.div>
             ) : (
               <div
-                className={`relative px-10 pt-20 pb-7 rounded-2xl text-center border ${overlayHead.isMimic ? "bg-red-950/90 border-red-700 shake" : "bg-surface/95 border-gold-dim box-glow"}`}
+                className={`relative px-10 pt-20 pb-7 rounded-2xl text-center border ${overlayHead.isMimic ? "bg-red-950/90 border-red-700 shake" : "bg-gradient-to-b from-surface to-surface-2"}`}
+                style={overlayHead.isMimic ? undefined : { borderColor: `color-mix(in srgb, ${boxRarity(overlayHead.tier).color} 55%, transparent)`, boxShadow: `0 0 0 1px ${boxRarity(overlayHead.tier).color}55, 0 0 64px -8px ${boxRarity(overlayHead.tier).glow}` }}
               >
                 {/* raios clipados ao card; o card em si NÃO corta (os itens sobem livres) */}
                 {!overlayHead.isMimic && (
@@ -2432,25 +2481,18 @@ export function App() {
                 <div className="relative flex flex-col items-center">
                   <Chest tier={overlayHead.tier} size={150} open />
                   <motion.div
-                    className="absolute top-0 text-6xl flex gap-1 flex-wrap justify-center w-65"
+                    className="absolute top-0 flex gap-2 flex-wrap justify-center w-65"
                     initial={{ y: 20, scale: 0.2, opacity: 0 }}
                     animate={{ y: -64, scale: 1, opacity: 1 }}
-                    transition={{
-                      delay: 0.22,
-                      type: "spring",
-                      stiffness: 200,
-                      damping: 13,
-                    }}
+                    transition={{ delay: 0.22, type: "spring", stiffness: 200, damping: 13 }}
                   >
-                    {overlayHead.isMimic
-                      ? "💀"
-                      : Array.from({
-                          length: Math.min(overlayHead.qty, 8),
-                        }).map((_, i) => (
-                          <span key={i}>
-                            {ITEM_EMOJI[overlayHead.item] ?? "🎁"}
-                          </span>
-                        ))}
+                    {overlayHead.isMimic ? (
+                      <Skull size={56} color="#ef4444" className="drop-shadow-[0_0_12px_rgba(239,68,68,0.6)]" />
+                    ) : (
+                      Array.from({ length: Math.min(overlayHead.qty, 8) }).map((_, i) => (
+                        <ItemIcon key={i} type={overlayHead.item} size={44} className="drop-shadow-[0_4px_10px_rgba(0,0,0,0.5)]" />
+                      ))
+                    )}
                   </motion.div>
                   <div
                     className={`font-display text-2xl mt-1 ${overlayHead.isMimic ? "text-red-300" : "text-gold"}`}
@@ -2723,7 +2765,7 @@ function ChatPanel({
   };
   return (
     <div className={`${C.card} p-3 flex flex-col ${className}`}>
-      <div className="text-sm text-muted mb-2">💬 Chat da sala</div>
+      <div className="text-sm text-muted mb-2 flex items-center gap-1.5"><MessageSquare size={14} /> Chat da sala</div>
       <div
         className="flex-1 min-h-0 overflow-y-auto flex flex-col gap-1 text-sm pr-1"
         style={{ maxHeight: 240, minHeight: 120 }}

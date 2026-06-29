@@ -97,18 +97,23 @@ body {
 /* Holofote atrás do pedestal — a cor (--rarity) acompanha o nível do baú em leilão. */
 .stage {
   position: relative;
-  border-radius: 1rem;
+  border-radius: 1.25rem;
   overflow: hidden;
   background:
-    radial-gradient(120% 80% at 50% 120%, color-mix(in srgb, var(--rarity, #e8b923) 22%, transparent), transparent 55%),
-    linear-gradient(180deg, #211a13 0%, #15110d 60%, #0c0a09 100%);
-  border: 1px solid var(--color-line);
-  transition: background 0.6s ease;
+    radial-gradient(120% 80% at 50% 120%, color-mix(in srgb, var(--rarity, #e8b923) 26%, transparent), transparent 55%),
+    linear-gradient(180deg, #1a1530 0%, #120f24 60%, #0a0918 100%);
+  border: 1px solid color-mix(in srgb, var(--rarity, #e8b923) 30%, var(--color-line));
+  /* aura de raridade: anel externo + brilho interno → o baú 3D "pertence" ao palco */
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--rarity, #e8b923) 22%, transparent),
+    0 22px 60px -26px color-mix(in srgb, var(--rarity, #e8b923) 55%, #000),
+    inset 0 0 70px -26px color-mix(in srgb, var(--rarity, #e8b923) 60%, transparent);
+  transition: background 0.6s ease, box-shadow 0.6s ease, border-color 0.6s ease;
 }
 .stage-spot {
   position: absolute;
   inset: 0;
-  background: radial-gradient(46% 70% at 50% 8%, color-mix(in srgb, var(--rarity, #f5d77a) 26%, transparent), transparent 60%);
+  background: radial-gradient(48% 72% at 50% 6%, color-mix(in srgb, var(--rarity, #f5d77a) 34%, transparent), transparent 60%);
   pointer-events: none;
   transition: background 0.6s ease;
 }
