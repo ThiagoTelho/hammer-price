@@ -1690,7 +1690,7 @@ export function App() {
             {/* ----- CENTRO: palco da casa de leilão ----- */}
             <main className="order-1 lg:order-2 flex flex-col gap-3 lg:min-h-0 lg:overflow-y-auto">
               <div
-                className="stage min-h-90 flex items-center justify-center px-[15%] py-8"
+                className="stage h-[32rem] flex items-center justify-center px-[15%] py-6"
                 style={{
                   ["--rarity" as string]: tierLight(box?.boxType ?? "WOODEN"),
                 }}
