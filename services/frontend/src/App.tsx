@@ -1913,21 +1913,30 @@ export function App() {
                       const danger = rem <= 5000;
                       const col = danger ? "#ef4444" : "var(--rarity)";
                       return (
-                        <div className="absolute top-3 right-3 z-10 flex items-center gap-1.5 pointer-events-none">
-                          <Clock
-                            size={12}
-                            className={danger ? "text-red-400" : "text-muted"}
-                          />
-                          <div className="w-16 h-1.5 rounded-full bg-white/10 overflow-hidden">
-                            <div
-                              className="h-full rounded-full transition-[width] duration-200"
-                              style={{
-                                width: `${frac * 100}%`,
-                                background: col,
-                              }}
+                        <>
+                          {/* Alarme: borda vermelha pulsante no palco nos 5s finais. */}
+                          {danger && <div className="stage-danger" />}
+                          <div className="absolute top-3 right-3 z-10 flex items-center gap-1.5 pointer-events-none">
+                            <Clock
+                              size={12}
+                              className={
+                                danger ? "text-red-400" : "text-muted"
+                              }
                             />
+                            <div className="w-16 h-1.5 rounded-full bg-white/10 overflow-hidden">
+                              <div
+                                className="h-full rounded-full transition-[width] duration-200"
+                                style={{
+                                  width: `${frac * 100}%`,
+                                  background: col,
+                                  boxShadow: danger
+                                    ? "0 0 8px 1px rgba(239,68,68,0.9)"
+                                    : undefined,
+                                }}
+                              />
+                            </div>
                           </div>
-                        </div>
+                        </>
                       );
                     })()
                   : null}
