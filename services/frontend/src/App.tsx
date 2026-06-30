@@ -47,6 +47,7 @@ import {
   Volume2,
   VolumeX,
   LogOut,
+  Hourglass,
   type LucideIcon,
 } from "lucide-react";
 import { Lazy3D } from "./three/Lazy3D";
@@ -2020,7 +2021,7 @@ export function App() {
                           </motion.div>
                         )}
                       </div>
-                      <div className="font-display text-xl text-gold">
+                      <div className="font-display text-lg text-gold leading-tight">
                         {tierLabel(box.boxType)}
                       </div>
                       <div className="text-[11px] text-stone-400 flex items-center justify-center flex-wrap gap-x-2.5 gap-y-0.5">
@@ -2038,35 +2039,38 @@ export function App() {
                           ))
                         )}
                       </div>
-                      <motion.div
-                        key={box.currentBid}
-                        initial={{ scale: 1.35 }}
-                        animate={{ scale: 1 }}
-                        className="text-2xl font-bold text-gold mt-0.5"
-                      >
-                        {box.currentBid > 0 ? (
-                          <span className="inline-flex items-center gap-1.5">
-                            <CircleDollarSign size={20} /> {money(box.currentBid)}
-                          </span>
-                        ) : (
-                          "sem lances"
-                        )}
-                      </motion.div>
-                      <div className="text-sm">
-                        líder:{" "}
-                        <b
-                          className={box.leader === playerId ? "text-gold" : ""}
+                      {/* lance + líder na MESMA linha (info do palco mais compacta) */}
+                      <div className="flex items-baseline justify-center gap-3 mt-0.5">
+                        <motion.div
+                          key={box.currentBid}
+                          initial={{ scale: 1.35 }}
+                          animate={{ scale: 1 }}
+                          className="text-2xl font-bold text-gold leading-none"
                         >
-                          {box.leader ? nm(box.leader) : "—"}
-                        </b>
-                      </div>
-                      {foldState.folded > 0 && (
-                        <div className="text-xs text-stone-400 flex items-center justify-center gap-1.5">
-                          <Hand size={12} /> {foldState.folded}/
-                          {foldState.total} passaram
+                          {box.currentBid > 0 ? (
+                            <span className="inline-flex items-center gap-1.5">
+                              <CircleDollarSign size={20} />{" "}
+                              {money(box.currentBid)}
+                            </span>
+                          ) : (
+                            "sem lances"
+                          )}
+                        </motion.div>
+                        <div className="text-sm text-muted whitespace-nowrap">
+                          líder:{" "}
+                          <b
+                            className={
+                              box.leader === playerId
+                                ? "text-gold"
+                                : "text-stone-200"
+                            }
+                          >
+                            {box.leader ? nm(box.leader) : "—"}
+                          </b>
                         </div>
-                      )}
-                      <div className="h-6 flex items-center">
+                      </div>
+                      {/* cronômetro/pregão + passaram na MESMA linha */}
+                      <div className="h-6 flex items-center justify-center gap-3">
                         {(() => {
                           const call = goingCall(box);
                           if (call)
@@ -2081,7 +2085,7 @@ export function App() {
                               </motion.div>
                             );
                           return (
-                            <div className="text-sm text-muted tabular-nums flex items-center gap-1.5 justify-center">
+                            <div className="text-sm text-muted tabular-nums flex items-center gap-1.5">
                               {box.leader ? (
                                 <>
                                   <Clock size={13} /> {boxCountdown(box)}
@@ -2092,6 +2096,12 @@ export function App() {
                             </div>
                           );
                         })()}
+                        {foldState.folded > 0 && (
+                          <div className="text-xs text-stone-400 flex items-center gap-1">
+                            <Hand size={12} /> {foldState.folded}/
+                            {foldState.total}
+                          </div>
+                        )}
                       </div>
                     </motion.div>
                   ) : (
@@ -2102,8 +2112,9 @@ export function App() {
                       exit={{ opacity: 0 }}
                       className="relative z-4 w-full max-w-75 text-center flex flex-col items-center gap-3"
                     >
-                      <div className="text-muted">
-                        ⏳ Intervalo — venda, forme coleções, jogue cartas
+                      <div className="text-muted flex items-center justify-center gap-1.5">
+                        <Hourglass size={14} /> Intervalo — venda, forme
+                        coleções, jogue cartas
                       </div>
                       <div className="text-5xl font-bold text-gold tabular-nums">
                         {intermission

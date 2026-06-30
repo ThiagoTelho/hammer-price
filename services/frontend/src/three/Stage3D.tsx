@@ -12,15 +12,18 @@ export type StageMode = "idle" | "tension" | "open" | "mimic";
 
 function Rig({ body, metal, mode, spin }: { body: string; metal: string; mode: StageMode; spin: boolean }) {
   const ref = useRef<Group>(null);
-  useFrame((state, dt) => {
+  useFrame((state) => {
     const g = ref.current;
     if (!g) return;
     const t = state.clock.elapsedTime;
-    if (spin) g.rotation.y += dt * (mode === "tension" ? 0.55 : 0.32); // gira (sem PULSAR — pulso removido)
+    // Balança de lado a lado (~±30°, total ~60°) — NUNCA de costas — em vez de girar 360°.
+    if (spin)
+      g.rotation.y = Math.sin(t * (mode === "tension" ? 0.85 : 0.55)) * (Math.PI / 6);
     g.position.x = mode === "mimic" ? Math.sin(t * 46) * 0.05 : 0; // tremor do Mímico
   });
   // No overlay de abertura (spin=false) o baú fica quase de frente p/ a tampa estourar visível.
-  const baseRot: [number, number, number] = spin ? [0.12, 0.5, 0] : [0.05, 0.12, 0];
+  // Com a balança, a base fica quase frontal (a oscilação ±30° abre o leque p/ os lados).
+  const baseRot: [number, number, number] = spin ? [0.12, 0.16, 0] : [0.05, 0.12, 0];
   return (
     <group ref={ref}>
       <group position={[0, -0.22, 0]} rotation={baseRot} scale={0.98}>

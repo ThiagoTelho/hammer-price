@@ -1,4 +1,5 @@
-// Herói 3D da landing: um baú arcade flutuando e girando, com luz de raridade e partículas.
+// Herói 3D da landing: um baú arcade flutuando e BALANÇANDO de lado a lado (sem girar 360°,
+// nunca de costas), com luz de raridade e partículas.
 // Default export → carregado via React.lazy (three.js só baixa quando este componente monta).
 import { Canvas, useFrame } from "@react-three/fiber";
 import { Float, Sparkles } from "@react-three/drei";
@@ -7,10 +8,11 @@ import type { Group } from "three";
 import { CrateModel } from "./CrateModel";
 import { tierOf } from "../Chest";
 
-function Spin({ children, speed = 0.35 }: { children: ReactNode; speed?: number }) {
+// Balança ~±30° (total ~60°) em vez de girar — o baú nunca fica de costas.
+function Sway({ children, speed = 0.5, amp = Math.PI / 6 }: { children: ReactNode; speed?: number; amp?: number }) {
   const ref = useRef<Group>(null);
-  useFrame((_, dt) => {
-    if (ref.current) ref.current.rotation.y += dt * speed;
+  useFrame((state) => {
+    if (ref.current) ref.current.rotation.y = Math.sin(state.clock.elapsedTime * speed) * amp;
   });
   return <group ref={ref}>{children}</group>;
 }
@@ -30,11 +32,11 @@ export default function MenuHero3D({ boxType = "JACKPOT" }: { boxType?: string }
       <pointLight position={[-3, 1.5, 2]} intensity={28} color={tier.light} distance={12} />
       <pointLight position={[3, -1, 3]} intensity={18} color="#7c5cff" distance={12} />
       <Float speed={2} rotationIntensity={0.4} floatIntensity={0.9}>
-        <Spin>
-          <group rotation={[0.12, 0.5, 0]} scale={1.15}>
+        <Sway>
+          <group rotation={[0.12, 0.16, 0]} scale={1.15}>
             <CrateModel body={tier.body} metal={tier.trim} />
           </group>
-        </Spin>
+        </Sway>
       </Float>
       <Sparkles count={36} position={[0, 0.4, 0]} scale={[6, 3.2, 6]} size={3.5} speed={0.35} color={tier.light} opacity={0.7} />
       {/* Sem ContactShadows: a sombra de contato (recalculada por frame sobre o canvas
