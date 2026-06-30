@@ -336,12 +336,12 @@ function penaltyText(kind: string, token: string, value: number): string {
 // Classes reutilizáveis do tema.
 const C = {
   // Cards com PROFUNDIDADE (gradiente + sombra + brilho interno no topo) p/ casar com o baú 3D.
-  card: "bg-gradient-to-b from-surface to-surface-2 border border-line/70 rounded-2xl shadow-[0_8px_22px_-14px_rgba(0,0,0,0.85),inset_0_1px_0_0_rgba(255,255,255,0.05)]",
+  card: "bg-linear-to-b from-surface to-surface-2 border border-line/70 rounded-2xl shadow-[0_8px_22px_-14px_rgba(0,0,0,0.85),inset_0_1px_0_0_rgba(255,255,255,0.05)]",
   // Botão dourado CHUNKY (volume 3D + afunda no clique).
   btnGold:
-    "bg-gradient-to-b from-gold-soft to-gold text-ink font-bold rounded-xl px-4 py-2 chunky chunky-press disabled:opacity-40 disabled:cursor-not-allowed disabled:shadow-none transition",
+    "bg-linear-to-b from-gold-soft to-gold text-ink font-bold rounded-xl px-4 py-2 chunky chunky-press disabled:opacity-40 disabled:cursor-not-allowed disabled:shadow-none transition",
   btnSmall:
-    "bg-gradient-to-b from-surface-2 to-surface border border-line text-stone-200 rounded-lg px-2.5 py-1 text-sm font-medium hover:border-gold active:translate-y-px disabled:opacity-30 disabled:cursor-not-allowed transition",
+    "bg-linear-to-b from-surface-2 to-surface border border-line text-stone-200 rounded-lg px-2.5 py-1 text-sm font-medium hover:border-gold active:translate-y-px disabled:opacity-30 disabled:cursor-not-allowed transition",
   input:
     "bg-surface-2 border border-line rounded-lg px-3 py-2 text-stone-100 placeholder:text-stone-500 outline-none focus:border-gold w-full shadow-[inset_0_2px_6px_rgba(0,0,0,0.35)]",
   chip: "px-3 py-1.5 rounded-lg bg-surface-2 border border-line text-sm whitespace-nowrap",
@@ -1345,7 +1345,7 @@ export function App() {
                 stiffness: 120,
                 damping: 16,
               }}
-              className="mx-auto max-w-[14ch] sm:max-w-none px-2 font-arcade text-2xl sm:text-4xl leading-tight tracking-tight bg-gradient-to-b from-gold-soft to-gold bg-clip-text text-transparent drop-shadow-[0_3px_14px_rgba(255,203,46,0.35)]"
+              className="mx-auto max-w-[14ch] sm:max-w-none px-2 font-arcade text-2xl sm:text-4xl leading-tight tracking-tight bg-linear-to-b from-gold-soft to-gold bg-clip-text text-transparent drop-shadow-[0_3px_14px_rgba(255,203,46,0.35)]"
             >
               Arremate. Abra. Enriqueça.
             </motion.h2>
@@ -1565,7 +1565,7 @@ export function App() {
             <p className="text-[11px] uppercase tracking-[0.2em] text-muted">
               Código da sala
             </p>
-            <div className="font-arcade text-4xl sm:text-5xl tracking-[0.18em] bg-gradient-to-b from-gold-soft to-gold bg-clip-text text-transparent my-3 drop-shadow-[0_2px_12px_rgba(255,203,46,0.3)]">
+            <div className="font-arcade text-4xl sm:text-5xl tracking-[0.18em] bg-linear-to-b from-gold-soft to-gold bg-clip-text text-transparent my-3 drop-shadow-[0_2px_12px_rgba(255,203,46,0.3)]">
               {code}
             </div>
             <div className="flex gap-2 justify-center">
@@ -1891,7 +1891,7 @@ export function App() {
                 </div>
               )}
               <div
-                className="stage h-[32rem] flex items-center justify-center px-[15%] py-6"
+                className="stage h-128 flex items-center justify-center px-[15%] py-6"
                 style={{
                   ["--rarity" as string]: tierLight(box?.boxType ?? "WOODEN"),
                 }}
@@ -2593,7 +2593,7 @@ export function App() {
               animate={{ opacity: 1 }}
               className="mt-6 sm:mt-10 max-w-xl mx-auto flex flex-col gap-5"
             >
-              <h2 className="font-arcade text-2xl sm:text-3xl text-center bg-gradient-to-b from-gold-soft to-gold bg-clip-text text-transparent flex items-center justify-center gap-2.5">
+              <h2 className="font-arcade text-2xl sm:text-3xl text-center bg-linear-to-b from-gold-soft to-gold bg-clip-text text-transparent flex items-center justify-center gap-2.5">
                 <Trophy className="text-gold" size={28} /> Fim da partida
               </h2>
               {/* Pódio (top 3) */}
@@ -2619,7 +2619,7 @@ export function App() {
                       {idx === 0 ? (
                         <Crown size={22} className="text-gold mb-0.5" />
                       ) : (
-                        <div className="h-[22px]" />
+                        <div className="h-5.5" />
                       )}
                       <div
                         className="w-12 h-12 rounded-full bg-surface-2 flex items-center justify-center font-arcade text-base shrink-0"
@@ -2758,7 +2758,7 @@ export function App() {
                 className="fixed bottom-4 left-4 z-40 pointer-events-none w-64"
               >
                 <div
-                  className="rounded-xl border bg-gradient-to-b from-surface to-surface-2 overflow-hidden flex"
+                  className="rounded-xl border bg-linear-to-b from-surface to-surface-2 overflow-hidden flex"
                   style={{
                     borderColor: `${accent}66`,
                     boxShadow: `0 12px 30px -12px rgba(0,0,0,0.85), 0 0 20px -8px ${accent}`,
@@ -2838,7 +2838,7 @@ export function App() {
           >
             {overlayHead.kind === "flash" ? (
               <motion.div
-                className={`px-9 py-7 rounded-2xl text-center border-2 bg-gradient-to-b from-surface to-surface-2 ${overlayHead.flashKind === "mimic" ? "shake" : ""}`}
+                className={`px-9 py-7 rounded-2xl text-center border-2 bg-linear-to-b from-surface to-surface-2 ${overlayHead.flashKind === "mimic" ? "shake" : ""}`}
                 style={{
                   borderColor:
                     overlayHead.flashKind === "mimic"
@@ -2866,7 +2866,7 @@ export function App() {
               </motion.div>
             ) : (
               <div
-                className={`relative px-10 pt-20 pb-7 rounded-2xl text-center border ${overlayHead.isMimic ? "bg-red-950/90 border-red-700 shake" : "bg-gradient-to-b from-surface to-surface-2"}`}
+                className={`relative px-10 pt-20 pb-7 rounded-2xl text-center border ${overlayHead.isMimic ? "bg-red-950/90 border-red-700 shake" : "bg-linear-to-b from-surface to-surface-2"}`}
                 style={
                   overlayHead.isMimic
                     ? undefined
