@@ -17,7 +17,6 @@ import { Button, RarityBadge } from "./ui";
 import { boxRarity } from "./rarity";
 import { ItemIcon } from "./icons";
 import {
-  User,
   Lock,
   Wallet,
   CircleDollarSign,
@@ -1655,46 +1654,16 @@ export function App() {
           <div className="mt-3 grid gap-3 lg:grid-cols-[230px_minmax(0,1fr)_340px] lg:h-[calc(100vh-9.5rem)]">
             {/* ----- ESQUERDA: você + cartas + mesa ----- */}
             <aside className="order-2 lg:order-1 flex flex-col gap-3 lg:min-h-0 lg:overflow-y-auto lg:pr-1">
+              {/* Controles da partida (desktop; no mobile vão p/ o rodapé). A carteira
+                  agora fica na barra horizontal no topo do palco. */}
               {wallet && (
-                <div className={`${C.card} p-4`}>
-                  <div className="text-sm text-muted mb-2 flex items-center gap-1.5">
-                    <User size={14} /> Você
-                  </div>
-                  <div className="flex flex-col gap-1.5 text-sm">
-                    <div className="flex justify-between">
-                      <span className="text-muted flex items-center gap-1.5">
-                        <Wallet size={13} /> Saldo
-                      </span>
-                      <b className="text-gold">{money(wallet.balance)}</b>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-muted flex items-center gap-1.5">
-                        <Lock size={13} /> Reservado
-                      </span>
-                      <span>{money(wallet.reserved)}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-muted flex items-center gap-1.5">
-                        <CircleDollarSign
-                          size={13}
-                          className="text-emerald-400"
-                        />{" "}
-                        Gastável
-                      </span>
-                      <b className="text-emerald-400">
-                        {money(wallet.balance - wallet.reserved)}
-                      </b>
-                    </div>
-                  </div>
+                <div className={`${C.card} p-4 hidden sm:flex flex-col gap-2`}>
                   {spectating && (
-                    <div className="mt-3 text-center text-xs text-sky-300 bg-sky-500/10 border border-sky-500/30 rounded-lg py-1.5 flex items-center justify-center gap-1.5">
+                    <div className="text-center text-xs text-sky-300 bg-sky-500/10 border border-sky-500/30 rounded-lg py-1.5 flex items-center justify-center gap-1.5">
                       <Eye size={13} /> Assistindo
                     </div>
                   )}
-                  {/* Botões: no desktop ficam aqui; no mobile vão p/ o rodapé (ver abaixo). */}
-                  <div className="mt-3 hidden sm:flex flex-col gap-2">
-                    {matchControlButtons}
-                  </div>
+                  {matchControlButtons}
                 </div>
               )}
 
@@ -1861,6 +1830,33 @@ export function App() {
 
             {/* ----- CENTRO: palco da casa de leilão ----- */}
             <main className="order-1 lg:order-2 flex flex-col gap-3 lg:min-h-0 lg:overflow-y-auto">
+              {/* Carteira na HORIZONTAL no topo do palco (mobile + desktop). */}
+              {wallet && (
+                <div
+                  className={`${C.card} px-2 py-2 grid grid-cols-3 divide-x divide-line/60 text-center shrink-0`}
+                >
+                  <div className="px-1">
+                    <div className="text-[10px] uppercase tracking-wide text-muted flex items-center justify-center gap-1">
+                      <Wallet size={11} /> Saldo
+                    </div>
+                    <b className="text-gold tabular-nums">{money(wallet.balance)}</b>
+                  </div>
+                  <div className="px-1">
+                    <div className="text-[10px] uppercase tracking-wide text-muted flex items-center justify-center gap-1">
+                      <Lock size={11} /> Reservado
+                    </div>
+                    <span className="tabular-nums">{money(wallet.reserved)}</span>
+                  </div>
+                  <div className="px-1">
+                    <div className="text-[10px] uppercase tracking-wide text-muted flex items-center justify-center gap-1">
+                      <CircleDollarSign size={11} className="text-emerald-400" /> Gastável
+                    </div>
+                    <b className="text-emerald-400 tabular-nums">
+                      {money(wallet.balance - wallet.reserved)}
+                    </b>
+                  </div>
+                </div>
+              )}
               <div
                 className="stage h-[32rem] flex items-center justify-center px-[15%] py-6"
                 style={{
