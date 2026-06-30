@@ -45,6 +45,8 @@ import {
   Gem,
   Coins,
   Check,
+  Volume2,
+  VolumeX,
   type LucideIcon,
 } from "lucide-react";
 import { Lazy3D } from "./three/Lazy3D";
@@ -344,7 +346,23 @@ const C = {
   chip: "px-3 py-1.5 rounded-lg bg-surface-2 border border-line text-sm whitespace-nowrap",
 };
 
+// Tela "desktop" (≥ lg). O 3D (herói, palco, abertura) só roda aqui; abaixo disso usamos o
+// baú 2D e o three.js nem baixa. Reage a redimensionamento (incl. devtools mobile).
+function useIsDesktop(): boolean {
+  const [desktop, setDesktop] = useState(
+    () => typeof window !== "undefined" && window.matchMedia("(min-width: 1024px)").matches,
+  );
+  useEffect(() => {
+    const mq = window.matchMedia("(min-width: 1024px)");
+    const onChange = () => setDesktop(mq.matches);
+    mq.addEventListener("change", onChange);
+    return () => mq.removeEventListener("change", onChange);
+  }, []);
+  return desktop;
+}
+
 export function App() {
+  const isDesktop = useIsDesktop();
   const [name, setName] = useState("");
   const [joinCode, setJoinCode] = useState(INVITE_PARAM); // pré-aplicado se veio por link de convite
   const [phase, setPhase] = useState<Phase>("menu");
@@ -1219,14 +1237,16 @@ export function App() {
             onClick={() => setShowCheats(true)}
             title="Cartas (referência)"
           >
-            🃏<span className="hidden sm:inline"> Cartas</span>
+            <Layers size={15} className="inline-block align-[-0.15em]" />
+            <span className="hidden sm:inline"> Cartas</span>
           </button>
           <button
             className={C.btnSmall}
             onClick={toggleMute}
             title={muted ? "Ativar som" : "Silenciar"}
+            aria-label={muted ? "Ativar som" : "Silenciar"}
           >
-            {muted ? "🔇" : "🔊"}
+            {muted ? <VolumeX size={16} /> : <Volume2 size={16} />}
           </button>
         </div>
       </header>
@@ -1274,6 +1294,7 @@ export function App() {
               }}
             >
               <Lazy3D
+                enabled={isDesktop}
                 fallback={
                   <div className="h-full flex items-center justify-center">
                     <motion.div
@@ -1639,7 +1660,11 @@ export function App() {
 
       {/* ---------- PARTIDA ---------- */}
       {phase === "playing" && (
-        <>
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ duration: 0.35 }}
+        >
           {/* Shell de JANELA ÚNICA no desktop: altura fixa (~viewport) e SCROLL INTERNO por coluna —
               a página não rola; o dock da direita usa abas p/ não mostrar tudo de uma vez. */}
           <div className="mt-3 grid gap-3 lg:grid-cols-[230px_minmax(0,1fr)_340px] lg:h-[calc(100vh-9.5rem)]">
@@ -1900,6 +1925,7 @@ export function App() {
                             → open (arrematado). O anel e o carimbo ficam sobrepostos por cima. */}
                         <div className="absolute inset-0">
                           <Lazy3D
+                            enabled={isDesktop}
                             fallback={
                               <motion.div
                                 className="w-full h-full flex items-center justify-center"
@@ -2520,7 +2546,7 @@ export function App() {
               {matchControlButtons}
             </div>
           )}
-        </>
+        </motion.div>
       )}
 
       {/* ---------- RANKING ---------- */}
@@ -2834,6 +2860,7 @@ export function App() {
                   {/* baú 3D abrindo (a tampa estoura) — fallback 2D sem WebGL */}
                   <div className="w-52 h-52 flex items-center justify-center">
                     <Lazy3D
+                      enabled={isDesktop}
                       fallback={
                         <Chest tier={overlayHead.tier} size={150} open />
                       }
