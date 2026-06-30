@@ -1901,6 +1901,36 @@ export function App() {
                 <div className="curtain-top" />
                 <div className="stage-spot" />
                 <div className="stage-floor" />
+                {/* Cronômetro DISCRETO no canto superior direito do palco (no lugar do
+                    anel grande em volta do baú). Esvazia conforme o tempo e fica vermelho nos
+                    segundos finais. Os segundos em texto seguem na info abaixo. */}
+                {box && box.leader && box.deadlineAt
+                  ? (() => {
+                      const rem = Math.max(0, box.deadlineAt - Date.now());
+                      const full =
+                        box.timerMs > 0 ? box.timerMs : BID_TIMER_MS;
+                      const frac = Math.min(1, rem / full);
+                      const danger = rem <= 5000;
+                      const col = danger ? "#ef4444" : "var(--rarity)";
+                      return (
+                        <div className="absolute top-3 right-3 z-10 flex items-center gap-1.5 pointer-events-none">
+                          <Clock
+                            size={12}
+                            className={danger ? "text-red-400" : "text-muted"}
+                          />
+                          <div className="w-16 h-1.5 rounded-full bg-white/10 overflow-hidden">
+                            <div
+                              className="h-full rounded-full transition-[width] duration-200"
+                              style={{
+                                width: `${frac * 100}%`,
+                                background: col,
+                              }}
+                            />
+                          </div>
+                        </div>
+                      );
+                    })()
+                  : null}
                 {box &&
                   !spectating &&
                   cardEffects.blocked.includes(playerId) && (
@@ -1959,53 +1989,6 @@ export function App() {
                             />
                           </Lazy3D>
                         </div>
-                        {box.leader && box.deadlineAt
-                          ? (() => {
-                              const rem = Math.max(
-                                0,
-                                box.deadlineAt - Date.now(),
-                              );
-                              // Denominador = duração REAL do ciclo atual (box.timerMs, já com extensões
-                              // de anti-sniping) → o anel começa CHEIO e esvazia certo. (Antes usava um
-                              // BID_TIMER_MS fixo de 20s com timer real de 12s → começava ~60%.)
-                              const full =
-                                box.timerMs > 0 ? box.timerMs : BID_TIMER_MS;
-                              const frac = Math.min(1, rem / full);
-                              const R = 68;
-                              const circ = 2 * Math.PI * R;
-                              const danger = rem <= 5000;
-                              return (
-                                <svg
-                                  className="absolute inset-0 -rotate-90"
-                                  width="100%"
-                                  height="100%"
-                                  viewBox="0 0 150 150"
-                                >
-                                  <circle
-                                    cx="75"
-                                    cy="75"
-                                    r={R}
-                                    fill="none"
-                                    stroke="rgba(255,255,255,0.07)"
-                                    strokeWidth="3"
-                                  />
-                                  <circle
-                                    cx="75"
-                                    cy="75"
-                                    r={R}
-                                    fill="none"
-                                    stroke={
-                                      danger ? "#ef4444" : "var(--rarity)"
-                                    }
-                                    strokeWidth="4"
-                                    strokeLinecap="round"
-                                    strokeDasharray={circ}
-                                    strokeDashoffset={circ * (1 - frac)}
-                                  />
-                                </svg>
-                              );
-                            })()
-                          : null}
                         {sold === box.boxId && (
                           <motion.div
                             initial={{ scale: 2.2, rotate: -28, opacity: 0 }}
@@ -2040,7 +2023,7 @@ export function App() {
                         )}
                       </div>
                       {/* lance + líder na MESMA linha (info do palco mais compacta) */}
-                      <div className="flex items-baseline justify-center gap-3 mt-0.5">
+                      <div className="flex items-center justify-center gap-3 mt-0.5">
                         <motion.div
                           key={box.currentBid}
                           initial={{ scale: 1.35 }}
