@@ -12,7 +12,8 @@ import { ItemIcon } from "./icons";
 import {
   User, Lock, Wallet, CircleDollarSign, TrendingUp, Backpack, Medal, MessageSquare,
   Layers, Users, Trophy, Dice5, Skull, Clock, Eye, Hand, TrendingDown,
-  Gavel as GavelIcon, Ban, Copy, ShieldCheck, Shield, Package, type LucideIcon,
+  Gavel as GavelIcon, Ban, Copy, ShieldCheck, Shield, Package, Crown, Link2, Gem, Coins,
+  Check, type LucideIcon,
 } from "lucide-react";
 import { Lazy3D } from "./three/Lazy3D";
 
@@ -184,16 +185,17 @@ const MATCH_TABS: { key: MatchTab; icon: LucideIcon; label: string }[] = [
   { key: "collections", icon: Medal, label: "Coleções" },
   { key: "chat", icon: MessageSquare, label: "Chat" },
 ];
+// Ícone de cada prêmio (Destaques) — no lugar dos emojis vindos do gateway.
+const AWARD_ICON: Record<string, LucideIcon> = {
+  wins: GavelIcon,
+  diamonds: Gem,
+  mimics: Skull,
+  soldValue: Coins,
+  cardsPlayed: Layers,
+};
 const money = (n: number): string =>
   `$${Math.round(n).toLocaleString("pt-BR")}`;
 const ITEM_ORDER = ["COPPER", "SILVER", "GOLD", "DIAMOND", "MIMIC"];
-const ITEM_EMOJI: Record<string, string> = {
-  COPPER: "🪙",
-  SILVER: "🥈",
-  GOLD: "🥇",
-  DIAMOND: "💎",
-  MIMIC: "💀",
-};
 const ITEM_NAME: Record<string, string> = {
   COPPER: "Cobre",
   SILVER: "Prata",
@@ -550,6 +552,8 @@ export function App() {
             setRanking(msg.ranking ?? []);
             setAwards(msg.awards ?? []);
             setPhase("ended");
+            // Confete p/ o campeão (1º lugar do ranking).
+            if (msg.ranking?.[0]?.playerId === playerIdRef.current) fireConfetti();
             break;
           case "WELCOME":
             setRound(msg.round ?? 0);
@@ -1416,86 +1420,66 @@ export function App() {
 
       {/* ---------- LOBBY ---------- */}
       {phase === "lobby" && (
-        <div className="max-w-md mx-auto mt-8 flex flex-col gap-4">
+        <motion.div
+          initial={{ opacity: 0, y: 14 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="max-w-lg mx-auto mt-6 sm:mt-10 flex flex-col gap-4"
+        >
+          {/* Código da sala */}
           <div className={`${C.card} p-6 text-center`}>
-            <p className="text-xs uppercase tracking-wide text-muted">
-              Código da sala
-            </p>
-            <div className="flex items-center gap-2 my-2">
-              <div className="font-display text-4xl sm:text-5xl text-gold tracking-[0.15em] sm:tracking-[0.25em]">
-                {code}
-              </div>
-              <div className="flex flex-col items-stretch gap-2 w-44">
-                <button
-                  className={`${C.btnSmall} text-xs`}
-                  onClick={copyCode}
-                  title="Copiar o código"
-                >
-                  {copiedCode ? "✓ copiado" : "📋 copiar código"}
-                </button>
-                <button
-                  className={`${C.btnSmall} text-xs`}
-                  onClick={copyInvite}
-                  title="Copiar link de convite (código embutido)"
-                >
-                  {copiedInvite ? "✓ link copiado" : "🔗 copiar convite"}
-                </button>
-              </div>
+            <p className="text-[11px] uppercase tracking-[0.2em] text-muted">Código da sala</p>
+            <div className="font-arcade text-4xl sm:text-5xl tracking-[0.18em] bg-gradient-to-b from-gold-soft to-gold bg-clip-text text-transparent my-3 drop-shadow-[0_2px_12px_rgba(255,203,46,0.3)]">
+              {code}
             </div>
-            <p className="text-muted text-sm mb-5">
-              Compartilhe o código ou o link de convite. A partida exige ao
-              menos 2 jogadores.
-            </p>
-            <div className="text-left bg-surface-2 border border-line rounded-xl p-4 mb-5">
-              <div className="text-sm text-muted mb-2">
-                Jogadores ({lobby.players.length}/15)
-              </div>
-              <ul className="flex flex-col gap-1">
-                {lobby.players.map((p) => (
-                  <li key={p} className="flex items-center gap-2">
-                    <span
-                      className={
-                        p === playerId ? "text-gold font-semibold" : ""
-                      }
-                    >
-                      {nm(p)}
-                    </span>
-                    {p === lobby.host && <span title="host">👑</span>}
-                    {p === playerId && (
-                      <span className="text-xs text-muted">(você)</span>
-                    )}
-                  </li>
-                ))}
-              </ul>
+            <div className="flex gap-2 justify-center">
+              <button className={`${C.btnSmall} text-xs inline-flex items-center gap-1.5`} onClick={copyCode} title="Copiar o código">
+                {copiedCode ? <><Check size={13} /> copiado</> : <><Copy size={13} /> código</>}
+              </button>
+              <button className={`${C.btnSmall} text-xs inline-flex items-center gap-1.5`} onClick={copyInvite} title="Copiar link de convite">
+                {copiedInvite ? <><Check size={13} /> link copiado</> : <><Link2 size={13} /> convite</>}
+              </button>
             </div>
-            {isHost ? (
-              <div className="flex flex-col gap-2">
-                <button
-                  className={`${C.btnGold} w-full`}
-                  disabled={lobby.players.length < 2}
-                  onClick={() => send({ type: "START_MATCH" })}
-                >
-                  {lobby.players.length < 2
-                    ? "Aguardando jogadores…"
-                    : "Iniciar partida"}
-                </button>
-                <button
-                  className={`${C.btnSmall} w-full text-red-300 border-red-500/40 hover:border-red-400`}
-                  onClick={() => send({ type: "CLOSE_ROOM" })}
-                >
-                  Encerrar sala
-                </button>
-              </div>
-            ) : (
-              <p className="text-muted">Aguardando o host iniciar…</p>
-            )}
+            <p className="text-muted text-xs mt-3">Compartilhe o código ou o link. A partida exige ao menos 2 jogadores.</p>
           </div>
+          {/* Jogadores */}
+          <div className={`${C.card} p-4`}>
+            <div className="text-sm text-muted mb-3 flex items-center gap-1.5"><Users size={14} /> Jogadores ({lobby.players.length}/15)</div>
+            <div className="flex flex-wrap gap-2">
+              {lobby.players.map((p) => {
+                const me = p === playerId;
+                const host = p === lobby.host;
+                return (
+                  <div
+                    key={p}
+                    className={`px-3 py-1.5 rounded-lg border flex items-center gap-1.5 text-sm ${me ? "border-gold/50 bg-gold/10 text-gold font-semibold" : "border-line bg-surface-2"}`}
+                  >
+                    {host && <Crown size={13} className="text-gold" />}
+                    {nm(p)}
+                    {me && <span className="text-[10px] text-muted font-normal">(você)</span>}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+          {/* Controles do host */}
+          {isHost ? (
+            <div className="flex flex-col gap-2">
+              <Button variant="primary" size="lg" className="w-full" disabled={lobby.players.length < 2} onClick={() => send({ type: "START_MATCH" })}>
+                {lobby.players.length < 2 ? "Aguardando jogadores…" : "Iniciar partida"}
+              </Button>
+              <Button variant="danger" size="sm" className="w-full" onClick={() => send({ type: "CLOSE_ROOM" })}>
+                Encerrar sala
+              </Button>
+            </div>
+          ) : (
+            <p className="text-center text-muted">Aguardando o host iniciar…</p>
+          )}
           <ChatPanel
             messages={chat}
             me={playerId}
             onSend={(t) => send({ type: "CHAT_SEND", text: t })}
           />
-        </div>
+        </motion.div>
       )}
 
       {/* ---------- PARTIDA ---------- */}
@@ -2304,92 +2288,95 @@ export function App() {
       )}
 
       {/* ---------- RANKING ---------- */}
-      {phase === "ended" && (
-        <div className="mt-8 max-w-xl mx-auto">
-          <h2 className="font-display text-3xl text-gold text-center mb-5">
-            🏁 Fim da partida
-          </h2>
-          <div className={`${C.card} overflow-x-auto`}>
-            <table className="w-full text-sm min-w-110">
-              <thead className="bg-surface-2 text-muted">
-                <tr>
-                  <th className="text-left px-3 py-2">#</th>
-                  <th className="text-left px-3 py-2">Jogador</th>
-                  <th className="text-right px-3 py-2">💰</th>
-                  <th className="text-right px-3 py-2">🎒</th>
-                  <th className="text-right px-3 py-2">Patrimônio</th>
-                </tr>
-              </thead>
-              <tbody>
-                {ranking.map((r, i) => (
-                  <tr
-                    key={r.playerId}
-                    className={`border-t border-line ${i === 0 ? "bg-gold/10" : ""}`}
-                  >
-                    <td className="px-3 py-2">{i === 0 ? "🥇" : i + 1}</td>
-                    <td
-                      className={`px-3 py-2 ${r.playerId === playerId ? "text-gold font-semibold" : ""}`}
+      {phase === "ended" &&
+        (() => {
+          const top = ranking.slice(0, 3);
+          const rest = ranking.slice(3);
+          const order = top.length >= 3 ? [1, 0, 2] : top.length === 2 ? [1, 0] : [0];
+          const PODIUM = [
+            { ring: "#ffcb2e", h: 112 }, // 1º ouro
+            { ring: "#c0c8d4", h: 80 }, // 2º prata
+            { ring: "#cd7f32", h: 60 }, // 3º bronze
+          ];
+          return (
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="mt-6 sm:mt-10 max-w-xl mx-auto flex flex-col gap-5">
+              <h2 className="font-arcade text-2xl sm:text-3xl text-center bg-gradient-to-b from-gold-soft to-gold bg-clip-text text-transparent flex items-center justify-center gap-2.5">
+                <Trophy className="text-gold" size={28} /> Fim da partida
+              </h2>
+              {/* Pódio (top 3) */}
+              <div className="flex items-end justify-center gap-2 sm:gap-4">
+                {order.map((idx) => {
+                  const r = top[idx];
+                  if (!r) return null;
+                  const s = PODIUM[idx];
+                  const me = r.playerId === playerId;
+                  return (
+                    <motion.div
+                      key={r.playerId}
+                      initial={{ y: 36, opacity: 0 }}
+                      animate={{ y: 0, opacity: 1 }}
+                      transition={{ delay: 0.15 + idx * 0.12, type: "spring", stiffness: 200, damping: 18 }}
+                      className="flex flex-col items-center gap-1 w-24 sm:w-28"
                     >
-                      {nm(r.playerId)}{" "}
-                      {r.playerId === playerId && (
-                        <span className="text-xs text-muted">(você)</span>
-                      )}
-                    </td>
-                    <td className="px-3 py-2 text-right tabular-nums">
-                      {money(r.money)}
-                    </td>
-                    <td className="px-3 py-2 text-right tabular-nums">
-                      {money(r.items)}
-                    </td>
-                    <td className="px-3 py-2 text-right tabular-nums font-bold text-gold">
-                      {money(r.net)}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-          {awards.length > 0 && (
-            <div className={`${C.card} mt-4 p-4`}>
-              <div className="text-gold font-semibold text-sm mb-2 text-center">✨ Destaques</div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                {awards.map((a) => (
-                  <div key={a.key} className="flex items-center gap-2 text-sm rounded-lg bg-surface-2 border border-line px-3 py-2">
-                    <span className="text-xl">{a.emoji}</span>
-                    <div className="flex-1 min-w-0">
-                      <div className="text-xs text-muted">{a.label}</div>
-                      <div className={`truncate ${a.playerId === playerId ? "text-gold font-semibold" : ""}`}>{nm(a.playerId)}</div>
-                    </div>
-                    <span className="text-xs text-muted tabular-nums">{a.key === "soldValue" ? money(a.value) : `×${a.value}`}</span>
-                  </div>
-                ))}
+                      {idx === 0 ? <Crown size={22} className="text-gold mb-0.5" /> : <div className="h-[22px]" />}
+                      <div className="w-12 h-12 rounded-full bg-surface-2 flex items-center justify-center font-arcade text-base shrink-0" style={{ color: s.ring, boxShadow: `0 0 0 2px ${s.ring}, 0 0 16px -3px ${s.ring}` }}>
+                        {idx + 1}
+                      </div>
+                      <div className={`text-sm font-semibold text-center truncate w-full ${me ? "text-gold" : "text-stone-100"}`} title={nm(r.playerId)}>
+                        {nm(r.playerId)}
+                      </div>
+                      <div className="font-bold tabular-nums text-sm" style={{ color: s.ring }}>{money(r.net)}</div>
+                      <div className="w-full rounded-t-md mt-0.5" style={{ height: s.h, background: `linear-gradient(180deg, ${s.ring}, transparent)` }} />
+                    </motion.div>
+                  );
+                })}
               </div>
-            </div>
-          )}
-          <div className="text-center mt-5 flex gap-3 justify-center">
-            {isHost && (
-              <button
-                className={C.btnGold}
-                onClick={() => send({ type: "PLAY_AGAIN" })}
-              >
-                Jogar novamente
-              </button>
-            )}
-            <button
-              className={C.btnSmall}
-              onClick={() => window.location.reload()}
-            >
-              Voltar ao menu
-            </button>
-          </div>
-          <ChatPanel
-            messages={chat}
-            me={playerId}
-            onSend={(t) => send({ type: "CHAT_SEND", text: t })}
-            className="mt-5"
-          />
-        </div>
-      )}
+              {/* Demais colocados */}
+              {rest.length > 0 && (
+                <div className={`${C.card} divide-y divide-line/60`}>
+                  {rest.map((r, i) => {
+                    const me = r.playerId === playerId;
+                    return (
+                      <div key={r.playerId} className={`flex items-center gap-3 px-4 py-2 text-sm ${me ? "text-gold" : ""}`}>
+                        <span className="w-7 text-muted tabular-nums">{i + 4}º</span>
+                        <span className="flex-1 truncate">{nm(r.playerId)}{me && " (você)"}</span>
+                        <span className="font-bold tabular-nums text-gold">{money(r.net)}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+              {/* Destaques */}
+              {awards.length > 0 && (
+                <div>
+                  <div className="text-gold font-semibold text-sm mb-2 text-center flex items-center justify-center gap-1.5"><Medal size={15} /> Destaques</div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    {awards.map((a) => {
+                      const I = AWARD_ICON[a.key] ?? Trophy;
+                      const me = a.playerId === playerId;
+                      return (
+                        <div key={a.key} className={`${C.card} flex items-center gap-2.5 px-3 py-2`}>
+                          <div className="rounded-lg p-1.5 bg-gold/15 text-gold shrink-0"><I size={16} /></div>
+                          <div className="flex-1 min-w-0">
+                            <div className="text-[11px] text-muted">{a.label}</div>
+                            <div className={`truncate text-sm ${me ? "text-gold font-semibold" : ""}`}>{nm(a.playerId)}</div>
+                          </div>
+                          <span className="text-xs text-muted tabular-nums">{a.key === "soldValue" ? money(a.value) : `×${a.value}`}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+              {/* Botões */}
+              <div className="text-center flex gap-3 justify-center">
+                {isHost && <Button variant="primary" onClick={() => send({ type: "PLAY_AGAIN" })}>Jogar novamente</Button>}
+                <Button variant="ghost" onClick={() => window.location.reload()}>Voltar ao menu</Button>
+              </div>
+              <ChatPanel messages={chat} me={playerId} onSend={(t) => send({ type: "CHAT_SEND", text: t })} />
+            </motion.div>
+          );
+        })()}
 
       {/* ---------- Aviso DISCRETO de evento de mercado (canto, não o overlay central) ---------- */}
       <AnimatePresence>
@@ -2796,7 +2783,7 @@ function ChatPanel({
       >
         {messages.length === 0 && (
           <div className="text-xs text-muted">
-            Sem mensagens ainda. Diga oi! 👋
+            Sem mensagens ainda. Diga oi!
           </div>
         )}
         {messages.map((m, i) => (
