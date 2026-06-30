@@ -346,23 +346,7 @@ const C = {
   chip: "px-3 py-1.5 rounded-lg bg-surface-2 border border-line text-sm whitespace-nowrap",
 };
 
-// Tela "desktop" (≥ lg). O 3D (herói, palco, abertura) só roda aqui; abaixo disso usamos o
-// baú 2D e o three.js nem baixa. Reage a redimensionamento (incl. devtools mobile).
-function useIsDesktop(): boolean {
-  const [desktop, setDesktop] = useState(
-    () => typeof window !== "undefined" && window.matchMedia("(min-width: 1024px)").matches,
-  );
-  useEffect(() => {
-    const mq = window.matchMedia("(min-width: 1024px)");
-    const onChange = () => setDesktop(mq.matches);
-    mq.addEventListener("change", onChange);
-    return () => mq.removeEventListener("change", onChange);
-  }, []);
-  return desktop;
-}
-
 export function App() {
-  const isDesktop = useIsDesktop();
   const [name, setName] = useState("");
   const [joinCode, setJoinCode] = useState(INVITE_PARAM); // pré-aplicado se veio por link de convite
   const [phase, setPhase] = useState<Phase>("menu");
@@ -1926,7 +1910,6 @@ export function App() {
                             → open (arrematado). O anel e o carimbo ficam sobrepostos por cima. */}
                         <div className="absolute inset-0">
                           <Lazy3D
-                            enabled={isDesktop}
                             fallback={
                               <motion.div
                                 className="w-full h-full flex items-center justify-center"
@@ -2862,7 +2845,6 @@ export function App() {
                   {/* baú 3D abrindo (a tampa estoura) — fallback 2D sem WebGL */}
                   <div className="w-52 h-52 flex items-center justify-center">
                     <Lazy3D
-                      enabled={isDesktop}
                       fallback={
                         <Chest tier={overlayHead.tier} size={150} open />
                       }
