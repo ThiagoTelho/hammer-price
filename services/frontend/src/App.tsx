@@ -1293,8 +1293,9 @@ export function App() {
                   "radial-gradient(45% 22% at 50% 86%, rgba(0,0,0,0.55), transparent 70%)",
               }}
             >
+              {/* O herói 3D roda TAMBÉM no mobile (com WebGL) — é um momento breve da home.
+                  Sem WebGL cai no baú 2D; durante o load, só a aura (loading). */}
               <Lazy3D
-                enabled={isDesktop}
                 fallback={
                   <div className="h-full flex items-center justify-center">
                     <motion.div
