@@ -46,6 +46,7 @@ import {
   Check,
   Volume2,
   VolumeX,
+  LogOut,
   type LucideIcon,
 } from "lucide-react";
 import { Lazy3D } from "./three/Lazy3D";
@@ -1126,8 +1127,11 @@ export function App() {
   // Botões de controle da partida — reusados: no desktop ficam no card "Você"; no mobile vão
   // para o rodapé da página (evita toque acidental). Espectador só tem "Sair da sala".
   const matchControlButtons = spectating ? (
-    <button className={`${C.btnSmall} w-full`} onClick={leaveRoom}>
-      🚪 Sair da sala
+    <button
+      className={`${C.btnSmall} w-full inline-flex items-center justify-center gap-1.5`}
+      onClick={leaveRoom}
+    >
+      <LogOut size={14} /> Sair da sala
     </button>
   ) : (
     <>
@@ -1192,39 +1196,50 @@ export function App() {
 
   return (
     <div className="max-w-6xl mx-auto px-3 sm:px-5 py-4 sm:py-7 overflow-x-hidden">
-      <header className="flex items-center sm:items-end justify-between gap-2 sm:gap-3 border-b border-line pb-3 sm:pb-4">
+      {/* No GAMEPLAY o header é compacto: sem subtexto, fonte menor e TUDO numa linha só
+          (logo · rodada · sala · cartas · som). Fora dele, mantém o título grande + subtexto. */}
+      <header
+        className={`flex items-center justify-between gap-2 sm:gap-3 border-b border-line pb-3 ${phase === "playing" ? "" : "sm:items-end sm:pb-4"}`}
+      >
         <div className="min-w-0">
-          <h1 className="font-display text-2xl sm:text-4xl font-bold text-gold leading-none flex items-center gap-1.5 sm:gap-2">
-            <Gavel size={40} className="shrink-0 w-7 h-7 sm:w-10 sm:h-10" />{" "}
+          <h1
+            className={`font-display font-bold text-gold leading-none flex items-center gap-1.5 sm:gap-2 text-2xl ${phase === "playing" ? "sm:text-3xl" : "sm:text-4xl"}`}
+          >
+            <Gavel
+              size={40}
+              className={`shrink-0 w-7 h-7 ${phase === "playing" ? "sm:w-8 sm:h-8" : "sm:w-10 sm:h-10"}`}
+            />{" "}
             <span className="truncate">Hammer Price</span>
           </h1>
-          <p className="text-muted text-sm mt-1 hidden sm:block">
-            Leilão de caixas misteriosas em tempo real
-          </p>
+          {phase !== "playing" && (
+            <p className="text-muted text-sm mt-1 hidden sm:block">
+              Leilão de caixas misteriosas em tempo real
+            </p>
+          )}
         </div>
-        <div className="flex items-center sm:items-end gap-2 sm:gap-3 shrink-0">
+        <div className="flex items-center gap-2 sm:gap-3 shrink-0">
           {phase === "playing" && (
-            <div className="text-right">
-              <div className="text-base sm:text-2xl font-bold text-gold tabular-nums whitespace-nowrap">
+            <>
+              <div className="text-sm sm:text-lg font-bold text-gold tabular-nums whitespace-nowrap">
                 <span className="hidden sm:inline">Rodada </span>
                 {Math.min(matchRounds.played + 1, matchRounds.total)}/
                 {matchRounds.total}
               </div>
-              <div className="text-xs text-muted hidden sm:block">
+              <div className="text-xs sm:text-sm text-muted whitespace-nowrap hidden sm:block">
                 Sala {code}
               </div>
-            </div>
+            </>
           )}
           <button
-            className={C.btnSmall}
+            className={`${C.btnSmall} h-9 inline-flex items-center justify-center gap-1.5`}
             onClick={() => setShowCheats(true)}
             title="Cartas (referência)"
           >
-            <Layers size={15} className="inline-block align-[-0.15em]" />
-            <span className="hidden sm:inline"> Cartas</span>
+            <Layers size={15} />
+            <span className="hidden sm:inline">Cartas</span>
           </button>
           <button
-            className={C.btnSmall}
+            className={`${C.btnSmall} h-9 w-9 inline-flex items-center justify-center shrink-0`}
             onClick={toggleMute}
             title={muted ? "Ativar som" : "Silenciar"}
             aria-label={muted ? "Ativar som" : "Silenciar"}
@@ -1664,7 +1679,9 @@ export function App() {
               {/* Controles da partida (desktop; no mobile vão p/ o rodapé). A carteira
                   agora fica na barra horizontal no topo do palco. */}
               {wallet && (
-                <div className={`${C.card} p-4 hidden sm:flex flex-col gap-2`}>
+                <div
+                  className={`${C.card} hidden sm:flex flex-col gap-2 ${!isHost && !spectating ? "h-14 justify-center px-2.5" : "p-3"}`}
+                >
                   {spectating && (
                     <div className="text-center text-xs text-sky-300 bg-sky-500/10 border border-sky-500/30 rounded-lg py-1.5 flex items-center justify-center gap-1.5">
                       <Eye size={13} /> Assistindo
@@ -1840,7 +1857,7 @@ export function App() {
               {/* Carteira na HORIZONTAL no topo do palco (mobile + desktop). */}
               {wallet && (
                 <div
-                  className={`${C.card} px-2 py-2 grid grid-cols-3 divide-x divide-line/60 text-center shrink-0`}
+                  className={`${C.card} px-2 h-14 grid grid-cols-3 items-center divide-x divide-line/60 text-center shrink-0`}
                 >
                   <div className="px-1">
                     <div className="text-[10px] uppercase tracking-wide text-muted flex items-center justify-center gap-1">
@@ -2027,9 +2044,13 @@ export function App() {
                         animate={{ scale: 1 }}
                         className="text-2xl font-bold text-gold mt-0.5"
                       >
-                        {box.currentBid > 0
-                          ? `💰 ${money(box.currentBid)}`
-                          : "sem lances"}
+                        {box.currentBid > 0 ? (
+                          <span className="inline-flex items-center gap-1.5">
+                            <CircleDollarSign size={20} /> {money(box.currentBid)}
+                          </span>
+                        ) : (
+                          "sem lances"
+                        )}
                       </motion.div>
                       <div className="text-sm">
                         líder:{" "}
@@ -2214,20 +2235,26 @@ export function App() {
                             Dar lance
                           </button>
                         </div>
-                        {!iAmLeader && (
-                          <button
-                            className={`${C.btnSmall} w-full`}
-                            onClick={() => {
-                              setFolded(true);
-                              send({ type: "FOLD" });
-                            }}
-                          >
-                            Passar{" "}
-                            {foldState.folded > 0
-                              ? `· ${foldState.folded}/${foldState.total} passaram`
-                              : ""}
-                          </button>
-                        )}
+                        {/* Passar fica sempre visível; DESABILITADO quando você é o líder
+                            (não dá pra passar liderando) em vez de sumir. */}
+                        <button
+                          className={`${C.btnSmall} w-full`}
+                          disabled={iAmLeader}
+                          title={
+                            iAmLeader
+                              ? "Você está liderando — não pode passar"
+                              : ""
+                          }
+                          onClick={() => {
+                            setFolded(true);
+                            send({ type: "FOLD" });
+                          }}
+                        >
+                          Passar{" "}
+                          {foldState.folded > 0
+                            ? `· ${foldState.folded}/${foldState.total} passaram`
+                            : ""}
+                        </button>
                       </div>
                     );
                   })()
@@ -2258,13 +2285,13 @@ export function App() {
 
             {/* ----- DIREITA: DOCK com ABAS (só uma visível por vez) + emotes fixos ----- */}
             <aside className="order-3 flex flex-col gap-2 lg:min-h-0">
-              {/* barra de abas */}
-              <div className="flex gap-1 rounded-xl bg-surface-2/60 border border-line p-1 shrink-0">
+              {/* barra de abas — mesma ALTURA da carteira e dos controles (h-14) */}
+              <div className="flex gap-1 rounded-xl bg-surface-2/60 border border-line p-1 h-14 shrink-0">
                 {MATCH_TABS.map((t) => (
                   <button
                     key={t.key}
                     onClick={() => setMatchTab(t.key)}
-                    className={`flex-1 rounded-lg py-1.5 text-xs font-semibold transition flex items-center justify-center gap-1.5 ${matchTab === t.key ? "bg-gold text-ink" : "text-muted hover:text-stone-200"}`}
+                    className={`flex-1 rounded-lg text-xs font-semibold transition flex items-center justify-center gap-1.5 ${matchTab === t.key ? "bg-gold text-ink" : "text-muted hover:text-stone-200"}`}
                     title={t.label}
                   >
                     <t.icon size={15} />
