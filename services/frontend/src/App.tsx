@@ -210,10 +210,11 @@ const HAND_MAX = 4; // espelha cards.hand_max no balance.yaml (teto da mão; o s
 const BANKRUPTCY_THRESHOLD = 200; // espelha cards.bankruptcy_threshold (Falência só com saldo <= isto)
 const EMOTE_LIST = ["👍", "🔥", "😂", "😱", "🤡", "💰", "🧂", "👀"]; // espelha a whitelist do gateway
 // Abas do "dock" da direita na partida — só uma visível por vez (layout de janela única).
-type MatchTab = "market" | "inventory" | "collections" | "chat";
+type MatchTab = "market" | "collections" | "chat";
+// O inventário deixou de ser aba própria: vira "Seus itens" no Mercado (vender ao preço
+// cotado) e progresso "tem/precisa" nas Coleções — onde o dado do inventário é útil.
 const MATCH_TABS: { key: MatchTab; icon: LucideIcon; label: string }[] = [
   { key: "market", icon: TrendingUp, label: "Mercado" },
-  { key: "inventory", icon: Backpack, label: "Inventário" },
   { key: "collections", icon: Medal, label: "Coleções" },
   { key: "chat", icon: MessageSquare, label: "Chat" },
 ];
@@ -2331,65 +2332,65 @@ export function App() {
                     </div>
                   )}
 
-                {/* Inventário */}
-                {matchTab === "inventory" &&
+                {/* Seus itens (inventário no Mercado): vender ao PREÇO cotado logo acima. */}
+                {matchTab === "market" &&
                   wallet &&
-                  wallet.inventory.length === 0 && (
-                    <div
-                      className={`${C.card} p-4 text-sm text-muted flex items-center gap-2`}
-                    >
-                      <Backpack size={15} /> Sem itens ainda — arremate e abra
-                      um baú.
-                    </div>
-                  )}
-                {matchTab === "inventory" &&
-                  wallet &&
-                  wallet.inventory.length > 0 && (
-                    <div className={`${C.card} p-4 flex flex-col gap-2`}>
-                      <div className="text-sm text-muted flex items-center gap-1.5">
-                        <Backpack size={14} /> Inventário
-                      </div>
-                      {ITEM_ORDER.filter((t) =>
-                        wallet.inventory.some((i) => i.type === t),
-                      ).map((t) => {
-                        const count = wallet.inventory.filter(
-                          (i) => i.type === t,
-                        ).length;
-                        const locked = wallet.inventory.filter(
-                          (i) => i.type === t && i.state !== "FREE",
-                        ).length;
-                        const firstFree = wallet.inventory.find(
-                          (i) => i.type === t && i.state === "FREE",
-                        );
-                        return (
-                          <div
-                            key={t}
-                            className="flex items-center gap-2 text-sm"
-                          >
-                            <span className="flex-1 flex items-center gap-1.5">
-                              <ItemIcon type={t} size={15} /> {ITEM_NAME[t]} ×
-                              {count}
-                              {locked > 0 ? (
-                                <span className="text-muted">
-                                  {" "}
-                                  ({locked} travado{locked > 1 ? "s" : ""})
-                                </span>
-                              ) : (
-                                ""
-                              )}
-                            </span>
-                            <button
-                              className={C.btnSmall}
-                              disabled={!firstFree || spectating}
-                              onClick={() => firstFree && sell(firstFree.id)}
+                  (() => {
+                    const owned = ITEM_ORDER.filter((t) =>
+                      wallet.inventory.some((i) => i.type === t),
+                    );
+                    if (owned.length === 0) return null;
+                    return (
+                      <div className={`${C.card} p-4 flex flex-col gap-2`}>
+                        <div className="text-sm text-muted flex items-center gap-1.5">
+                          <Backpack size={14} /> Seus itens
+                        </div>
+                        {owned.map((t) => {
+                          const free = freeCount(t);
+                          const locked = wallet.inventory.filter(
+                            (i) => i.type === t && i.state !== "FREE",
+                          ).length;
+                          const price = prices[t];
+                          const sellable = PRICED.includes(t) && price != null;
+                          return (
+                            <div
+                              key={t}
+                              className="flex items-center gap-2 text-sm"
                             >
-                              vender
-                            </button>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
+                              <ItemIcon type={t} size={15} />
+                              <span className="flex-1 min-w-0">
+                                {ITEM_NAME[t]}{" "}
+                                <span className="text-muted">×{free}</span>
+                                {locked > 0 && (
+                                  <span className="text-[10px] text-muted">
+                                    {" "}
+                                    (+{locked} travado{locked > 1 ? "s" : ""})
+                                  </span>
+                                )}
+                              </span>
+                              <button
+                                className={`${C.btnSmall} shrink-0`}
+                                disabled={free === 0 || spectating || !sellable}
+                                title={
+                                  sellable
+                                    ? "Vender 1 ao preço de mercado"
+                                    : "Sem cotação — não vende"
+                                }
+                                onClick={() => {
+                                  const f = wallet.inventory.find(
+                                    (i) => i.type === t && i.state === "FREE",
+                                  );
+                                  if (f) sell(f.id);
+                                }}
+                              >
+                                {sellable ? `vender · ${money(price)}` : "—"}
+                              </button>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    );
+                  })()}
 
                 {/* Coleções */}
                 {matchTab === "collections" && wallet && (
@@ -2408,15 +2409,21 @@ export function App() {
                         >
                           <span className="flex-1 flex items-center gap-1 flex-wrap">
                             {c.label}
-                            <span className="text-muted inline-flex items-center gap-1.5">
-                              {Object.entries(c.requires).map(([t, n]) => (
-                                <span
-                                  key={t}
-                                  className="inline-flex items-center gap-0.5"
-                                >
-                                  <ItemIcon type={t} size={12} />×{n}
-                                </span>
-                              ))}
+                            {/* progresso do inventário: tem/precisa (verde quando completa o requisito) */}
+                            <span className="inline-flex items-center gap-1.5">
+                              {Object.entries(c.requires).map(([t, n]) => {
+                                const have = freeCount(t);
+                                const ok = have >= n;
+                                return (
+                                  <span
+                                    key={t}
+                                    className={`inline-flex items-center gap-0.5 tabular-nums ${ok ? "text-emerald-400" : "text-muted"}`}
+                                  >
+                                    <ItemIcon type={t} size={12} />
+                                    {have}/{n}
+                                  </span>
+                                );
+                              })}
                             </span>
                           </span>
                           <span className="text-gold">+{money(c.bonus)}</span>
