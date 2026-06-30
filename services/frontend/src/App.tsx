@@ -1304,8 +1304,15 @@ export function App() {
                         background:
                           "radial-gradient(closest-side, rgba(255,203,46,0.20), transparent 70%)",
                       }}
-                      animate={{ opacity: [0.35, 0.8, 0.35], scale: [0.94, 1.06, 0.94] }}
-                      transition={{ repeat: Infinity, duration: 1.6, ease: "easeInOut" }}
+                      animate={{
+                        opacity: [0.35, 0.8, 0.35],
+                        scale: [0.94, 1.06, 0.94],
+                      }}
+                      transition={{
+                        repeat: Infinity,
+                        duration: 1.6,
+                        ease: "easeInOut",
+                      }}
                     />
                   </div>
                 }
@@ -1468,7 +1475,7 @@ export function App() {
               </label>
               <input
                 className={`${C.input} mt-1`}
-                placeholder="ex.: ana"
+                placeholder="ex.: Ana"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 autoFocus={!!INVITE_PARAM}
@@ -1839,17 +1846,25 @@ export function App() {
                     <div className="text-[10px] uppercase tracking-wide text-muted flex items-center justify-center gap-1">
                       <Wallet size={11} /> Saldo
                     </div>
-                    <b className="text-gold tabular-nums">{money(wallet.balance)}</b>
+                    <b className="text-gold tabular-nums">
+                      {money(wallet.balance)}
+                    </b>
                   </div>
                   <div className="px-1">
                     <div className="text-[10px] uppercase tracking-wide text-muted flex items-center justify-center gap-1">
                       <Lock size={11} /> Reservado
                     </div>
-                    <span className="tabular-nums">{money(wallet.reserved)}</span>
+                    <span className="tabular-nums">
+                      {money(wallet.reserved)}
+                    </span>
                   </div>
                   <div className="px-1">
                     <div className="text-[10px] uppercase tracking-wide text-muted flex items-center justify-center gap-1">
-                      <CircleDollarSign size={11} className="text-emerald-400" /> Gastável
+                      <CircleDollarSign
+                        size={11}
+                        className="text-emerald-400"
+                      />{" "}
+                      Gastável
                     </div>
                     <b className="text-emerald-400 tabular-nums">
                       {money(wallet.balance - wallet.reserved)}

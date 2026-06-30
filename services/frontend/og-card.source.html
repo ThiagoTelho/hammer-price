@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Bungee&family=Baloo+2:wght@500;600;700;800&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      html, body { width: 1200px; height: 630px; }
+      body {
+        font-family: "Baloo 2", system-ui, sans-serif;
+        color: #ece9ff;
+        background:
+          radial-gradient(900px 520px at 78% 38%, rgba(255, 210, 74, 0.16), transparent 60%),
+          radial-gradient(1200px 600px at 50% -12%, rgba(124, 92, 255, 0.22), transparent 60%),
+          radial-gradient(900px 520px at 92% 6%, rgba(255, 93, 177, 0.12), transparent 60%),
+          #0a0918;
+        overflow: hidden;
+        position: relative;
+      }
+      /* vinheta nas bordas */
+      .vignette {
+        position: absolute; inset: 0;
+        box-shadow: inset 0 0 160px 40px rgba(0, 0, 0, 0.55);
+        pointer-events: none;
+      }
+      .frame {
+        position: absolute; inset: 22px;
+        border: 1.5px solid rgba(57, 49, 102, 0.7);
+        border-radius: 28px;
+        pointer-events: none;
+      }
+      .wrap {
+        position: relative; z-index: 2;
+        height: 100%;
+        display: flex; align-items: center;
+        padding: 0 76px;
+        gap: 28px;
+      }
+      .left { flex: 1; min-width: 0; }
+      .eyebrow {
+        display: inline-flex; align-items: center; gap: 10px;
+        font-weight: 700; font-size: 19px; letter-spacing: 0.16em;
+        text-transform: uppercase; color: #ffcb2e;
+        background: rgba(255, 203, 46, 0.1);
+        border: 1px solid rgba(255, 203, 46, 0.32);
+        padding: 8px 16px; border-radius: 999px;
+      }
+      .gavel { width: 22px; height: 22px; }
+      h1 {
+        font-family: "Bungee", sans-serif;
+        font-size: 118px; line-height: 0.92; letter-spacing: 0.01em;
+        margin: 26px 0 0;
+        background: linear-gradient(180deg, #ffe08a 0%, #ffcb2e 58%, #e8a916 100%);
+        -webkit-background-clip: text; background-clip: text; color: transparent;
+        filter: drop-shadow(0 6px 22px rgba(255, 180, 40, 0.35));
+      }
+      .tagline {
+        font-weight: 800; font-size: 38px; margin-top: 22px; color: #fff3cf;
+        letter-spacing: 0.01em;
+      }
+      .tagline b { color: #ffcb2e; }
+      .sub {
+        font-size: 24px; color: #a39fc9; margin-top: 14px; max-width: 560px;
+        line-height: 1.32;
+      }
+      .dots { display: flex; gap: 14px; margin-top: 30px; align-items: center; }
+      .dot { width: 17px; height: 17px; border-radius: 999px; }
+      .dots span.lbl { font-size: 15px; color: #6f6a99; letter-spacing: 0.14em; text-transform: uppercase; margin-left: 6px; }
+
+      /* baú à direita, com halo e brilhos */
+      .right { position: relative; width: 430px; height: 100%; display: flex; align-items: center; justify-content: center; }
+      .halo {
+        position: absolute; width: 430px; height: 430px; border-radius: 999px;
+        background: radial-gradient(closest-side, rgba(255, 210, 74, 0.34), transparent 70%);
+        filter: blur(6px);
+      }
+      .crate { position: relative; width: 380px; height: 380px; filter: drop-shadow(0 26px 40px rgba(0, 0, 0, 0.55)); }
+      .spark { position: absolute; border-radius: 999px; background: #ffe08a; box-shadow: 0 0 10px 2px rgba(255, 224, 138, 0.8); }
+    </style>
+  </head>
+  <body>
+    <div class="vignette"></div>
+    <div class="frame"></div>
+    <div class="wrap">
+      <div class="left">
+        <div class="eyebrow">
+          <svg class="gavel" viewBox="0 0 24 24" fill="none" stroke="#ffcb2e" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m14 13-7.5 7.5a2.12 2.12 0 1 1-3-3L11 10"/><path d="m16 16 6-6"/><path d="m8 8 6-6"/><path d="m9 7 8 8"/><path d="m21 11-8-8"/></svg>
+          Leilão em tempo real
+        </div>
+        <h1>HAMMER<br />PRICE</h1>
+        <div class="tagline"><b>Arremate.</b> Abra. <b>Enriqueça.</b></div>
+        <div class="sub">Leilão de baús misteriosos em tempo real — dispute cada lote, abra o que ganhar e jogue cartas para virar o jogo.</div>
+        <div class="dots">
+          <div class="dot" style="background:#9fb4cc"></div>
+          <div class="dot" style="background:#34d6ee"></div>
+          <div class="dot" style="background:#a78bfa"></div>
+          <div class="dot" style="background:#ff5db1"></div>
+          <div class="dot" style="background:#ffd24a"></div>
+          <span class="lbl">comum → lendário</span>
+        </div>
+      </div>
+      <div class="right">
+        <div class="halo"></div>
+        <div class="spark" style="width:9px;height:9px;top:60px;left:30px"></div>
+        <div class="spark" style="width:6px;height:6px;top:120px;left:380px"></div>
+        <div class="spark" style="width:7px;height:7px;top:300px;left:60px"></div>
+        <div class="spark" style="width:5px;height:5px;top:340px;left:350px"></div>
+        <div class="spark" style="width:8px;height:8px;top:30px;left:240px"></div>
+        <svg class="crate" viewBox="0 0 100 100">
+          <defs>
+            <linearGradient id="body" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0" stop-color="#e6b531" />
+              <stop offset="1" stop-color="#a9791b" />
+            </linearGradient>
+            <radialGradient id="gem">
+              <stop offset="0" stop-color="#ffffff" />
+              <stop offset="0.45" stop-color="#ffd24a" />
+              <stop offset="1" stop-color="#5e4108" />
+            </radialGradient>
+          </defs>
+          <ellipse cx="50" cy="92" rx="33" ry="4.5" fill="rgba(0,0,0,0.45)" />
+          <rect x="18" y="54" width="64" height="32" rx="5" fill="url(#body)" stroke="#5e4108" stroke-width="2.5" />
+          <rect x="30" y="54" width="5" height="32" fill="#5e4108" opacity="0.8" />
+          <rect x="65" y="54" width="5" height="32" fill="#5e4108" opacity="0.8" />
+          <rect x="44.5" y="62" width="11" height="13" rx="2" fill="#fff0b0" stroke="#5e4108" stroke-width="1" />
+          <circle cx="50" cy="67" r="2.1" fill="#5e4108" />
+          <rect x="49" y="67.5" width="2" height="4.5" fill="#5e4108" />
+          <path d="M18 54 Q18 36 50 36 Q82 36 82 54 Z" fill="url(#body)" stroke="#5e4108" stroke-width="2.5" />
+          <rect x="30" y="40" width="5" height="14" fill="#5e4108" opacity="0.8" />
+          <rect x="65" y="40" width="5" height="14" fill="#5e4108" opacity="0.8" />
+          <circle cx="50" cy="46" r="5.6" fill="url(#gem)" stroke="#fff0b0" stroke-width="1.2" />
+        </svg>
+      </div>
+    </div>
+  </body>
+</html>
