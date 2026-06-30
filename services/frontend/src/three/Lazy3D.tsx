@@ -25,11 +25,14 @@ class Boundary extends Component<{ fallback: ReactNode; children: ReactNode }, {
   }
 }
 
-export function Lazy3D({ children, fallback }: { children: ReactNode; fallback: ReactNode }) {
+// `fallback` aparece SEM WebGL e em erro (o baú 2D). `loading` é o que aparece enquanto o
+// chunk do three.js baixa — onde NÃO queremos o baú 2D piscando antes do 3D (ex.: herói do
+// menu): passe um placeholder neutro. Sem `loading`, usa o próprio `fallback`.
+export function Lazy3D({ children, fallback, loading }: { children: ReactNode; fallback: ReactNode; loading?: ReactNode }) {
   if (!webglAvailable()) return <>{fallback}</>;
   return (
     <Boundary fallback={fallback}>
-      <Suspense fallback={fallback}>{children}</Suspense>
+      <Suspense fallback={loading ?? fallback}>{children}</Suspense>
     </Boundary>
   );
 }

@@ -1,6 +1,13 @@
 // Mesa de leilão do Hammer Price — tema "casa de leilão" (escuro + dourado, Tailwind).
 // Fluxo: menu (criar/entrar) → lobby → partida (rodadas + HUD) → ranking final.
-import { useEffect, useRef, useState, useCallback, lazy, type ReactNode } from "react";
+import {
+  useEffect,
+  useRef,
+  useState,
+  useCallback,
+  lazy,
+  type ReactNode,
+} from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import * as sfx from "./sound";
 import { Chest, tierLabel, tierLight } from "./Chest";
@@ -10,10 +17,35 @@ import { Button, RarityBadge } from "./ui";
 import { boxRarity } from "./rarity";
 import { ItemIcon } from "./icons";
 import {
-  User, Lock, Wallet, CircleDollarSign, TrendingUp, Backpack, Medal, MessageSquare,
-  Layers, Users, Trophy, Dice5, Skull, Clock, Eye, Hand, TrendingDown,
-  Gavel as GavelIcon, Ban, Copy, ShieldCheck, Shield, Package, Crown, Link2, Gem, Coins,
-  Check, type LucideIcon,
+  User,
+  Lock,
+  Wallet,
+  CircleDollarSign,
+  TrendingUp,
+  Backpack,
+  Medal,
+  MessageSquare,
+  Layers,
+  Users,
+  Trophy,
+  Dice5,
+  Skull,
+  Clock,
+  Eye,
+  Hand,
+  TrendingDown,
+  Gavel as GavelIcon,
+  Ban,
+  Copy,
+  ShieldCheck,
+  Shield,
+  Package,
+  Crown,
+  Link2,
+  Gem,
+  Coins,
+  Check,
+  type LucideIcon,
 } from "lucide-react";
 import { Lazy3D } from "./three/Lazy3D";
 
@@ -337,7 +369,15 @@ export function App() {
     players: string[];
   }>({ status: "WAITING", host: "", players: [] });
   const [ranking, setRanking] = useState<RankRow[]>([]);
-  const [awards, setAwards] = useState<{ key: string; label: string; emoji: string; playerId: string; value: number }[]>([]);
+  const [awards, setAwards] = useState<
+    {
+      key: string;
+      label: string;
+      emoji: string;
+      playerId: string;
+      value: number;
+    }[]
+  >([]);
   const [roundsToCreate, setRoundsToCreate] = useState(16);
   const [matchRounds, setMatchRounds] = useState({ played: 0, total: 0 });
   const [intermission, setIntermission] = useState<{ endsAt: number } | null>(
@@ -351,7 +391,9 @@ export function App() {
   const [chat, setChat] = useState<
     { player: string; text: string; ts: number }[]
   >([]);
-  const [floatingEmotes, setFloatingEmotes] = useState<{ id: number; player: string; emoji: string }[]>([]);
+  const [floatingEmotes, setFloatingEmotes] = useState<
+    { id: number; player: string; emoji: string }[]
+  >([]);
   const emoteIdRef = useRef(0);
   const [nextCardPrice, setNextCardPrice] = useState(0);
   const [cardEffects, setCardEffects] = useState<{
@@ -380,9 +422,19 @@ export function App() {
   const [box, setBox] = useState<Box | null>(null);
   const [prices, setPrices] = useState<Record<string, number>>({});
   const [priceHist, setPriceHist] = useState<Record<string, number[]>>({}); // histórico p/ tendência + sparkline
-  const [marketEvent, setMarketEvent] = useState<{ kind: string; label: string; emoji: string; desc: string; endsAt: number } | null>(null);
+  const [marketEvent, setMarketEvent] = useState<{
+    kind: string;
+    label: string;
+    emoji: string;
+    desc: string;
+    endsAt: number;
+  } | null>(null);
   const lastEventKindRef = useRef<string>(""); // p/ disparar o aviso só quando um evento NOVO começa
-  const [marketToast, setMarketToast] = useState<{ kind: string; label: string; desc: string } | null>(null); // aviso DISCRETO de canto
+  const [marketToast, setMarketToast] = useState<{
+    kind: string;
+    label: string;
+    desc: string;
+  } | null>(null); // aviso DISCRETO de canto
   const marketToastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [wallet, setWallet] = useState<Wallet | null>(null);
   const [wonBoxes, setWonBoxes] = useState<
@@ -553,7 +605,8 @@ export function App() {
             setAwards(msg.awards ?? []);
             setPhase("ended");
             // Confete p/ o campeão (1º lugar do ranking).
-            if (msg.ranking?.[0]?.playerId === playerIdRef.current) fireConfetti();
+            if (msg.ranking?.[0]?.playerId === playerIdRef.current)
+              fireConfetti();
             break;
           case "WELCOME":
             setRound(msg.round ?? 0);
@@ -620,8 +673,16 @@ export function App() {
           case "EMOTE": {
             // Reação rápida: flutua um emoji que sobe e some, com o nome/cor do remetente.
             const id = ++emoteIdRef.current;
-            setFloatingEmotes((prev) => [...prev, { id, player: msg.player, emoji: msg.emoji }].slice(-12));
-            setTimeout(() => setFloatingEmotes((prev) => prev.filter((e) => e.id !== id)), 2600);
+            setFloatingEmotes((prev) =>
+              [...prev, { id, player: msg.player, emoji: msg.emoji }].slice(
+                -12,
+              ),
+            );
+            setTimeout(
+              () =>
+                setFloatingEmotes((prev) => prev.filter((e) => e.id !== id)),
+              2600,
+            );
             break;
           }
           case "SPECTATING":
@@ -674,7 +735,11 @@ export function App() {
             enqueueOverlay({
               kind: "flash",
               flashKind: "win",
-              icon: mine ? <Trophy size={72} className="text-gold" /> : <GavelIcon size={60} className="text-gold-soft" />,
+              icon: mine ? (
+                <Trophy size={72} className="text-gold" />
+              ) : (
+                <GavelIcon size={60} className="text-gold-soft" />
+              ),
               title: mine ? "Você arrematou!" : `${nm(msg.winner)} arrematou`,
               sub: `${tierLabel(msg.boxType)} por ${money(msg.price)}`,
               durationMs: 2200,
@@ -795,8 +860,12 @@ export function App() {
               // Evento de mercado NOVO → aviso DISCRETO de canto (NÃO o overlay central das outras
               // ações). Some sozinho; o selo persistente fica no painel Mercado do dock.
               setMarketToast({ kind, label: ev.label, desc: ev.desc });
-              if (marketToastTimer.current) clearTimeout(marketToastTimer.current);
-              marketToastTimer.current = setTimeout(() => setMarketToast(null), 5000);
+              if (marketToastTimer.current)
+                clearTimeout(marketToastTimer.current);
+              marketToastTimer.current = setTimeout(
+                () => setMarketToast(null),
+                5000,
+              );
               addLog(`Evento de mercado: ${ev.label} — ${ev.desc}`);
             }
             lastEventKindRef.current = kind;
@@ -837,9 +906,7 @@ export function App() {
                 ? "você"
                 : nm(msg.target)
               : "";
-            addLog(
-              `${who} usou ${d.label}${tgt ? ` em ${tgt}` : ""}`,
-            );
+            addLog(`${who} usou ${d.label}${tgt ? ` em ${tgt}` : ""}`);
             enqueueOverlay({
               kind: "flash",
               flashKind: "win",
@@ -1200,14 +1267,40 @@ export function App() {
                 (substitui a sombra de contato 3D, que cintilava) e some sob o palco/headline. */}
             <div
               className="relative w-full h-56 sm:h-80 -mb-2"
-              style={{ background: "radial-gradient(45% 22% at 50% 86%, rgba(0,0,0,0.55), transparent 70%)" }}
+              style={{
+                background:
+                  "radial-gradient(45% 22% at 50% 86%, rgba(0,0,0,0.55), transparent 70%)",
+              }}
             >
               <Lazy3D
                 fallback={
                   <div className="h-full flex items-center justify-center">
-                    <motion.div animate={{ y: [0, -10, 0] }} transition={{ repeat: Infinity, duration: 3, ease: "easeInOut" }}>
+                    <motion.div
+                      animate={{ y: [0, -10, 0] }}
+                      transition={{
+                        repeat: Infinity,
+                        duration: 3,
+                        ease: "easeInOut",
+                      }}
+                    >
                       <Chest tier="JACKPOT" size={180} />
                     </motion.div>
+                  </div>
+                }
+                // Enquanto o three.js baixa: só a AURA do baú (sem o baú 2D piscando antes do 3D).
+                loading={
+                  <div className="h-full flex items-center justify-center">
+                    <motion.div
+                      className="rounded-full"
+                      style={{
+                        width: 170,
+                        height: 170,
+                        background:
+                          "radial-gradient(closest-side, rgba(255,203,46,0.20), transparent 70%)",
+                      }}
+                      animate={{ opacity: [0.35, 0.8, 0.35], scale: [0.94, 1.06, 0.94] }}
+                      transition={{ repeat: Infinity, duration: 1.6, ease: "easeInOut" }}
+                    />
                   </div>
                 }
               >
@@ -1217,7 +1310,12 @@ export function App() {
             <motion.h2
               initial={{ y: 16, opacity: 0 }}
               animate={{ y: 0, opacity: 1 }}
-              transition={{ delay: 0.05, type: "spring", stiffness: 120, damping: 16 }}
+              transition={{
+                delay: 0.05,
+                type: "spring",
+                stiffness: 120,
+                damping: 16,
+              }}
               className="mx-auto max-w-[14ch] sm:max-w-none px-2 font-arcade text-2xl sm:text-4xl leading-tight tracking-tight bg-gradient-to-b from-gold-soft to-gold bg-clip-text text-transparent drop-shadow-[0_3px_14px_rgba(255,203,46,0.35)]"
             >
               Arremate. Abra. Enriqueça.
@@ -1243,37 +1341,43 @@ export function App() {
               Os baús
             </h3>
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
-              {["WOODEN", "IRON", "ROYAL", "VAULT", "JACKPOT", "MYSTERY"].map((t, i) => {
-                const r = boxRarity(t);
-                return (
-                  <motion.div
-                    key={t}
-                    initial={{ y: 18, opacity: 0 }}
-                    animate={{ y: 0, opacity: 1 }}
-                    transition={{ delay: 0.1 + i * 0.07 }}
-                    className="flex flex-col items-center gap-2 rounded-2xl border bg-surface/60 p-4"
-                    style={{
-                      ["--rarity" as string]: tierLight(t),
-                      borderColor: `color-mix(in srgb, ${r.color} 35%, var(--color-line))`,
-                      boxShadow: `0 0 26px -12px ${r.glow}`,
-                    }}
-                  >
+              {["WOODEN", "IRON", "ROYAL", "VAULT", "JACKPOT", "MYSTERY"].map(
+                (t, i) => {
+                  const r = boxRarity(t);
+                  return (
                     <motion.div
-                      animate={{ y: [0, -5, 0] }}
-                      transition={{ repeat: Infinity, duration: 2.6 + i * 0.2, ease: "easeInOut" }}
+                      key={t}
+                      initial={{ y: 18, opacity: 0 }}
+                      animate={{ y: 0, opacity: 1 }}
+                      transition={{ delay: 0.1 + i * 0.07 }}
+                      className="flex flex-col items-center gap-2 rounded-2xl border bg-surface/60 p-4"
+                      style={{
+                        ["--rarity" as string]: tierLight(t),
+                        borderColor: `color-mix(in srgb, ${r.color} 35%, var(--color-line))`,
+                        boxShadow: `0 0 26px -12px ${r.glow}`,
+                      }}
                     >
-                      <Chest tier={t} size={64} />
+                      <motion.div
+                        animate={{ y: [0, -5, 0] }}
+                        transition={{
+                          repeat: Infinity,
+                          duration: 2.6 + i * 0.2,
+                          ease: "easeInOut",
+                        }}
+                      >
+                        <Chest tier={t} size={64} />
+                      </motion.div>
+                      <div className="font-display font-bold text-sm text-stone-100">
+                        {tierLabel(t)}
+                      </div>
+                      <RarityBadge type={t} />
+                      <div className="text-[11px] text-muted text-center leading-snug">
+                        {TIER_HINT[t]}
+                      </div>
                     </motion.div>
-                    <div className="font-display font-bold text-sm text-stone-100">
-                      {tierLabel(t)}
-                    </div>
-                    <RarityBadge type={t} />
-                    <div className="text-[11px] text-muted text-center leading-snug">
-                      {TIER_HINT[t]}
-                    </div>
-                  </motion.div>
-                );
-              })}
+                  );
+                },
+              )}
             </div>
             <p className="text-center text-[11px] text-muted mt-3">
               Cada baú mostra as probabilidades reais de prêmio antes do lance.
@@ -1294,7 +1398,9 @@ export function App() {
                   transition={{ delay: 0.12 + i * 0.07 }}
                   className="rounded-2xl border border-line bg-surface/60 p-4 text-center"
                 >
-                  <div className="flex justify-center text-gold"><s.Icon size={28} /></div>
+                  <div className="flex justify-center text-gold">
+                    <s.Icon size={28} />
+                  </div>
                   <div className="font-semibold text-sm text-stone-100 mt-2">
                     {s.title}
                   </div>
@@ -1390,7 +1496,7 @@ export function App() {
                 connect({ kind: "create", rounds: roundsToCreate })
               }
             >
-              🔨 Criar sala
+              Criar sala
             </button>
             <div className="flex items-center gap-3 text-muted text-xs">
               <span className="h-px flex-1 bg-line" /> ou entre numa sala{" "}
@@ -1427,23 +1533,54 @@ export function App() {
         >
           {/* Código da sala */}
           <div className={`${C.card} p-6 text-center`}>
-            <p className="text-[11px] uppercase tracking-[0.2em] text-muted">Código da sala</p>
+            <p className="text-[11px] uppercase tracking-[0.2em] text-muted">
+              Código da sala
+            </p>
             <div className="font-arcade text-4xl sm:text-5xl tracking-[0.18em] bg-gradient-to-b from-gold-soft to-gold bg-clip-text text-transparent my-3 drop-shadow-[0_2px_12px_rgba(255,203,46,0.3)]">
               {code}
             </div>
             <div className="flex gap-2 justify-center">
-              <button className={`${C.btnSmall} text-xs inline-flex items-center gap-1.5`} onClick={copyCode} title="Copiar o código">
-                {copiedCode ? <><Check size={13} /> copiado</> : <><Copy size={13} /> código</>}
+              <button
+                className={`${C.btnSmall} text-xs inline-flex items-center gap-1.5`}
+                onClick={copyCode}
+                title="Copiar o código"
+              >
+                {copiedCode ? (
+                  <>
+                    <Check size={13} /> copiado
+                  </>
+                ) : (
+                  <>
+                    <Copy size={13} /> código
+                  </>
+                )}
               </button>
-              <button className={`${C.btnSmall} text-xs inline-flex items-center gap-1.5`} onClick={copyInvite} title="Copiar link de convite">
-                {copiedInvite ? <><Check size={13} /> link copiado</> : <><Link2 size={13} /> convite</>}
+              <button
+                className={`${C.btnSmall} text-xs inline-flex items-center gap-1.5`}
+                onClick={copyInvite}
+                title="Copiar link de convite"
+              >
+                {copiedInvite ? (
+                  <>
+                    <Check size={13} /> link copiado
+                  </>
+                ) : (
+                  <>
+                    <Link2 size={13} /> convite
+                  </>
+                )}
               </button>
             </div>
-            <p className="text-muted text-xs mt-3">Compartilhe o código ou o link. A partida exige ao menos 2 jogadores.</p>
+            <p className="text-muted text-xs mt-3">
+              Compartilhe o código ou o link. A partida exige ao menos 2
+              jogadores.
+            </p>
           </div>
           {/* Jogadores */}
           <div className={`${C.card} p-4`}>
-            <div className="text-sm text-muted mb-3 flex items-center gap-1.5"><Users size={14} /> Jogadores ({lobby.players.length}/15)</div>
+            <div className="text-sm text-muted mb-3 flex items-center gap-1.5">
+              <Users size={14} /> Jogadores ({lobby.players.length}/15)
+            </div>
             <div className="flex flex-wrap gap-2">
               {lobby.players.map((p) => {
                 const me = p === playerId;
@@ -1455,7 +1592,11 @@ export function App() {
                   >
                     {host && <Crown size={13} className="text-gold" />}
                     {nm(p)}
-                    {me && <span className="text-[10px] text-muted font-normal">(você)</span>}
+                    {me && (
+                      <span className="text-[10px] text-muted font-normal">
+                        (você)
+                      </span>
+                    )}
                   </div>
                 );
               })}
@@ -1464,10 +1605,23 @@ export function App() {
           {/* Controles do host */}
           {isHost ? (
             <div className="flex flex-col gap-2">
-              <Button variant="primary" size="lg" className="w-full" disabled={lobby.players.length < 2} onClick={() => send({ type: "START_MATCH" })}>
-                {lobby.players.length < 2 ? "Aguardando jogadores…" : "Iniciar partida"}
+              <Button
+                variant="primary"
+                size="lg"
+                className="w-full"
+                disabled={lobby.players.length < 2}
+                onClick={() => send({ type: "START_MATCH" })}
+              >
+                {lobby.players.length < 2
+                  ? "Aguardando jogadores…"
+                  : "Iniciar partida"}
               </Button>
-              <Button variant="danger" size="sm" className="w-full" onClick={() => send({ type: "CLOSE_ROOM" })}>
+              <Button
+                variant="danger"
+                size="sm"
+                className="w-full"
+                onClick={() => send({ type: "CLOSE_ROOM" })}
+              >
                 Encerrar sala
               </Button>
             </div>
@@ -1492,18 +1646,30 @@ export function App() {
             <aside className="order-2 lg:order-1 flex flex-col gap-3 lg:min-h-0 lg:overflow-y-auto lg:pr-1">
               {wallet && (
                 <div className={`${C.card} p-4`}>
-                  <div className="text-sm text-muted mb-2 flex items-center gap-1.5"><User size={14} /> Você</div>
+                  <div className="text-sm text-muted mb-2 flex items-center gap-1.5">
+                    <User size={14} /> Você
+                  </div>
                   <div className="flex flex-col gap-1.5 text-sm">
                     <div className="flex justify-between">
-                      <span className="text-muted flex items-center gap-1.5"><Wallet size={13} /> Saldo</span>
+                      <span className="text-muted flex items-center gap-1.5">
+                        <Wallet size={13} /> Saldo
+                      </span>
                       <b className="text-gold">{money(wallet.balance)}</b>
                     </div>
                     <div className="flex justify-between">
-                      <span className="text-muted flex items-center gap-1.5"><Lock size={13} /> Reservado</span>
+                      <span className="text-muted flex items-center gap-1.5">
+                        <Lock size={13} /> Reservado
+                      </span>
                       <span>{money(wallet.reserved)}</span>
                     </div>
                     <div className="flex justify-between">
-                      <span className="text-muted flex items-center gap-1.5"><CircleDollarSign size={13} className="text-emerald-400" /> Gastável</span>
+                      <span className="text-muted flex items-center gap-1.5">
+                        <CircleDollarSign
+                          size={13}
+                          className="text-emerald-400"
+                        />{" "}
+                        Gastável
+                      </span>
                       <b className="text-emerald-400">
                         {money(wallet.balance - wallet.reserved)}
                       </b>
@@ -1525,7 +1691,9 @@ export function App() {
               {wallet && (
                 <div className={`${C.card} p-4 flex flex-col gap-2`}>
                   <div className="flex items-center justify-between">
-                    <span className="text-sm text-muted flex items-center gap-1.5"><Layers size={14} /> Cartas</span>
+                    <span className="text-sm text-muted flex items-center gap-1.5">
+                      <Layers size={14} /> Cartas
+                    </span>
                     {!spectating &&
                       (() => {
                         const handFull = wallet.cards.length >= HAND_MAX;
@@ -1645,7 +1813,9 @@ export function App() {
               {/* Mesa — só nome + dinheiro de cada jogador (sem revelar itens/lances) */}
               {players.length > 0 && (
                 <div className={`${C.card} p-4`}>
-                  <div className="text-sm text-muted mb-2 flex items-center gap-1.5"><Users size={14} /> Mesa</div>
+                  <div className="text-sm text-muted mb-2 flex items-center gap-1.5">
+                    <Users size={14} /> Mesa
+                  </div>
                   <div className="flex flex-col gap-1">
                     {[...players]
                       .sort((a, b) => b.money - a.money)
@@ -1659,7 +1829,14 @@ export function App() {
                           >
                             {nm(p.id)}
                             {p.id === playerId ? " (você)" : ""}
-                            {p.spectating ? <Eye size={12} className="inline-block ml-1 align-[-0.1em]" /> : ""}
+                            {p.spectating ? (
+                              <Eye
+                                size={12}
+                                className="inline-block ml-1 align-[-0.1em]"
+                              />
+                            ) : (
+                              ""
+                            )}
                           </span>
                           <span className="whitespace-nowrap">
                             <b className="text-gold">{money(p.money)}</b>
@@ -1712,7 +1889,11 @@ export function App() {
                         {/* pedestal de luz da raridade — "aterra" o baú e o integra ao palco */}
                         <div
                           className="absolute left-1/2 -translate-x-1/2 bottom-3 w-3/5 h-10 rounded-[100%] blur-lg pointer-events-none"
-                          style={{ background: "radial-gradient(closest-side, var(--rarity), transparent 72%)", opacity: 0.55 }}
+                          style={{
+                            background:
+                              "radial-gradient(closest-side, var(--rarity), transparent 72%)",
+                            opacity: 0.55,
+                          }}
                         />
                         {/* Baú 3D no palco (fallback 2D sem WebGL). Reage: idle → tension (lance)
                             → open (arrematado). O anel e o carimbo ficam sobrepostos por cima. */}
@@ -1722,7 +1903,11 @@ export function App() {
                               <motion.div
                                 className="w-full h-full flex items-center justify-center"
                                 animate={{ y: [0, -7, 0] }}
-                                transition={{ repeat: Infinity, duration: 2.4, ease: "easeInOut" }}
+                                transition={{
+                                  repeat: Infinity,
+                                  duration: 2.4,
+                                  ease: "easeInOut",
+                                }}
                               >
                                 <Chest tier={box.boxType} size={130} />
                               </motion.div>
@@ -1801,9 +1986,13 @@ export function App() {
                       </div>
                       <div className="text-[11px] text-stone-400 flex items-center justify-center flex-wrap gap-x-2.5 gap-y-0.5">
                         {box.boxType === "MYSTERY" ? (
-                          <span className="flex items-center gap-1.5"><Dice5 size={13} /> Odds ocultas — pura sorte</span>
+                          <span className="flex items-center gap-1.5">
+                            <Dice5 size={13} /> Odds ocultas — pura sorte
+                          </span>
                         ) : (
-                          ITEM_ORDER.filter((k) => (box.odds?.[k] ?? 0) > 0).map((k) => (
+                          ITEM_ORDER.filter(
+                            (k) => (box.odds?.[k] ?? 0) > 0,
+                          ).map((k) => (
                             <span key={k} className="flex items-center gap-1">
                               <ItemIcon type={k} size={13} /> {box.odds[k]}%
                             </span>
@@ -1830,7 +2019,8 @@ export function App() {
                       </div>
                       {foldState.folded > 0 && (
                         <div className="text-xs text-stone-400 flex items-center justify-center gap-1.5">
-                          <Hand size={12} /> {foldState.folded}/{foldState.total} passaram
+                          <Hand size={12} /> {foldState.folded}/
+                          {foldState.total} passaram
                         </div>
                       )}
                       <div className="h-6 flex items-center">
@@ -1850,7 +2040,9 @@ export function App() {
                           return (
                             <div className="text-sm text-muted tabular-nums flex items-center gap-1.5 justify-center">
                               {box.leader ? (
-                                <><Clock size={13} /> {boxCountdown(box)}</>
+                                <>
+                                  <Clock size={13} /> {boxCountdown(box)}
+                                </>
                               ) : (
                                 "aguardando o 1º lance…"
                               )}
@@ -1898,7 +2090,9 @@ export function App() {
                 <div className="rounded-lg border border-fuchsia-500/40 bg-fuchsia-500/10 px-3 py-2 text-center text-sm text-fuchsia-200 flex items-center justify-center gap-1.5 flex-wrap">
                   <Eye size={14} /> Visão: esta caixa vai dar{" "}
                   {insight.item === "MIMIC" ? (
-                    <b className="text-red-300 inline-flex items-center gap-1">um MÍMICO <Skull size={13} /></b>
+                    <b className="text-red-300 inline-flex items-center gap-1">
+                      um MÍMICO <Skull size={13} />
+                    </b>
                   ) : (
                     <b className="text-fuchsia-100">
                       {insight.quantity}×{" "}
@@ -1917,7 +2111,9 @@ export function App() {
                     animate={{ opacity: 1, scale: 1 }}
                     className="rounded-2xl border-2 border-red-700/70 bg-red-950/70 p-4 text-center shake"
                   >
-                    <div className="flex justify-center"><Ban size={40} className="text-red-400" /></div>
+                    <div className="flex justify-center">
+                      <Ban size={40} className="text-red-400" />
+                    </div>
                     <div className="font-display text-xl text-red-300 mt-1">
                       Você está BLOQUEADO
                     </div>
@@ -2020,7 +2216,9 @@ export function App() {
                   animate={{ scale: 1, opacity: 1 }}
                   className="bg-gold/10 border border-gold-dim rounded-xl px-4 py-3 flex flex-wrap items-center gap-2 justify-center"
                 >
-                  <b className="text-gold flex items-center gap-1.5"><Trophy size={16} /> Você arrematou! Abra:</b>
+                  <b className="text-gold flex items-center gap-1.5">
+                    <Trophy size={16} /> Você arrematou! Abra:
+                  </b>
                   {wonBoxes.map((b) => (
                     <button
                       key={b.boxId}
@@ -2053,213 +2251,244 @@ export function App() {
               </div>
               {/* conteúdo da aba ativa — rola internamente (a página não rola) */}
               <div className="flex-1 lg:min-h-0 lg:overflow-y-auto flex flex-col gap-3 pr-0.5">
-              {matchTab === "market" && PRICED.some((k) => prices[k] != null) && (
-                <div className={`${C.card} p-4`}>
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-sm text-muted flex items-center gap-1.5"><TrendingUp size={14} /> Mercado</span>
-                    <span className="text-[10px] text-emerald-400 flex items-center gap-1">
-                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />{" "}
-                      ao vivo
-                    </span>
-                  </div>
-                  {marketEvent && (
-                    <div
-                      className={`mb-2 text-[11px] rounded-md px-2 py-1 border flex items-center gap-1.5 ${marketEvent.kind === "CRASH" ? "bg-red-500/15 border-red-500/40 text-red-300" : "bg-amber-500/15 border-amber-500/40 text-amber-300"}`}
-                    >
-                      {marketEvent.kind === "CRASH" ? <TrendingDown size={13} className="shrink-0" /> : <TrendingUp size={13} className="shrink-0" />}
-                      <span><b>{marketEvent.label}</b> — {marketEvent.desc}</span>
+                {matchTab === "market" &&
+                  PRICED.some((k) => prices[k] != null) && (
+                    <div className={`${C.card} p-4`}>
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-sm text-muted flex items-center gap-1.5">
+                          <TrendingUp size={14} /> Mercado
+                        </span>
+                        <span className="text-[10px] text-emerald-400 flex items-center gap-1">
+                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />{" "}
+                          ao vivo
+                        </span>
+                      </div>
+                      {marketEvent && (
+                        <div
+                          className={`mb-2 text-[11px] rounded-md px-2 py-1 border flex items-center gap-1.5 ${marketEvent.kind === "CRASH" ? "bg-red-500/15 border-red-500/40 text-red-300" : "bg-amber-500/15 border-amber-500/40 text-amber-300"}`}
+                        >
+                          {marketEvent.kind === "CRASH" ? (
+                            <TrendingDown size={13} className="shrink-0" />
+                          ) : (
+                            <TrendingUp size={13} className="shrink-0" />
+                          )}
+                          <span>
+                            <b>{marketEvent.label}</b> — {marketEvent.desc}
+                          </span>
+                        </div>
+                      )}
+                      <div className="flex flex-col gap-1.5">
+                        {PRICED.filter((k) => prices[k] != null).map((k) => {
+                          const hist = priceHist[k] ?? [prices[k]];
+                          const prev =
+                            hist.length > 1 ? hist[hist.length - 2] : prices[k];
+                          const delta = prices[k] - prev;
+                          const col =
+                            delta > 0
+                              ? "#34d399"
+                              : delta < 0
+                                ? "#f87171"
+                                : "#a8a29e"; // verde sobe, vermelho cai
+                          return (
+                            <div
+                              key={k}
+                              className="flex items-center gap-2 text-sm"
+                            >
+                              <span className="w-5 text-center shrink-0">
+                                <ItemIcon type={k} size={16} />
+                              </span>
+                              <span className="text-muted">{ITEM_NAME[k]}</span>
+                              <div className="ml-auto">
+                                <Sparkline values={hist} color={col} />
+                              </div>
+                              <motion.span
+                                key={prices[k]}
+                                initial={{ scale: 1.3 }}
+                                animate={{ scale: 1 }}
+                                transition={{
+                                  type: "spring",
+                                  stiffness: 400,
+                                  damping: 14,
+                                }}
+                                className="tabular-nums font-semibold w-12 text-right"
+                                style={{ color: col }}
+                              >
+                                {money(prices[k])}
+                              </motion.span>
+                              <span
+                                className="w-12 text-right text-xs tabular-nums shrink-0"
+                                style={{ color: col }}
+                              >
+                                {delta > 0 ? "▲" : delta < 0 ? "▼" : "–"}
+                                {delta !== 0
+                                  ? ` ${delta > 0 ? "+" : ""}${delta}`
+                                  : ""}
+                              </span>
+                            </div>
+                          );
+                        })}
+                      </div>
                     </div>
                   )}
-                  <div className="flex flex-col gap-1.5">
-                    {PRICED.filter((k) => prices[k] != null).map((k) => {
-                      const hist = priceHist[k] ?? [prices[k]];
-                      const prev =
-                        hist.length > 1 ? hist[hist.length - 2] : prices[k];
-                      const delta = prices[k] - prev;
-                      const col =
-                        delta > 0
-                          ? "#34d399"
-                          : delta < 0
-                            ? "#f87171"
-                            : "#a8a29e"; // verde sobe, vermelho cai
+
+                {/* Inventário */}
+                {matchTab === "inventory" &&
+                  wallet &&
+                  wallet.inventory.length === 0 && (
+                    <div
+                      className={`${C.card} p-4 text-sm text-muted flex items-center gap-2`}
+                    >
+                      <Backpack size={15} /> Sem itens ainda — arremate e abra
+                      um baú.
+                    </div>
+                  )}
+                {matchTab === "inventory" &&
+                  wallet &&
+                  wallet.inventory.length > 0 && (
+                    <div className={`${C.card} p-4 flex flex-col gap-2`}>
+                      <div className="text-sm text-muted flex items-center gap-1.5">
+                        <Backpack size={14} /> Inventário
+                      </div>
+                      {ITEM_ORDER.filter((t) =>
+                        wallet.inventory.some((i) => i.type === t),
+                      ).map((t) => {
+                        const count = wallet.inventory.filter(
+                          (i) => i.type === t,
+                        ).length;
+                        const locked = wallet.inventory.filter(
+                          (i) => i.type === t && i.state !== "FREE",
+                        ).length;
+                        const firstFree = wallet.inventory.find(
+                          (i) => i.type === t && i.state === "FREE",
+                        );
+                        return (
+                          <div
+                            key={t}
+                            className="flex items-center gap-2 text-sm"
+                          >
+                            <span className="flex-1 flex items-center gap-1.5">
+                              <ItemIcon type={t} size={15} /> {ITEM_NAME[t]} ×
+                              {count}
+                              {locked > 0 ? (
+                                <span className="text-muted">
+                                  {" "}
+                                  ({locked} travado{locked > 1 ? "s" : ""})
+                                </span>
+                              ) : (
+                                ""
+                              )}
+                            </span>
+                            <button
+                              className={C.btnSmall}
+                              disabled={!firstFree || spectating}
+                              onClick={() => firstFree && sell(firstFree.id)}
+                            >
+                              vender
+                            </button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+
+                {/* Coleções */}
+                {matchTab === "collections" && wallet && (
+                  <div className="bg-surface border border-gold-dim rounded-2xl p-4 flex flex-col gap-1.5">
+                    <div className="text-gold font-semibold text-sm flex items-center gap-1.5">
+                      <Medal size={14} /> Coleções
+                    </div>
+                    {COLLECTIONS.map((c) => {
+                      const formed = wallet.collections.filter(
+                        (f) => f.kind === c.kind,
+                      ).length;
                       return (
                         <div
-                          key={k}
-                          className="flex items-center gap-2 text-sm"
+                          key={c.kind}
+                          className="flex items-center gap-2 text-xs"
                         >
-                          <span className="w-5 text-center shrink-0">
-                            <ItemIcon type={k} size={16} />
+                          <span className="flex-1 flex items-center gap-1 flex-wrap">
+                            {c.label}
+                            <span className="text-muted inline-flex items-center gap-1.5">
+                              {Object.entries(c.requires).map(([t, n]) => (
+                                <span
+                                  key={t}
+                                  className="inline-flex items-center gap-0.5"
+                                >
+                                  <ItemIcon type={t} size={12} />×{n}
+                                </span>
+                              ))}
+                            </span>
                           </span>
-                          <span className="text-muted">{ITEM_NAME[k]}</span>
-                          <div className="ml-auto">
-                            <Sparkline values={hist} color={col} />
-                          </div>
-                          <motion.span
-                            key={prices[k]}
-                            initial={{ scale: 1.3 }}
-                            animate={{ scale: 1 }}
-                            transition={{
-                              type: "spring",
-                              stiffness: 400,
-                              damping: 14,
-                            }}
-                            className="tabular-nums font-semibold w-12 text-right"
-                            style={{ color: col }}
+                          <span className="text-gold">+{money(c.bonus)}</span>
+                          {formed > 0 && (
+                            <span className="text-emerald-400">✓×{formed}</span>
+                          )}
+                          <button
+                            className={C.btnSmall}
+                            disabled={!canForm(c.requires) || spectating}
+                            onClick={() => form(c.kind)}
                           >
-                            {money(prices[k])}
-                          </motion.span>
-                          <span
-                            className="w-12 text-right text-xs tabular-nums shrink-0"
-                            style={{ color: col }}
-                          >
-                            {delta > 0 ? "▲" : delta < 0 ? "▼" : "–"}
-                            {delta !== 0
-                              ? ` ${delta > 0 ? "+" : ""}${delta}`
-                              : ""}
-                          </span>
+                            formar
+                          </button>
                         </div>
                       );
                     })}
-                  </div>
-                </div>
-              )}
-
-              {/* Inventário */}
-              {matchTab === "inventory" && wallet && wallet.inventory.length === 0 && (
-                <div className={`${C.card} p-4 text-sm text-muted flex items-center gap-2`}><Backpack size={15} /> Sem itens ainda — arremate e abra um baú.</div>
-              )}
-              {matchTab === "inventory" && wallet && wallet.inventory.length > 0 && (
-                <div className={`${C.card} p-4 flex flex-col gap-2`}>
-                  <div className="text-sm text-muted flex items-center gap-1.5"><Backpack size={14} /> Inventário</div>
-                  {ITEM_ORDER.filter((t) =>
-                    wallet.inventory.some((i) => i.type === t),
-                  ).map((t) => {
-                    const count = wallet.inventory.filter(
-                      (i) => i.type === t,
-                    ).length;
-                    const locked = wallet.inventory.filter(
-                      (i) => i.type === t && i.state !== "FREE",
-                    ).length;
-                    const firstFree = wallet.inventory.find(
-                      (i) => i.type === t && i.state === "FREE",
-                    );
-                    return (
-                      <div key={t} className="flex items-center gap-2 text-sm">
-                        <span className="flex-1 flex items-center gap-1.5">
-                          <ItemIcon type={t} size={15} /> {ITEM_NAME[t]} ×{count}
-                          {locked > 0 ? (
-                            <span className="text-muted"> ({locked} travado{locked > 1 ? "s" : ""})</span>
-                          ) : (
-                            ""
+                    {wallet.collections.length > 0 && (
+                      <div className="text-sm pt-1">
+                        Bônus total:{" "}
+                        <b className="text-gold">
+                          {money(
+                            wallet.collections.reduce((s, f) => s + f.bonus, 0),
                           )}
-                        </span>
-                        <button
-                          className={C.btnSmall}
-                          disabled={!firstFree || spectating}
-                          onClick={() => firstFree && sell(firstFree.id)}
-                        >
-                          vender
-                        </button>
+                        </b>
                       </div>
-                    );
-                  })}
-                </div>
-              )}
-
-              {/* Coleções */}
-              {matchTab === "collections" && wallet && (
-                <div className="bg-surface border border-gold-dim rounded-2xl p-4 flex flex-col gap-1.5">
-                  <div className="text-gold font-semibold text-sm flex items-center gap-1.5">
-                    <Medal size={14} /> Coleções
+                    )}
                   </div>
-                  {COLLECTIONS.map((c) => {
-                    const formed = wallet.collections.filter(
-                      (f) => f.kind === c.kind,
-                    ).length;
-                    return (
-                      <div
-                        key={c.kind}
-                        className="flex items-center gap-2 text-xs"
-                      >
-                        <span className="flex-1 flex items-center gap-1 flex-wrap">
-                          {c.label}
-                          <span className="text-muted inline-flex items-center gap-1.5">
-                            {Object.entries(c.requires).map(([t, n]) => (
-                              <span key={t} className="inline-flex items-center gap-0.5">
-                                <ItemIcon type={t} size={12} />×{n}
-                              </span>
-                            ))}
-                          </span>
-                        </span>
-                        <span className="text-gold">+{money(c.bonus)}</span>
-                        {formed > 0 && (
-                          <span className="text-emerald-400">✓×{formed}</span>
+                )}
+
+                {/* Eventos (recolhível) — só com ?logs=1 (recurso de demo; escondido p/ jogadores). */}
+                {SHOW_LOGS && (
+                  <div>
+                    <button
+                      className="w-full flex items-center justify-between text-sm text-muted mb-1 hover:text-stone-200 transition"
+                      onClick={() => setLogsOpen((o) => !o)}
+                    >
+                      <span>
+                        Eventos{log.length > 0 ? ` (${log.length})` : ""}
+                      </span>
+                      <span className="text-xs">
+                        {logsOpen ? "▾ ocultar" : "▸ mostrar"}
+                      </span>
+                    </button>
+                    {logsOpen && (
+                      <div className="font-mono text-xs max-h-56 overflow-y-auto bg-surface-2 border border-line rounded-xl p-3">
+                        {log.length === 0 ? (
+                          <div className="text-muted">Sem eventos ainda.</div>
+                        ) : (
+                          log.map((l, i) => (
+                            <div
+                              key={i}
+                              className="py-0.5 border-b border-line/60 last:border-0"
+                            >
+                              {l}
+                            </div>
+                          ))
                         )}
-                        <button
-                          className={C.btnSmall}
-                          disabled={!canForm(c.requires) || spectating}
-                          onClick={() => form(c.kind)}
-                        >
-                          formar
-                        </button>
                       </div>
-                    );
-                  })}
-                  {wallet.collections.length > 0 && (
-                    <div className="text-sm pt-1">
-                      Bônus total:{" "}
-                      <b className="text-gold">
-                        {money(
-                          wallet.collections.reduce((s, f) => s + f.bonus, 0),
-                        )}
-                      </b>
-                    </div>
-                  )}
-                </div>
-              )}
+                    )}
+                  </div>
+                )}
 
-              {/* Eventos (recolhível) — só com ?logs=1 (recurso de demo; escondido p/ jogadores). */}
-              {SHOW_LOGS && (
-                <div>
-                  <button
-                    className="w-full flex items-center justify-between text-sm text-muted mb-1 hover:text-stone-200 transition"
-                    onClick={() => setLogsOpen((o) => !o)}
-                  >
-                    <span>
-                      Eventos{log.length > 0 ? ` (${log.length})` : ""}
-                    </span>
-                    <span className="text-xs">
-                      {logsOpen ? "▾ ocultar" : "▸ mostrar"}
-                    </span>
-                  </button>
-                  {logsOpen && (
-                    <div className="font-mono text-xs max-h-56 overflow-y-auto bg-surface-2 border border-line rounded-xl p-3">
-                      {log.length === 0 ? (
-                        <div className="text-muted">Sem eventos ainda.</div>
-                      ) : (
-                        log.map((l, i) => (
-                          <div
-                            key={i}
-                            className="py-0.5 border-b border-line/60 last:border-0"
-                          >
-                            {l}
-                          </div>
-                        ))
-                      )}
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {/* Chat (aba) */}
-              {matchTab === "chat" && (
-                <ChatPanel
-                  messages={chat}
-                  me={playerId}
-                  onSend={(t) => send({ type: "CHAT_SEND", text: t })}
-                />
-              )}
-              </div>{/* fim do conteúdo rolável das abas */}
+                {/* Chat (aba) */}
+                {matchTab === "chat" && (
+                  <ChatPanel
+                    messages={chat}
+                    me={playerId}
+                    onSend={(t) => send({ type: "CHAT_SEND", text: t })}
+                  />
+                )}
+              </div>
+              {/* fim do conteúdo rolável das abas */}
 
               {/* Reações rápidas (emotes) — FIXAS no rodapé do dock (sempre visíveis) */}
               <div className={`${C.card} p-2.5 shrink-0`}>
@@ -2292,14 +2521,19 @@ export function App() {
         (() => {
           const top = ranking.slice(0, 3);
           const rest = ranking.slice(3);
-          const order = top.length >= 3 ? [1, 0, 2] : top.length === 2 ? [1, 0] : [0];
+          const order =
+            top.length >= 3 ? [1, 0, 2] : top.length === 2 ? [1, 0] : [0];
           const PODIUM = [
             { ring: "#ffcb2e", h: 112 }, // 1º ouro
             { ring: "#c0c8d4", h: 80 }, // 2º prata
             { ring: "#cd7f32", h: 60 }, // 3º bronze
           ];
           return (
-            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="mt-6 sm:mt-10 max-w-xl mx-auto flex flex-col gap-5">
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              className="mt-6 sm:mt-10 max-w-xl mx-auto flex flex-col gap-5"
+            >
               <h2 className="font-arcade text-2xl sm:text-3xl text-center bg-gradient-to-b from-gold-soft to-gold bg-clip-text text-transparent flex items-center justify-center gap-2.5">
                 <Trophy className="text-gold" size={28} /> Fim da partida
               </h2>
@@ -2315,18 +2549,47 @@ export function App() {
                       key={r.playerId}
                       initial={{ y: 36, opacity: 0 }}
                       animate={{ y: 0, opacity: 1 }}
-                      transition={{ delay: 0.15 + idx * 0.12, type: "spring", stiffness: 200, damping: 18 }}
+                      transition={{
+                        delay: 0.15 + idx * 0.12,
+                        type: "spring",
+                        stiffness: 200,
+                        damping: 18,
+                      }}
                       className="flex flex-col items-center gap-1 w-24 sm:w-28"
                     >
-                      {idx === 0 ? <Crown size={22} className="text-gold mb-0.5" /> : <div className="h-[22px]" />}
-                      <div className="w-12 h-12 rounded-full bg-surface-2 flex items-center justify-center font-arcade text-base shrink-0" style={{ color: s.ring, boxShadow: `0 0 0 2px ${s.ring}, 0 0 16px -3px ${s.ring}` }}>
+                      {idx === 0 ? (
+                        <Crown size={22} className="text-gold mb-0.5" />
+                      ) : (
+                        <div className="h-[22px]" />
+                      )}
+                      <div
+                        className="w-12 h-12 rounded-full bg-surface-2 flex items-center justify-center font-arcade text-base shrink-0"
+                        style={{
+                          color: s.ring,
+                          boxShadow: `0 0 0 2px ${s.ring}, 0 0 16px -3px ${s.ring}`,
+                        }}
+                      >
                         {idx + 1}
                       </div>
-                      <div className={`text-sm font-semibold text-center truncate w-full ${me ? "text-gold" : "text-stone-100"}`} title={nm(r.playerId)}>
+                      <div
+                        className={`text-sm font-semibold text-center truncate w-full ${me ? "text-gold" : "text-stone-100"}`}
+                        title={nm(r.playerId)}
+                      >
                         {nm(r.playerId)}
                       </div>
-                      <div className="font-bold tabular-nums text-sm" style={{ color: s.ring }}>{money(r.net)}</div>
-                      <div className="w-full rounded-t-md mt-0.5" style={{ height: s.h, background: `linear-gradient(180deg, ${s.ring}, transparent)` }} />
+                      <div
+                        className="font-bold tabular-nums text-sm"
+                        style={{ color: s.ring }}
+                      >
+                        {money(r.net)}
+                      </div>
+                      <div
+                        className="w-full rounded-t-md mt-0.5"
+                        style={{
+                          height: s.h,
+                          background: `linear-gradient(180deg, ${s.ring}, transparent)`,
+                        }}
+                      />
                     </motion.div>
                   );
                 })}
@@ -2337,10 +2600,20 @@ export function App() {
                   {rest.map((r, i) => {
                     const me = r.playerId === playerId;
                     return (
-                      <div key={r.playerId} className={`flex items-center gap-3 px-4 py-2 text-sm ${me ? "text-gold" : ""}`}>
-                        <span className="w-7 text-muted tabular-nums">{i + 4}º</span>
-                        <span className="flex-1 truncate">{nm(r.playerId)}{me && " (você)"}</span>
-                        <span className="font-bold tabular-nums text-gold">{money(r.net)}</span>
+                      <div
+                        key={r.playerId}
+                        className={`flex items-center gap-3 px-4 py-2 text-sm ${me ? "text-gold" : ""}`}
+                      >
+                        <span className="w-7 text-muted tabular-nums">
+                          {i + 4}º
+                        </span>
+                        <span className="flex-1 truncate">
+                          {nm(r.playerId)}
+                          {me && " (você)"}
+                        </span>
+                        <span className="font-bold tabular-nums text-gold">
+                          {money(r.net)}
+                        </span>
                       </div>
                     );
                   })}
@@ -2349,19 +2622,36 @@ export function App() {
               {/* Destaques */}
               {awards.length > 0 && (
                 <div>
-                  <div className="text-gold font-semibold text-sm mb-2 text-center flex items-center justify-center gap-1.5"><Medal size={15} /> Destaques</div>
+                  <div className="text-gold font-semibold text-sm mb-2 text-center flex items-center justify-center gap-1.5">
+                    <Medal size={15} /> Destaques
+                  </div>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                     {awards.map((a) => {
                       const I = AWARD_ICON[a.key] ?? Trophy;
                       const me = a.playerId === playerId;
                       return (
-                        <div key={a.key} className={`${C.card} flex items-center gap-2.5 px-3 py-2`}>
-                          <div className="rounded-lg p-1.5 bg-gold/15 text-gold shrink-0"><I size={16} /></div>
-                          <div className="flex-1 min-w-0">
-                            <div className="text-[11px] text-muted">{a.label}</div>
-                            <div className={`truncate text-sm ${me ? "text-gold font-semibold" : ""}`}>{nm(a.playerId)}</div>
+                        <div
+                          key={a.key}
+                          className={`${C.card} flex items-center gap-2.5 px-3 py-2`}
+                        >
+                          <div className="rounded-lg p-1.5 bg-gold/15 text-gold shrink-0">
+                            <I size={16} />
                           </div>
-                          <span className="text-xs text-muted tabular-nums">{a.key === "soldValue" ? money(a.value) : `×${a.value}`}</span>
+                          <div className="flex-1 min-w-0">
+                            <div className="text-[11px] text-muted">
+                              {a.label}
+                            </div>
+                            <div
+                              className={`truncate text-sm ${me ? "text-gold font-semibold" : ""}`}
+                            >
+                              {nm(a.playerId)}
+                            </div>
+                          </div>
+                          <span className="text-xs text-muted tabular-nums">
+                            {a.key === "soldValue"
+                              ? money(a.value)
+                              : `×${a.value}`}
+                          </span>
                         </div>
                       );
                     })}
@@ -2370,10 +2660,26 @@ export function App() {
               )}
               {/* Botões */}
               <div className="text-center flex gap-3 justify-center">
-                {isHost && <Button variant="primary" onClick={() => send({ type: "PLAY_AGAIN" })}>Jogar novamente</Button>}
-                <Button variant="ghost" onClick={() => window.location.reload()}>Voltar ao menu</Button>
+                {isHost && (
+                  <Button
+                    variant="primary"
+                    onClick={() => send({ type: "PLAY_AGAIN" })}
+                  >
+                    Jogar novamente
+                  </Button>
+                )}
+                <Button
+                  variant="ghost"
+                  onClick={() => window.location.reload()}
+                >
+                  Voltar ao menu
+                </Button>
               </div>
-              <ChatPanel messages={chat} me={playerId} onSend={(t) => send({ type: "CHAT_SEND", text: t })} />
+              <ChatPanel
+                messages={chat}
+                me={playerId}
+                onSend={(t) => send({ type: "CHAT_SEND", text: t })}
+              />
             </motion.div>
           );
         })()}
@@ -2394,17 +2700,39 @@ export function App() {
               >
                 <div
                   className="rounded-xl border bg-gradient-to-b from-surface to-surface-2 overflow-hidden flex"
-                  style={{ borderColor: `${accent}66`, boxShadow: `0 12px 30px -12px rgba(0,0,0,0.85), 0 0 20px -8px ${accent}` }}
+                  style={{
+                    borderColor: `${accent}66`,
+                    boxShadow: `0 12px 30px -12px rgba(0,0,0,0.85), 0 0 20px -8px ${accent}`,
+                  }}
                 >
-                  <div className="w-1 shrink-0" style={{ background: accent }} />
+                  <div
+                    className="w-1 shrink-0"
+                    style={{ background: accent }}
+                  />
                   <div className="px-3 py-2.5 flex items-center gap-2.5">
-                    <div className="rounded-lg p-1.5 shrink-0" style={{ background: `${accent}22`, color: accent }}>
-                      {down ? <TrendingDown size={18} /> : <TrendingUp size={18} />}
+                    <div
+                      className="rounded-lg p-1.5 shrink-0"
+                      style={{ background: `${accent}22`, color: accent }}
+                    >
+                      {down ? (
+                        <TrendingDown size={18} />
+                      ) : (
+                        <TrendingUp size={18} />
+                      )}
                     </div>
                     <div className="min-w-0">
-                      <div className="text-[9px] uppercase tracking-[0.15em] text-muted leading-none">Mercado</div>
-                      <div className="text-sm font-bold leading-tight mt-0.5" style={{ color: accent }}>{marketToast.label}</div>
-                      <div className="text-[11px] text-muted leading-tight truncate">{marketToast.desc}</div>
+                      <div className="text-[9px] uppercase tracking-[0.15em] text-muted leading-none">
+                        Mercado
+                      </div>
+                      <div
+                        className="text-sm font-bold leading-tight mt-0.5"
+                        style={{ color: accent }}
+                      >
+                        {marketToast.label}
+                      </div>
+                      <div className="text-[11px] text-muted leading-tight truncate">
+                        {marketToast.desc}
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -2427,7 +2755,10 @@ export function App() {
                 style={{ left: ((e.id * 53) % 220) - 110 }}
               >
                 <span className="text-4xl drop-shadow">{e.emoji}</span>
-                <span className="text-[10px] font-semibold whitespace-nowrap" style={{ color: colorOf(e.player) }}>
+                <span
+                  className="text-[10px] font-semibold whitespace-nowrap"
+                  style={{ color: colorOf(e.player) }}
+                >
                   {nm(e.player)}
                 </span>
               </motion.div>
@@ -2450,7 +2781,10 @@ export function App() {
               <motion.div
                 className={`px-9 py-7 rounded-2xl text-center border-2 bg-gradient-to-b from-surface to-surface-2 ${overlayHead.flashKind === "mimic" ? "shake" : ""}`}
                 style={{
-                  borderColor: overlayHead.flashKind === "mimic" ? "rgba(239,68,68,0.6)" : "rgba(255,203,46,0.55)",
+                  borderColor:
+                    overlayHead.flashKind === "mimic"
+                      ? "rgba(239,68,68,0.6)"
+                      : "rgba(255,203,46,0.55)",
                   boxShadow:
                     overlayHead.flashKind === "mimic"
                       ? "0 20px 50px -16px rgba(0,0,0,0.85), 0 0 60px -10px rgba(239,68,68,0.55)"
@@ -2461,7 +2795,9 @@ export function App() {
                 exit={{ scale: 0.6, opacity: 0 }}
                 transition={{ type: "spring", stiffness: 320, damping: 18 }}
               >
-                <div className="flex items-center justify-center mb-1 drop-shadow-[0_4px_14px_rgba(0,0,0,0.5)]">{overlayHead.icon}</div>
+                <div className="flex items-center justify-center mb-1 drop-shadow-[0_4px_14px_rgba(0,0,0,0.5)]">
+                  {overlayHead.icon}
+                </div>
                 <div
                   className={`font-display text-2xl mt-2 ${overlayHead.flashKind === "mimic" ? "text-red-300" : "text-gold"}`}
                 >
@@ -2472,7 +2808,14 @@ export function App() {
             ) : (
               <div
                 className={`relative px-10 pt-20 pb-7 rounded-2xl text-center border ${overlayHead.isMimic ? "bg-red-950/90 border-red-700 shake" : "bg-gradient-to-b from-surface to-surface-2"}`}
-                style={overlayHead.isMimic ? undefined : { borderColor: `color-mix(in srgb, ${boxRarity(overlayHead.tier).color} 55%, transparent)`, boxShadow: `0 0 0 1px ${boxRarity(overlayHead.tier).color}55, 0 0 64px -8px ${boxRarity(overlayHead.tier).glow}` }}
+                style={
+                  overlayHead.isMimic
+                    ? undefined
+                    : {
+                        borderColor: `color-mix(in srgb, ${boxRarity(overlayHead.tier).color} 55%, transparent)`,
+                        boxShadow: `0 0 0 1px ${boxRarity(overlayHead.tier).color}55, 0 0 64px -8px ${boxRarity(overlayHead.tier).glow}`,
+                      }
+                }
               >
                 {/* raios clipados ao card; o card em si NÃO corta (os itens sobem livres) */}
                 {!overlayHead.isMimic && (
@@ -2483,7 +2826,11 @@ export function App() {
                 <div className="relative flex flex-col items-center">
                   {/* baú 3D abrindo (a tampa estoura) — fallback 2D sem WebGL */}
                   <div className="w-52 h-52 flex items-center justify-center">
-                    <Lazy3D fallback={<Chest tier={overlayHead.tier} size={150} open />}>
+                    <Lazy3D
+                      fallback={
+                        <Chest tier={overlayHead.tier} size={150} open />
+                      }
+                    >
                       <Stage3D
                         boxType={overlayHead.tier}
                         mode={overlayHead.isMimic ? "mimic" : "open"}
@@ -2495,14 +2842,30 @@ export function App() {
                     className="absolute top-0 flex gap-2 flex-wrap justify-center w-65"
                     initial={{ y: 20, scale: 0.2, opacity: 0 }}
                     animate={{ y: -64, scale: 1, opacity: 1 }}
-                    transition={{ delay: 0.22, type: "spring", stiffness: 200, damping: 13 }}
+                    transition={{
+                      delay: 0.22,
+                      type: "spring",
+                      stiffness: 200,
+                      damping: 13,
+                    }}
                   >
                     {overlayHead.isMimic ? (
-                      <Skull size={56} color="#ef4444" className="drop-shadow-[0_0_12px_rgba(239,68,68,0.6)]" />
+                      <Skull
+                        size={56}
+                        color="#ef4444"
+                        className="drop-shadow-[0_0_12px_rgba(239,68,68,0.6)]"
+                      />
                     ) : (
-                      Array.from({ length: Math.min(overlayHead.qty, 8) }).map((_, i) => (
-                        <ItemIcon key={i} type={overlayHead.item} size={44} className="drop-shadow-[0_4px_10px_rgba(0,0,0,0.5)]" />
-                      ))
+                      Array.from({ length: Math.min(overlayHead.qty, 8) }).map(
+                        (_, i) => (
+                          <ItemIcon
+                            key={i}
+                            type={overlayHead.item}
+                            size={44}
+                            className="drop-shadow-[0_4px_10px_rgba(0,0,0,0.5)]"
+                          />
+                        ),
+                      )
                     )}
                   </motion.div>
                   <div
@@ -2776,7 +3139,9 @@ function ChatPanel({
   };
   return (
     <div className={`${C.card} p-3 flex flex-col ${className}`}>
-      <div className="text-sm text-muted mb-2 flex items-center gap-1.5"><MessageSquare size={14} /> Chat da sala</div>
+      <div className="text-sm text-muted mb-2 flex items-center gap-1.5">
+        <MessageSquare size={14} /> Chat da sala
+      </div>
       <div
         className="flex-1 min-h-0 overflow-y-auto flex flex-col gap-1 text-sm pr-1"
         style={{ maxHeight: 240, minHeight: 120 }}
