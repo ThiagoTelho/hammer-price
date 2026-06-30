@@ -132,6 +132,11 @@ export function thud(): void {
 export function tick(): void {
   tone(660, 0.055, { type: "sine", vol: 0.06, attack: 0.002 });
 }
+/** Confirmação suave ("Estou pronto") — duas notas subindo, macias e curtas. */
+export function ready(): void {
+  tone(587, 0.12, { type: "triangle", vol: 0.16, attack: 0.004 });
+  tone(880, 0.18, { type: "sine", vol: 0.14, when: 0.08 });
+}
 /** Tampa do baú abrindo — leve subida de tom + corpo grave (neutro: vem antes de fanfarra/baque). */
 export function creak(): void {
   tone(300, 0.36, { type: "triangle", vol: 0.1, glideTo: 380, attack: 0.02 });

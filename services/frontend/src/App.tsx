@@ -2102,6 +2102,7 @@ export function App() {
                         className={`${C.btnGold} w-full`}
                         disabled={iAmReady || !intermission}
                         onClick={() => {
+                          sfx.ready();
                           send({ type: "READY" });
                           setIAmReady(true);
                         }}
